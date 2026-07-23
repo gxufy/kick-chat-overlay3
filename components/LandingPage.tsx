@@ -133,6 +133,8 @@ export default function LandingPage() {
   const [baseUrl,     setBaseUrl]     = useState('https://multichat-gxufy.com');
   const router = useRouter();
   const activated = useRef(false);
+  const [pinPreviewMounted, setPinPreviewMounted] = useState(false);
+  const [pinOpacity, setPinOpacity] = useState(1);
 
   useEffect(() => { setBaseUrl(window.location.origin); }, []);
 
@@ -144,6 +146,20 @@ export default function LandingPage() {
       activated.current = true;
     }
   }, [router.isReady, router.query.tab]);
+
+  // Pin preview: mounted, visible for 4600 ms, fades over 400 ms, unmounted at 5000 ms.
+  useEffect(() => {
+    if (!showPin) {
+      setPinPreviewMounted(false);
+      setPinOpacity(1);
+      return;
+    }
+    setPinPreviewMounted(true);
+    setPinOpacity(1);
+    const fadeOut = setTimeout(() => setPinOpacity(0), 4600);
+    const unmount = setTimeout(() => setPinPreviewMounted(false), 5000);
+    return () => { clearTimeout(fadeOut); clearTimeout(unmount); };
+  }, [showPin]);
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -354,6 +370,7 @@ export default function LandingPage() {
         #example.white, #counter-example.white { background: #46464e; }
         #example.checkered, #counter-example.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
         .example-inner { width: calc(100% - 20px); padding: 10px; word-break: break-word; font-weight: 800; color: white; }
+        @keyframes ckPin { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
 
         input[type=submit] {
           background: var(--accent); color: #fff; border: none; border-radius: 10px;
@@ -644,6 +661,48 @@ export default function LandingPage() {
               </div>
               <div id="example" className={previewWhite ? 'white' : 'checkered'}
                 style={bgColor ? { background: bgColor } : undefined}>
+                {/* pinned-message preview — direct child of #example so it reaches the edges */}
+                {pinPreviewMounted && (
+                  <div style={{
+                    position:'relative', marginBottom:4,
+                    background:'rgba(12,12,16,0.72)',
+                    backdropFilter:'blur(16px) saturate(180%)',
+                    WebkitBackdropFilter:'blur(16px) saturate(180%)',
+                    borderBottom:'1px solid rgba(255,255,255,0.12)',
+                    borderRadius:'10px 10px 0 0',
+                    animation:'ckPin 150ms ease-out',
+                    fontFamily: fontCSS, fontWeight:800, color:'white',
+                    padding:'6px 10px 8px', fontSize: psz.fs,
+                    margin:'10px 10px 0 10px',
+                    opacity: pinOpacity,
+                    transition: 'opacity 400ms ease-out',
+                    ...(pFilter ? { filter: pFilter } : {}),
+                    ...(pStroke ? { WebkitTextStroke: pStroke } : {}),
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:4, paddingBottom:4, opacity:0.6, fontSize:'0.7em' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, verticalAlign:'-1px' }}>
+                        <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+                      </svg>
+                      <span style={{ fontWeight:700 }}>Pinned Message</span>
+                    </div>
+                    {platformIcons && <span className="ptag">{sourceTag('kick', 'icon')}</span>}
+                    <span style={{ display:'inline-block' }}>
+                      <span style={{
+                        fontWeight: 800,
+                        background: 'linear-gradient(135deg, #FF4B6E, #ff8c69)',
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                      }}>AdinRoss</span>
+                      <span className="pc">:</span>{' '}
+                    </span>
+                    <span style={{ fontWeight: msgBold ? 800 : 400 }}>
+                      {msgCaps ? 'LET\'S GOOOOO 🔥🔥' : 'Let\'s gooooo 🔥🔥'}
+                    </span>
+                    <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
+                      Pinned by Kick
+                    </div>
+                  </div>
+                )}
                 <div className="example-inner" style={{
                   fontFamily: fontCSS, fontSize: psz.fs, lineHeight: psz.lh,
                   fontWeight: 800,

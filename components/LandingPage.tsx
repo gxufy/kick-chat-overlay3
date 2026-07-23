@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
@@ -265,6 +266,8 @@ export default function LandingPage() {
 
         /* Header — compact horizontal strip, no giant hero */
         header.header-strip { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 20px; padding: 10px 0 16px; margin-bottom: 18px; position: relative; }
+        .home-link { font-size: 0.82rem; color: var(--muted); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 8px; transition: all .15s; }
+        .home-link:hover { color: var(--accent); background: rgba(74,132,250,.08); }
         header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
         .header-logo { height: 150px; width: auto; margin: -20px 0 -30px; filter: drop-shadow(0 8px 20px rgba(0,0,0,.5)); }
         .header-copy { display: flex; flex-direction: column; gap: 4px; }
@@ -392,7 +395,10 @@ export default function LandingPage() {
 
         {/* Header — compact strip: logo left, title + chips inline */}
         <header className="header-strip">
-          <img src="/tpl.webp" alt="multichat" className="header-logo" />
+          <Link href="/" className="home-link" title="Back to homepage">← Home</Link>
+          <Link href="/">
+            <img src="/tpl.webp" alt="multichat" className="header-logo" />
+          </Link>
           <div className="header-copy">
             <h1 className="header-title">multichat-gxufy</h1>
             <p className="header-sub">Every chat. One overlay. No login.</p>

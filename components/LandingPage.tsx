@@ -667,7 +667,7 @@ export default function LandingPage() {
                   {PREV_MSGS.map((m, i) => m.event ? (
                     /* real event-card render — matches the overlay's follow/gift card */
                     <div key={i} style={{ lineHeight: psz.lh, display:'flex', alignItems:'flex-start', gap:'0.3em' }}>
-                      <span className="ptag">{sourceTag(m.platform, 'icon')}</span>
+                      {platformIcons && <span className="ptag">{sourceTag(m.platform, 'icon')}</span>}
                       <div style={{
                         borderLeft: `2px solid ${PLATFORM_COLOR[m.platform]}`,
                         background: `linear-gradient(90deg, color-mix(in srgb, ${PLATFORM_COLOR[m.platform]} 20%, transparent), transparent)`,
@@ -684,7 +684,7 @@ export default function LandingPage() {
                     <div key={i} style={{
                       lineHeight: psz.lh,
                     }}>
-                      <span className="ptag">{sourceTag(m.platform, 'icon')}</span>
+                      {platformIcons && <span className="ptag">{sourceTag(m.platform, 'icon')}</span>}
                       <span className="ptag">
                         {m.badges.map((b, bi) => (
                           <img key={bi} className={b.alt === 'topGifter' ? 'pb pb-wide' : 'pb'} src={b.src} alt={b.alt} />
@@ -729,7 +729,7 @@ export default function LandingPage() {
                     const msgBody = mentionColor ? mentionParts : src;
                     return (
                       <div key={`c${i}`} style={{ lineHeight: psz.lh }}>
-                        <span className="ptag">{sourceTag('kick', 'icon')}</span>
+                        {platformIcons && <span className="ptag">{sourceTag('kick', 'icon')}</span>}
                         {!hideNames && (
                           <span style={{ display:'inline-block' }}>
                             <span style={{ fontWeight: 800, color: m.color,

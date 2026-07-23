@@ -646,7 +646,7 @@ export default function LandingPage() {
                   fontFamily: fontCSS, fontSize: psz.fs, lineHeight: psz.lh,
                   fontWeight: 800,
                   color: 'white',
-                  ...(pFilter ? { filter: pFilter } : {}),
+                  // filter: pFilter intentionally omitted — applied per-text-span below
                   ...(pStroke ? { WebkitTextStroke: pStroke } : {}),
                 }}>
                   <style>{`
@@ -672,7 +672,9 @@ export default function LandingPage() {
                         padding: '0 8px', borderRadius: 6, flex: 1, minWidth: 0,
                       }}>
                         <span style={{ marginRight:'0.35em' }}>❤️</span>
-                        <span style={{ fontWeight: 400 }}>{msgCaps ? m.msg.toUpperCase() : m.msg}</span>
+                        <span style={{ fontWeight: 400,
+                          ...(pFilter ? { filter: pFilter } : {}),
+                          }}>{msgCaps ? m.msg.toUpperCase() : m.msg}</span>
                       </div>
                     </div>
                   ) : (
@@ -695,11 +697,13 @@ export default function LandingPage() {
                               WebkitTextFillColor: 'transparent',
                               backgroundClip: 'text',
                             } : { color: m.color }),
+                            ...(pFilter ? { filter: pFilter } : {}),
                           }}>{m.user}</span>
                           <span className="pc">:</span>{' '}
                         </span>
                       )}
-                      <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>
+                      <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white',
+                        ...(pFilter ? { filter: pFilter } : {}), }}>
                         {msgCaps ? m.msg.toUpperCase() : m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
                           ? <img key={ei} className="pe" src={e.src} alt={e.alt} />
@@ -720,11 +724,15 @@ export default function LandingPage() {
                         <span className="ptag">{sourceTag('kick', 'icon')}</span>
                         {!hideNames && (
                           <span style={{ display:'inline-block' }}>
-                            <span style={{ fontWeight: 800, color: m.color }}>{m.user}</span>
+                            <span style={{ fontWeight: 800, color: m.color,
+                              ...(pFilter ? { filter: pFilter } : {}),
+                            }}>{m.user}</span>
                             <span className="pc">:</span>{' '}
                           </span>
                         )}
-                        <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>{msgBody}</span>
+                        <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white',
+                          ...(pFilter ? { filter: pFilter } : {}),
+                        }}>{msgBody}</span>
                       </div>
                     );
                   })}

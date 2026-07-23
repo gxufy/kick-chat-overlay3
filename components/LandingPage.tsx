@@ -680,11 +680,13 @@ export default function LandingPage() {
                       lineHeight: psz.lh,
                     }}>
                       <span className="ptag">{sourceTag(m.platform, 'icon')}</span>
+                      <span className="ptag">
+                        {m.badges.map((b, bi) => (
+                          <img key={bi} className={b.alt === 'topGifter' ? 'pb pb-wide' : 'pb'} src={b.src} alt={b.alt} />
+                        ))}
+                      </span>
                       {!hideNames && (
                         <span style={{ display:'inline-block' }}>
-                          {m.badges.map((b, bi) => (
-                            <img key={bi} className={b.alt === 'topGifter' ? 'pb pb-wide' : 'pb'} src={b.src} alt={b.alt} />
-                          ))}
                           <span style={{
                             fontWeight: 800,
                             ...(m.paint && sevenTVC ? {

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
 import CounterPreview from './CounterPreview';
@@ -129,8 +130,19 @@ export default function LandingPage() {
   const [copied,      setCopied]      = useState(false);
   const [previewWhite, setPreviewWhite] = useState(false);
   const [baseUrl,     setBaseUrl]     = useState('https://multichat-gxufy.com');
+  const router = useRouter();
+  const activated = useRef(false);
 
   useEffect(() => { setBaseUrl(window.location.origin); }, []);
+
+  // Auto-open counter tab when /multichat?tab=counter
+  useEffect(() => {
+    if (!router.isReady || activated.current) return;
+    if (router.query.tab === 'counter') {
+      setActiveTab('counter');
+      activated.current = true;
+    }
+  }, [router.isReady, router.query.tab]);
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),

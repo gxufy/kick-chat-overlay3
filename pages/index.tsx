@@ -36,7 +36,7 @@ export default function Hub() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </Head>
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         *, *::before, *::after { box-sizing: border-box; }
         :root {
           --bg: #141418; --card: #1d1d23; --card-2: #24242c; --line: #2c2c35;
@@ -59,7 +59,7 @@ export default function Hub() {
         .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 44px; }
         .tag { font-size: 0.74rem; font-weight: 600; color: var(--muted); background: rgba(255,255,255,.035); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; }
 
-        .cards { display: grid; grid-template-columns: 1fr; gap: 18px; margin-bottom: 44px; }
+        .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 44px; }
         .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 26px; box-shadow: var(--shadow); transition: transform .15s, border-color .15s; display: block; }
         .card:hover { transform: translateY(-3px); border-color: rgba(74,132,250,.5); opacity: 1; }
         .card-kicker { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); margin: 0 0 8px; }
@@ -92,8 +92,9 @@ export default function Hub() {
           .hero { padding-top: 48px; justify-content: center; text-align: center; }
           .hero-text p { max-width: none; }
           .tags { justify-content: center; }
+          .cards { grid-template-columns: 1fr; }
         }
-      `}</style>
+      ` }} />
 
       <div className="wrap">
         <div className="hero">
@@ -123,6 +124,21 @@ export default function Hub() {
               Combine Kick, Twitch, YouTube &amp; TikTok chat into a single OBS browser source.
               7TV / BTTV / FFZ emotes, name paints, real platform badges, pinned messages,
               gifts &amp; Super Chats, plus a real-time viewer counter. Works with just a channel name.
+            </p>
+            <span className="card-cta">Open the generator →</span>
+          </a>
+          <a className="card" href="/multichat?tab=counter">
+            <p className="card-kicker">Free tool</p>
+            <div className="card-badges">
+              <span className="cb cb-kick">Kick</span>
+              <span className="cb cb-tw">Twitch</span>
+              <span className="cb cb-yt">YouTube</span>
+              <span className="cb cb-tt">TikTok</span>
+            </div>
+            <h2>viewer counter — real-time counts</h2>
+            <p>
+              Create an OBS viewer-count overlay for Kick, Twitch, YouTube &amp;
+              TikTok. Real-time counts with offline platforms sliding out.
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>

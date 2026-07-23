@@ -375,10 +375,18 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   );
 }
 
-/* PinBanner — StreamNook-style persistent pin card.
- * Stays visible while pinned (no auto-hide); after 15s collapses to a
- * thin one-line bar (StreamNook's pinned_start_collapsed pattern).
- * Glassmorphism card with pin header and "Pinned by X" footer. */
+/* PinBanner — 5-second fade-out pin banner.
+ *
+ * Timing cycle (per msg.id):
+ *   0 ms    → rendered, opacity 1
+ *   4600 ms → opacity becomes 0 (400 ms fade)
+ *   5000 ms → unmounted (stop rendering)
+ *
+ * Two states: `opacity` (number 0/1) and `mounted` (boolean).
+ * Two timers: fade timer at 4600 ms, unmount timer at 5000 ms.
+ * A different msg.id restarts the complete cycle.
+ * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
+ * clears both timers in useEffect cleanup. */
 function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
@@ -386,16 +394,31 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
   hideNames:boolean;
 }) {
   const { msg, pinnedBy } = pinned;
-  const [collapsed, setCollapsed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const [opacity, setOpacity] = useState(1);
+  const [mounted, setMounted] = useState(true);
+  const timersRef = useRef<{ fade: ReturnType<typeof setTimeout>|null; unmount: ReturnType<typeof setTimeout>|null }>({ fade: null, unmount: null });
 
   useEffect(() => {
-    setCollapsed(false);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCollapsed(true), 15000);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    // Reset cycle on new msg.id or initial mount
+    setOpacity(1);
+    setMounted(true);
+
+    // Clear any previous timers (handles msg.id change + parent unmount)
+    if (timersRef.current.fade) clearTimeout(timersRef.current.fade);
+    if (timersRef.current.unmount) clearTimeout(timersRef.current.unmount);
+
+    timersRef.current.fade = setTimeout(() => setOpacity(0), 4600);
+    timersRef.current.unmount = setTimeout(() => setMounted(false), 5000);
+
+    return () => {
+      if (timersRef.current.fade) clearTimeout(timersRef.current.fade);
+      if (timersRef.current.unmount) clearTimeout(timersRef.current.unmount);
+    };
   }, [msg.id]);
 
+  /* Entry animation from the original banner + 400 ms opacity fade-out
+   * controlled by state. The 150 ms slide-in runs once on mount;
+   * opacity transitions from 1 → 0 over 400 ms starting at 4600 ms. */
   const shell: React.CSSProperties = {
     position:'absolute', top:0, left:0, right:0, zIndex:10,
     background:'rgba(12,12,16,0.72)',
@@ -407,22 +430,13 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
     color:'white',
     wordBreak:'break-word', overflowWrap:'break-word',
     overflow:'hidden',
+    opacity,
+    transition:'opacity 400ms ease-in-out',
     ...(filterVal ? { filter:filterVal } : {}),
     ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
   };
 
-  if (collapsed) {
-    // Thin bar: pin icon + name + truncated single-line text
-    return (
-      <div style={{ ...shell, padding:'4px 10px', fontSize:'0.55em', display:'flex', alignItems:'center', gap:6 }}>
-        <span style={{ opacity:0.7, flexShrink:0, display:'inline-flex' }}><PinSVG /></span>
-        <span style={{ color:msg.identity.color, flexShrink:0 }}>{msg.identity.username}</span>
-        <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', opacity:0.9, fontWeight:600, minWidth:0 }}>
-          {msg.message.map((node,i) => <Fragment key={i}>{node}</Fragment>)}
-        </span>
-      </div>
-    );
-  }
+  if (!mounted) return null;
 
   return (
     <div style={{ ...shell, padding:'6px 10px 8px', fontSize:sz.fontSize }}>

@@ -697,7 +697,7 @@ export default function LandingPage() {
                           <span className="pc">:</span>
                         </span>
                       )}{' '}
-                      <span>
+                      <span style={{ fontWeight: msgBold ? 800 : 400 }}>
                         {m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
                           ? <img key={ei} className="pe" src={e.src} alt={e.alt} />
@@ -716,7 +716,7 @@ export default function LandingPage() {
                           <span className="pc">:</span>
                         </span>
                       )}{' '}
-                      <span>{mentionColor
+                      <span style={{ fontWeight: msgBold ? 800 : 400 }}>{mentionColor
                         ? m.msg.split(' ').map((w, wi) => w.startsWith('@')
                           ? <strong key={wi} style={{ color: '#53fc18' }}>{w} </strong>
                           : w + ' ')

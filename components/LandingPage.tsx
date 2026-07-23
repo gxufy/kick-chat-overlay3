@@ -226,7 +226,9 @@ export default function LandingPage() {
     stroke === 'thicker' ? '4px black' : '';
 
   const badgeSize = parseInt(psz.bw);
-  const emoteSize = parseInt(psz.eh);
+  const emoteScaleNum = emoteScale ? parseFloat(emoteScale) : 1;
+  const emoteMaxH = parseInt(psz.eh) * emoteScaleNum;
+  const emoteMaxW = parseInt(psz.ew) * emoteScaleNum;
 
   return (
     <>
@@ -707,7 +709,12 @@ export default function LandingPage() {
                         ...(pFilter ? { filter: pFilter } : {}), }}>
                         {msgCaps ? m.msg.toUpperCase() : m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
-                          ? <img key={ei} className="pe" src={e.src} alt={e.alt} />
+                          ? <img key={ei} className="pe"
+                              style={{
+                                maxHeight: `${emoteMaxH}px`,
+                                maxWidth: `${emoteMaxW}px`,
+                              }}
+                              src={e.src} alt={e.alt} />
                           : <span key={ei}> {e.alt}</span>
                         )}
                       </span>

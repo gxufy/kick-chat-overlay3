@@ -679,9 +679,9 @@ export default function LandingPage() {
                     <div key={i} style={{
                       lineHeight: psz.lh,
                     }}>
+                      <span className="ptag">{sourceTag(m.platform, 'icon')}</span>
                       {!hideNames && (
                         <span style={{ display:'inline-block' }}>
-                          <span className="ptag">{sourceTag(m.platform, 'icon')}</span>
                           {m.badges.map((b, bi) => (
                             <img key={bi} className={b.alt === 'topGifter' ? 'pb pb-wide' : 'pb'} src={b.src} alt={b.alt} />
                           ))}
@@ -694,9 +694,9 @@ export default function LandingPage() {
                               backgroundClip: 'text',
                             } : { color: m.color }),
                           }}>{m.user}</span>
-                          <span className="pc">:</span>
+                          <span className="pc">:</span>{' '}
                         </span>
-                      )}{' '}
+                      )}
                       <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>
                         {msgCaps ? m.msg.toUpperCase() : m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
@@ -715,13 +715,13 @@ export default function LandingPage() {
                     const msgBody = mentionColor ? mentionParts : src;
                     return (
                       <div key={`c${i}`} style={{ lineHeight: psz.lh }}>
+                        <span className="ptag">{sourceTag('kick', 'icon')}</span>
                         {!hideNames && (
                           <span style={{ display:'inline-block' }}>
-                            <span className="ptag">{sourceTag('kick', 'icon')}</span>
                             <span style={{ fontWeight: 800, color: m.color }}>{m.user}</span>
-                            <span className="pc">:</span>
+                            <span className="pc">:</span>{' '}
                           </span>
-                        )}{' '}
+                        )}
                         <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>{msgBody}</span>
                       </div>
                     );

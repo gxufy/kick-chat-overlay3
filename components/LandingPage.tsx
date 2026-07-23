@@ -674,6 +674,7 @@ export default function LandingPage() {
                         <span style={{ marginRight:'0.35em' }}>❤️</span>
                         <span style={{ fontWeight: 400,
                           ...(pFilter ? { filter: pFilter } : {}),
+                          ...(pStroke ? { WebkitTextStroke: '0px' } : {}),
                           }}>{msgCaps ? m.msg.toUpperCase() : m.msg}</span>
                       </div>
                     </div>

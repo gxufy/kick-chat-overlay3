@@ -697,7 +697,7 @@ export default function LandingPage() {
                           <span className="pc">:</span>
                         </span>
                       )}{' '}
-                      <span style={{ fontWeight: msgBold ? 800 : 400 }}>
+                      <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>
                         {msgCaps ? m.msg.toUpperCase() : m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
                           ? <img key={ei} className="pe" src={e.src} alt={e.alt} />
@@ -722,7 +722,7 @@ export default function LandingPage() {
                             <span className="pc">:</span>
                           </span>
                         )}{' '}
-                        <span style={{ fontWeight: msgBold ? 800 : 400 }}>{msgBody}</span>
+                        <span style={{ fontWeight: msgBold ? 800 : 400, color: fontColor || 'white' }}>{msgBody}</span>
                       </div>
                     );
                   })}

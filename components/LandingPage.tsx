@@ -672,7 +672,7 @@ export default function LandingPage() {
                         padding: '0 8px', borderRadius: 6, flex: 1, minWidth: 0,
                       }}>
                         <span style={{ marginRight:'0.35em' }}>❤️</span>
-                        <span style={{ fontWeight: 400 }}>{m.msg}</span>
+                        <span style={{ fontWeight: 400 }}>{msgCaps ? m.msg.toUpperCase() : m.msg}</span>
                       </div>
                     </div>
                   ) : (
@@ -698,7 +698,7 @@ export default function LandingPage() {
                         </span>
                       )}{' '}
                       <span style={{ fontWeight: msgBold ? 800 : 400 }}>
-                        {m.msg}
+                        {msgCaps ? m.msg.toUpperCase() : m.msg}
                         {m.emotes.map((e, ei) => sevenTVE
                           ? <img key={ei} className="pe" src={e.src} alt={e.alt} />
                           : <span key={ei}> {e.alt}</span>
@@ -707,22 +707,25 @@ export default function LandingPage() {
                     </div>
                   ))}
                   {/* user-injected test messages (UChat preview Send box) */}
-                  {customMsgs.map((m, i) => (
-                    <div key={`c${i}`} style={{ lineHeight: psz.lh }}>
-                      {!hideNames && (
-                        <span style={{ display:'inline-block' }}>
-                          <span className="ptag">{sourceTag('kick', 'icon')}</span>
-                          <span style={{ fontWeight: 800, color: m.color }}>{m.user}</span>
-                          <span className="pc">:</span>
-                        </span>
-                      )}{' '}
-                      <span style={{ fontWeight: msgBold ? 800 : 400 }}>{mentionColor
-                        ? m.msg.split(' ').map((w, wi) => w.startsWith('@')
-                          ? <strong key={wi} style={{ color: '#53fc18' }}>{w} </strong>
-                          : w + ' ')
-                        : m.msg}</span>
-                    </div>
-                  ))}
+                  {customMsgs.map((m, i) => {
+                    const src = msgCaps ? m.msg.toUpperCase() : m.msg;
+                    const mentionParts = src.split(' ').map((w, wi) => w.startsWith('@')
+                      ? <strong key={wi} style={{ color: '#53fc18' }}>{w} </strong>
+                      : w + ' ');
+                    const msgBody = mentionColor ? mentionParts : src;
+                    return (
+                      <div key={`c${i}`} style={{ lineHeight: psz.lh }}>
+                        {!hideNames && (
+                          <span style={{ display:'inline-block' }}>
+                            <span className="ptag">{sourceTag('kick', 'icon')}</span>
+                            <span style={{ fontWeight: 800, color: m.color }}>{m.user}</span>
+                            <span className="pc">:</span>
+                          </span>
+                        )}{' '}
+                        <span style={{ fontWeight: msgBold ? 800 : 400 }}>{msgBody}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               {/* UChat-style test message box */}

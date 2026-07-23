@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
     "next": "14",
     "pusher-js": "^8.4.0",
     "react": "^18",

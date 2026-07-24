@@ -129,14 +129,44 @@ export default function LandingPage() {
   const [userBL,      setUserBL]      = useState('');
   const [prefixBL,    setPrefixBL]    = useState('');
   const [copied,      setCopied]      = useState(false);
-  const [previewWhite, setPreviewWhite] = useState(false);
-  const [baseUrl,     setBaseUrl]     = useState('https://multichat-gxufy.com');
+  const [previewWhite,  setPreviewWhite]  = useState(false);
+  const [baseUrl,       setBaseUrl]       = useState('https://multichat-gxufy.com');
+  const [twitchConnId,  setTwitchConnId]  = useState('');
+  const [twitchLogin,   setTwitchLogin]   = useState('');
   const router = useRouter();
   const activated = useRef(false);
   const [pinPreviewMounted, setPinPreviewMounted] = useState(false);
   const [pinOpacity, setPinOpacity] = useState(1);
 
   useEffect(() => { setBaseUrl(window.location.origin); }, []);
+
+  // Parse successful Twitch OAuth from URL fragment
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const qp = new URLSearchParams(hash);
+    const connId = qp.get('twitchConnectionId') ?? '';
+    const tw     = qp.get('twitch') ?? '';
+
+    const uuidRE  = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    const loginRE = /^[a-z0-9_]+$/;
+    const norm    = tw.trim().toLowerCase();
+
+    const validConn = uuidRE.test(connId);
+    const validLogin = norm.length > 0 && norm.length <= 100 && loginRE.test(norm);
+
+    if (validConn && validLogin) {
+      setTwitchConnId(connId);
+      setTwitchLogin(norm);
+      setTwitch(norm);
+    }
+
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }, []);
 
   // Auto-open counter tab when /multichat?tab=counter
   useEffect(() => {
@@ -191,7 +221,12 @@ export default function LandingPage() {
     ...(userBL.trim() ? { userBL: userBL.trim() } : {}),
     ...(prefixBL.trim() ? { prefixBL: prefixBL.trim() } : {}),
   });
-  const overlayUrl = `${baseUrl}/multichat?${params.toString()}`;
+  const overlayBase = `${baseUrl}/multichat?${params.toString()}`;
+  const matchedTwitch = twitch.trim().toLowerCase().replace(/^@/, '') === twitchLogin.replace(/^@/, '');
+  const overlayFragment = matchedTwitch && twitchConnId
+    ? new URLSearchParams({ twitchConnectionId: twitchConnId }).toString()
+    : '';
+  const overlayUrl = overlayFragment ? `${overlayBase}#${overlayFragment}` : overlayBase;
 
   const counterParams = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -441,8 +476,27 @@ export default function LandingPage() {
             </div>
             <div className="platform-input">
               <span className="platform-tag tw-tag">Twitch</span>
-              <input type="text" name="twitch" placeholder="Channel name"
-                value={twitch} onChange={e => setTwitch(e.target.value)} />
+              <div style={{ display:'flex', gap:6, width:'100%', alignItems:'center' }}>
+                <input type="text" name="twitch" placeholder="Channel name"
+                  value={twitch} onChange={e => setTwitch(e.target.value)}
+                  style={{ flex:1 }} />
+                <a href="/api/twitch/oauth/start"
+                  style={{
+                    fontSize:'0.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
+                    padding:'6px 10px', borderRadius:8, cursor:'pointer', whiteSpace:'nowrap',
+                    border:'1px solid rgba(145,70,255,.45)', background:'rgba(145,70,255,.07)',
+                    color:'#a970ff', textDecoration:'none', transition:'all .15s',
+                  }}
+                  onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(145,70,255,.15)'; }}
+                  onMouseLeave={e => { (e.target as HTMLElement).style.background = 'rgba(145,70,255,.07)'; }}>
+                  Connect
+                </a>
+              </div>
+              {twitchConnId && matchedTwitch && (
+                <span style={{ fontSize:'0.7rem', color:'#7ae', fontWeight:600 }}>
+                  Connected as {twitchLogin}
+                </span>
+              )}
             </div>
             <div className="platform-input">
               <span className="platform-tag yt-tag">YouTube</span>

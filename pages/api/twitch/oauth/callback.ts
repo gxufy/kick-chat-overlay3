@@ -206,7 +206,13 @@ export default async function handler(
       scopes: validation.scopes,
     });
 
-    res.status(200).json({ connectionId: saved.connectionId });
+    const fragment = new URLSearchParams({
+      twitchConnectionId: saved.connectionId,
+      twitch: validation.login,
+    }).toString();
+
+    res.redirect(302, `/multichat#${fragment}`);
+    return;
   } catch {
     /* All helper, configuration, encryption, and database errors */
     res.status(500).json({ error: GENERIC_ERR });

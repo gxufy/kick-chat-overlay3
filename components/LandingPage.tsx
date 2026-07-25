@@ -191,6 +191,14 @@ export default function LandingPage() {
     return () => { clearTimeout(fadeOut); clearTimeout(unmount); };
   }, [showPin]);
 
+  /* Twitch native pins need the connected account to match the typed
+     channel. Until it does, twitch is dropped from the emitted list so the
+     overlay is never told to expect pins it cannot fetch. The user's chip
+     choice in pinPlats is kept, so a temporary channel edit is not lost. */
+  const matchedTwitch = twitch.trim().toLowerCase().replace(/^@/, '') === twitchLogin.replace(/^@/, '');
+  const twitchPinReady = !!twitchConnId && matchedTwitch;
+  const effectivePinPlats = twitchPinReady ? pinPlats : pinPlats.filter(p => p !== 'twitch');
+
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
     ...(twitch.trim()  ? { twitch: twitch.trim().replace(/^@/, '') } : {}),
@@ -212,17 +220,16 @@ export default function LandingPage() {
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),
-    /* per-platform pins: omit when all three selected (default),
+    /* per-platform pins: omit when all four selected (overlay default),
        encode '' when none selected, encode CSV for subsets */
-    ...(pinPlats.length === 0 ? { pinPlatforms: '' } : {}),
-    ...(pinPlats.length > 0 && pinPlats.length < 3 ? { pinPlatforms: pinPlats.join(',') } : {}),
+    ...(effectivePinPlats.length === 0 ? { pinPlatforms: '' } : {}),
+    ...(effectivePinPlats.length > 0 && effectivePinPlats.length < 4 ? { pinPlatforms: effectivePinPlats.join(',') } : {}),
     hideNames:   String(hideNames),
     ...(botNames.trim() ? { botNames: botNames.trim() } : {}),
     ...(userBL.trim() ? { userBL: userBL.trim() } : {}),
     ...(prefixBL.trim() ? { prefixBL: prefixBL.trim() } : {}),
   });
   const overlayBase = `${baseUrl}/multichat?${params.toString()}`;
-  const matchedTwitch = twitch.trim().toLowerCase().replace(/^@/, '') === twitchLogin.replace(/^@/, '');
   const overlayFragment = matchedTwitch && twitchConnId
     ? new URLSearchParams({ twitchConnectionId: twitchConnId }).toString()
     : '';
@@ -635,7 +642,7 @@ export default function LandingPage() {
                 </label>
               </div>
               <div className="toggle-wrap">
-                <label><abbr title="Show pinned messages from your platforms (latest pin wins). Twitch pins need login, so they're not supported.">Pinned messages</abbr></label>
+                <label><abbr title="Show pinned messages from your platforms (latest pin wins). Twitch pins require connecting a Twitch account with broadcaster or moderator access to that channel.">Pinned messages</abbr></label>
                 <label className="toggle">
                   <input type="checkbox" checked={showPin} onChange={e => setShowPin(e.target.checked)} />
                   <span className="toggle-slider" />
@@ -643,14 +650,23 @@ export default function LandingPage() {
               </div>
               {showPin && (
                 <div style={{ display:'flex', gap:6, justifyContent:'flex-end', margin:'-4px 0 11px', flexWrap:'wrap' }}>
-                  {(['kick','youtube','tiktok'] as const).map(p => {
-                    const on = pinPlats.includes(p);
+                  {(['kick','twitch','youtube','tiktok'] as const).map(p => {
+                    // Twitch pins need a connected, matching account.
+                    const blocked = p === 'twitch' && !twitchPinReady;
+                    const on = pinPlats.includes(p) && !blocked;
                     return (
-                      <button key={p} type="button"
-                        onClick={() => setPinPlats(prev => on ? prev.filter(x => x !== p) : [...prev, p])}
+                      <button key={p} type="button" disabled={blocked}
+                        title={p === 'twitch'
+                          ? (blocked
+                              ? 'Connect a Twitch account above and enter that same channel to enable Twitch pins'
+                              : 'Pinned messages from Twitch')
+                          : undefined}
+                        onClick={blocked ? undefined : () => setPinPlats(prev => on ? prev.filter(x => x !== p) : [...prev, p])}
                         style={{
                           fontSize:'0.66rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
-                          padding:'3px 10px', borderRadius:999, cursor:'pointer',
+                          padding:'3px 10px', borderRadius:999,
+                          cursor: blocked ? 'not-allowed' : 'pointer',
+                          opacity: blocked ? 0.45 : 1,
                           border: `1px solid ${on ? PLATFORM_COLOR[p] : 'var(--line)'}`,
                           background: on ? `color-mix(in srgb, ${PLATFORM_COLOR[p]} 15%, transparent)` : 'transparent',
                           color: on ? PLATFORM_COLOR[p] : 'var(--dim)',

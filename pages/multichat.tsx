@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import { z } from 'zod';
 import {
@@ -23,9 +23,40 @@ import { createTikTokConnector } from '../lib/connectors/tiktok';
 import { renderMessageText, renderBadges, fallbackColor, readableColor, isYouTubeOwner } from '../lib/render';
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
+import { startTwitchPinPoller } from '../lib/twitchPinPoller';
+import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
 import LandingPage from '../components/LandingPage';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
 import { SunsetBanner } from '../components/SunsetBanner';
+
+/* Twitch pin polling: the generator appends an opaque connection id as a
+ * URL fragment. Validated here, never rewritten, never logged. */
+const TWITCH_CONN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when *value* looks like a Twitch connection id. */
+function isTwitchConnectionId(value: string): boolean {
+  return TWITCH_CONN_RE.test(value);
+}
+
+/** TwitchPinApiMessage → UnifiedPin, using only fields the pins API returns.
+ *  The id carries updatedAt so an edited pin becomes a distinct message. */
+function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
+  return {
+    message: {
+      platform: 'twitch',
+      id: `${pin.messageId}:${pin.updatedAt}`,
+      senderId: '',        // the pins API deliberately omits the numeric id
+      username: pin.senderUserName,
+      color: '',           // no color in the payload → fallbackColor()
+      badges: [],
+      text: pin.text,
+      emotes: [],          // no native emote offsets in the payload
+      timestamp: Date.parse(pin.startsAt) || Date.now(),
+      kind: 'chat',
+    },
+    pinnedBy: pin.pinnedByUserName,
+  };
+}
 
 const QuerySchema = z.object({
   /** legacy param — same as kick= */
@@ -82,12 +113,12 @@ const QuerySchema = z.object({
   modAction: z.string().optional().transform(v => v !== 'false'),
   userBL: z.string().optional().transform(v => v ?? ''),
   prefixBL: z.string().optional().transform(v => v ?? ''),
-  /* per-platform pins: CSV of kick,youtube,tiktok
-   * - absent → default to all three (backward compat)
+  /* per-platform pins: CSV of kick,twitch,youtube,tiktok
+   * - absent → default to all four (backward compat)
    * - present but empty → [] (no pins at all)
    * - valid names → only those; invalid ignored, duplicates removed */
   pinPlatforms: z.string().optional().transform(v => {
-    const all = ['kick', 'youtube', 'tiktok'];
+    const all = ['kick', 'twitch', 'youtube', 'tiktok'];
     if (v === undefined) return all;       // param absent → default
     if (v === '') return [];                // param explicitly empty → none
     const picked = [...new Set(v.split(',').map(s => s.trim().toLowerCase()).filter(s => all.includes(s)))];
@@ -109,6 +140,30 @@ export default function Page() {
   const [showLoader, setShowLoader] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<PinnedState | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /* ── Twitch pin polling state ──
+   * pinHandlerRef bridges to the main effect's handlePin so buildParsed
+   * (and all cosmetics/emote logic) is reused rather than duplicated. */
+  const pinHandlerRef = useRef<((pin: UnifiedPin | null) => void) | null>(null);
+  /** msg.id of the pin this poller installed, or '' when it owns none. */
+  const twitchPinIdRef = useRef('');
+  /** messageId:updatedAt of the last pin handed to the pin handler. */
+  const twitchPinKeyRef = useRef('');
+
+  /**
+   * Clear the pinned message only when this poller still owns it.
+   *
+   * Uses a functional update so the decision is made against live state:
+   * a newer Kick / YouTube / TikTok pin is never removed.
+   */
+  const clearOwnedTwitchPin = useCallback(() => {
+    const installed = twitchPinIdRef.current;
+    twitchPinIdRef.current = '';
+    twitchPinKeyRef.current = '';
+    if (!installed) return;
+    setPinnedMessage(prev =>
+      prev && prev.msg.platform === 'twitch' && prev.msg.id === installed ? null : prev);
+  }, []);
 
   // Mutable state that doesn't trigger rerenders
   const stateRef = useRef<{
@@ -326,6 +381,11 @@ export default function Page() {
       if (pin && !cfg.pinPlatforms.includes(pin.message.platform)) return;
       setPinnedMessage(pin ? { msg: buildParsed(pin.message), pinnedBy: pin.pinnedBy } : null);
     }
+
+    /* Expose the pin pipeline to the Twitch polling effect below, so
+       polled pins reuse buildParsed instead of duplicating it. */
+    pinHandlerRef.current = handlePin;
+    cleanups.push(() => { pinHandlerRef.current = null; });
 
     /* ── Kick (incl. 7TV emotes/cosmetics) ── */
     if (kickChannel) {
@@ -737,6 +797,54 @@ export default function Page() {
       cleanups.forEach(fn => fn());
     };
   }, [router.isReady]);
+
+  /* Twitch pins need an authorized poll — anonymous IRC carries no pin
+     events (see lib/connectors/twitch.ts). Kept as its own effect so a
+     pin-config change never tears down the chat connectors. */
+  const twitchPinLogin = config?.twitch ? config.twitch.trim().toLowerCase().replace(/^@/, '') : '';
+  const twitchPinsEnabled = !!config?.showPinEnabled && !!config?.pinPlatforms.includes('twitch');
+
+  useEffect(() => {
+    if (!twitchPinsEnabled || !twitchPinLogin) return;
+    if (!pinHandlerRef.current) return;
+
+    // Effects are client-only, so window is available. The fragment is
+    // read without being rewritten or exposed.
+    const connectionId = new URLSearchParams(window.location.hash.slice(1)).get('twitchConnectionId') ?? '';
+    if (!isTwitchConnectionId(connectionId)) return;
+
+    const stopPolling = startTwitchPinPoller({
+      connectionId,
+      login: twitchPinLogin,
+      onPin: pin => {
+        if (pin === null) {
+          clearOwnedTwitchPin();
+          return;
+        }
+        // Unchanged pin — skip so the banner's hide cycle isn't restarted.
+        const key = `${pin.messageId}:${pin.updatedAt}`;
+        if (twitchPinKeyRef.current === key) return;
+        const unified = toUnifiedTwitchPin(pin);
+        pinHandlerRef.current?.(unified);
+        // Refs track ownership only after the handler has run.
+        twitchPinKeyRef.current = key;
+        twitchPinIdRef.current = `twitch:${unified.message.id}`;
+      },
+      onError: (_error, fatal) => {
+        // lookup-failed reports fatal=false and is retried with backoff —
+        // stay silent. The fatal branch can fire at most once per poller.
+        if (fatal) {
+          console.warn('Twitch pin polling stopped.');
+          clearOwnedTwitchPin();
+        }
+      },
+    });
+
+    return () => {
+      stopPolling();
+      clearOwnedTwitchPin();
+    };
+  }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
 
   if (!ready) return null;
 

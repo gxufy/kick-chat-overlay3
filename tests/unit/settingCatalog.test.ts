@@ -38,10 +38,21 @@ describe('catalog integrity', () => {
     expect(visibleSettings(COUNTER_CATALOG)).toHaveLength(COUNTER_CATALOG.length);
   });
 
-  it('uses only the control types implemented in this batch', () => {
+  it('uses only toggle and select, though six control types now exist', () => {
     for (const setting of COUNTER_CATALOG) {
       expect(['toggle', 'select']).toContain(setting.type);
     }
+  });
+
+  it('declares exactly the six counter settings, in order', () => {
+    expect(COUNTER_CATALOG.map((setting) => setting.key)).toEqual([
+      'combined',
+      'icons',
+      'bg',
+      'align',
+      'textShadow',
+      'stroke',
+    ]);
   });
 
   it('covers exactly the counter style fields, and no channel fields', () => {
@@ -93,6 +104,10 @@ describe('catalog serialization matches the existing serializer', () => {
 
   it('produces an identical query for every single-field change', () => {
     for (const setting of COUNTER_CATALOG) {
+      // The catalog is toggle/select only; assert it rather than assume it,
+      // so a widened union cannot quietly skip a setting here.
+      expect(['toggle', 'select']).toContain(setting.type);
+      if (setting.type !== 'toggle' && setting.type !== 'select') continue;
       const values: (boolean | string)[] =
         setting.type === 'toggle'
           ? [true, false]

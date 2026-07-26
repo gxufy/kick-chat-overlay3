@@ -16,6 +16,7 @@ export default function TextInput({
   errorMessage,
   readOnly,
   monospace,
+  describedBy,
 }: {
   id: string;
   label: string;
@@ -27,9 +28,14 @@ export default function TextInput({
   errorMessage?: string;
   readOnly?: boolean;
   monospace?: boolean;
+  /** Ids of helper text owned by the caller, announced alongside the label. */
+  describedBy?: string;
 }) {
   const errorId = `${id}-error`;
   const showError = Boolean(errorMessage);
+  const described =
+    [describedBy, showError ? errorId : undefined].filter(Boolean).join(' ') ||
+    undefined;
 
   return (
     <div className="min-w-0">
@@ -45,7 +51,7 @@ export default function TextInput({
         spellCheck={false}
         autoComplete="off"
         aria-invalid={invalid || undefined}
-        aria-describedby={showError ? errorId : undefined}
+        aria-describedby={described}
         onChange={onChange ? (event) => onChange(event.target.value) : undefined}
         className={`w-full min-w-0 rounded-md border bg-ws-control px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-ws-surface placeholder:text-ws-muted ${
           invalid

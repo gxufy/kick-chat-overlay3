@@ -4,7 +4,7 @@
  * channel inputs: channel identity lives beside the preview it parameterizes.
  */
 import SettingsList from './SettingsList';
-import type { SettingCatalog } from '@/lib/tools/settingTypes';
+import type { SettingCatalog, SettingValue } from '@/lib/tools/settingTypes';
 
 export default function ToolConfigPanel<S extends Record<string, unknown>>({
   toolLabel,
@@ -15,7 +15,7 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
   toolLabel: string;
   catalog: SettingCatalog<S>;
   config: S;
-  onChange: (key: keyof S & string, next: boolean | string) => void;
+  onChange: (key: keyof S & string, next: SettingValue) => void;
 }) {
   return (
     <section

@@ -4,9 +4,12 @@
  * descriptors — and the workspace renders them generically. Adding a control
  * means adding a catalog entry, not writing markup.
  *
- * Only the two control types the Viewer Counter actually needs are modelled
- * here. Colour, slider, number, and multi-select arrive with the tools that
- * need them; there is deliberately no speculative variant.
+ * Six control types are modelled: `toggle` and `select` (used today by the
+ * Viewer Counter) plus `text`, `color`, `number`, and `multiselect`, added for
+ * MultiChat's channel names, colours, fade duration, and pinned-platform set.
+ * Each variant describes a control generically: no tool-specific field names,
+ * no CSV or bitmask encoding, no serialization. Encoding stays in each tool's
+ * own config module.
  *
  * Browser-safe — no server-only imports, no secrets.
  */
@@ -29,6 +32,14 @@ type SettingBase<C> = {
    * and the workspace renders no reveal affordance while no setting uses it.
    */
   hidden?: boolean;
+  /**
+   * Renders the control non-interactive. A static property only: the catalog
+   * declares it, nothing recomputes it per render. Contextual enabling (OAuth
+   * state, sibling values) is not modelled here.
+   */
+  disabled?: boolean;
+  /** Why the control is disabled. Announced with the control when present. */
+  disabledReason?: string;
 };
 
 /** A single choice in a select control. */
@@ -53,8 +64,69 @@ export type SelectSetting<C> = SettingBase<C> & {
   default: string;
 };
 
+/** Free-text control. Edits a plain string; no parsing, no validation. */
+export type TextSetting<C> = SettingBase<C> & {
+  type: 'text';
+  /** Must equal the tool's authoritative default for this field. */
+  default: string;
+  /** Hint shown in the empty field. Never a value. */
+  placeholder?: string;
+  /** Native input length cap, when the field has a real one. */
+  maxLength?: number;
+};
+
+/**
+ * Colour control. Edits an opaque CSS colour string — the value is passed
+ * through exactly as typed, with no case folding, shorthand expansion, or
+ * normalization. Tools that need a canonical form do it at serialization time.
+ */
+export type ColorSetting<C> = SettingBase<C> & {
+  type: 'color';
+  /** Must equal the tool's authoritative default for this field. */
+  default: string;
+  /** Permits the exact string `transparent` in addition to a colour. */
+  allowTransparent?: boolean;
+};
+
+/** Numeric control. Emits finite numbers only. */
+export type NumberSetting<C> = SettingBase<C> & {
+  type: 'number';
+  /** Must equal the tool's authoritative default for this field. */
+  default: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Displayed beside the field ('ms', 'px'). Never part of the value. */
+  unit?: string;
+};
+
+/**
+ * Multiple-choice control. The value is the selected subset, deduplicated and
+ * ordered by `options`, never by click order. Encoding that subset (CSV, repeated
+ * params, bitmask) is the tool's job, not this control's.
+ */
+export type MultiSelectSetting<C> = SettingBase<C> & {
+  type: 'multiselect';
+  /** Allowed values, in display order. */
+  options: readonly SettingOption[];
+  /** Must equal the tool's authoritative default. Empty is valid. */
+  default: readonly string[];
+};
+
 /** Any descriptor in a catalog. */
-export type Setting<C> = ToggleSetting<C> | SelectSetting<C>;
+export type Setting<C> =
+  | ToggleSetting<C>
+  | SelectSetting<C>
+  | TextSetting<C>
+  | ColorSetting<C>
+  | NumberSetting<C>
+  | MultiSelectSetting<C>;
+
+/** Every value shape a control can hold or emit. */
+export type SettingValue = boolean | string | number | readonly string[];
+
+/** The value type a given descriptor holds, taken from its own default. */
+export type SettingValueFor<T extends { default: SettingValue }> = T['default'];
 
 /** A tool's full control catalog, in display order. */
 export type SettingCatalog<C> = readonly Setting<C>[];

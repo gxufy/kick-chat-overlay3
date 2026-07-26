@@ -5,7 +5,11 @@
  * so nothing extra appears on /tools/counter.
  */
 import SettingRow from './SettingRow';
-import { visibleSettings, type SettingCatalog } from '@/lib/tools/settingTypes';
+import {
+  visibleSettings,
+  type SettingCatalog,
+  type SettingValue,
+} from '@/lib/tools/settingTypes';
 
 export default function SettingsList<S extends Record<string, unknown>>({
   catalog,
@@ -14,7 +18,8 @@ export default function SettingsList<S extends Record<string, unknown>>({
 }: {
   catalog: SettingCatalog<S>;
   config: S;
-  onChange: (key: keyof S & string, next: boolean | string) => void;
+  /** Receives whichever value shape the changed setting's control produces. */
+  onChange: (key: keyof S & string, next: SettingValue) => void;
 }) {
   const settings = visibleSettings(catalog);
 
@@ -24,7 +29,7 @@ export default function SettingsList<S extends Record<string, unknown>>({
         <SettingRow
           key={setting.key}
           setting={setting}
-          value={config[setting.key] as boolean | string}
+          value={config[setting.key] as SettingValue}
           onChange={onChange}
         />
       ))}

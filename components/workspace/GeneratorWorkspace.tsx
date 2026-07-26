@@ -16,6 +16,7 @@ import ToolConfigPanel from './ToolConfigPanel';
 import WorkspaceNav from './WorkspaceNav';
 import type { PreviewBackgroundId } from './PreviewBackground';
 import type { OverlayTool } from '@/lib/tools/registry';
+import type { SettingValue } from '@/lib/tools/settingTypes';
 import type { ViewerCounterChannels, ViewerPlatform } from '@/lib/viewerCounterConfig';
 
 export default function GeneratorWorkspace<S extends Record<string, unknown>>({
@@ -30,7 +31,9 @@ export default function GeneratorWorkspace<S extends Record<string, unknown>>({
   const [channels, setChannels] = useState<ViewerCounterChannels>({});
   const [background, setBackground] = useState<PreviewBackgroundId>('checker');
 
-  const changeSetting = (key: keyof S & string, next: boolean | string) => {
+  /* Carries every generic setting value shape. What a value means, and how it
+     reaches a URL, stays the tool's business — `normalize` decides. */
+  const changeSetting = (key: keyof S & string, next: SettingValue) => {
     setStyle((current) => tool.normalize({ ...current, [key]: next }));
   };
 

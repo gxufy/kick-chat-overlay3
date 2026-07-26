@@ -6,6 +6,7 @@
 
 import { getStoredTwitchChannelPin } from '@/lib/server/twitchStoredChannelPin';
 import { getStoredTwitchUserChatColor } from '@/lib/server/twitchStoredUserChatColor';
+import { isTwitchConnectionActive } from '@/lib/server/twitchConnectionReader';
 
 /* ------------------------------------------------------------------ */
 /* Next.js exports                                                     */
@@ -138,10 +139,42 @@ export async function POST(request: Request): Promise<Response> {
     // --- Resolve stored channel pin ---
 
     let result: Awaited<ReturnType<typeof getStoredTwitchChannelPin>>;
-    result = await getStoredTwitchChannelPin(
-      rawConnectionId,
-      normalizedLogin,
-    );
+
+    try {
+      result = await getStoredTwitchChannelPin(
+        rawConnectionId,
+        normalizedLogin,
+      );
+    } catch {
+      /* The stored-pin chain collapses every failure into one opaque error,
+         so a disconnected connection is indistinguishable from a transient
+         Twitch or network fault. Probe liveness once, only on this failure
+         path, to tell the two apart:
+
+           inactive → 400 'Invalid Twitch pin request.' → the client maps
+             this to `invalid-request`, which the poller already treats as
+             fatal, so an overlay left open on a disconnected connection
+             stops instead of retrying forever.
+           active   → 500 'Twitch pin lookup failed.' → unchanged transient
+             behaviour, so the poller keeps retrying with backoff.
+
+         Revoked and never-existed both answer "inactive" with the same
+         response the route already returns for a malformed id, so nothing
+         reveals whether the id ever existed. */
+      const active = await isTwitchConnectionActive(rawConnectionId);
+
+      if (!active) {
+        return Response.json(
+          { error: 'Invalid Twitch pin request.' },
+          { status: 400, headers: cacheHeaders() },
+        );
+      }
+
+      return Response.json(
+        { error: 'Twitch pin lookup failed.' },
+        { status: 500, headers: cacheHeaders() },
+      );
+    }
 
     // --- Validate helper result ---
 

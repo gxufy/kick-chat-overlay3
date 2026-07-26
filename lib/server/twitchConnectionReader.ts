@@ -117,6 +117,39 @@ function validateRow(
 /* ------------------------------------------------------------------ */
 
 /**
+ * Cheap liveness probe: is `connectionId` still an active connection?
+ *
+ * Selects only the id — no tokens are read or decrypted. Intended for
+ * classifying an already-failed lookup, not as a pre-flight check.
+ *
+ * Returns false only on a definitive "no active row" answer (revoked or
+ * nonexistent — deliberately indistinguishable). Any infrastructure failure
+ * returns true, because an unprovable death must not be reported as one.
+ */
+export async function isTwitchConnectionActive(
+  connectionId: string,
+): Promise<boolean> {
+  if (typeof connectionId !== 'string' || !UUID_RE.test(connectionId)) {
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from('twitch_connections')
+      .select('id')
+      .eq('id', connectionId)
+      .is('revoked_at', null);
+
+    if (error || !Array.isArray(data)) return true;
+
+    return data.length > 0;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Load an active (non-revoked) Twitch connection by its opaque
  * connection ID, decrypt its OAuth tokens, and return a plain object.
  *

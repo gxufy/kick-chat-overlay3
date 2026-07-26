@@ -8,11 +8,12 @@ import ChannelPanel from './ChannelPanel';
 import OverlayUrlBar from './OverlayUrlBar';
 import PreviewViewport from './PreviewViewport';
 import { PreviewBackgroundPicker, type PreviewBackgroundId } from './PreviewBackground';
-import type { ViewerCounterChannels, ViewerPlatform } from '@/lib/viewerCounterConfig';
+import type { ToolChannels, ToolPlatform } from '@/lib/tools/registry';
 
-export default function LivePreviewPanel({
+export default function LivePreviewPanel<P extends string>({
   url,
   configured,
+  platforms,
   channels,
   onChannelChange,
   background,
@@ -22,8 +23,10 @@ export default function LivePreviewPanel({
 }: {
   url: string;
   configured: boolean;
-  channels: ViewerCounterChannels;
-  onChannelChange: (platform: ViewerPlatform, raw: string) => void;
+  /** Channel fields supplied by the active tool, passed straight through. */
+  platforms: readonly ToolPlatform<P>[];
+  channels: ToolChannels<P>;
+  onChannelChange: (platform: P, raw: string) => void;
   background: PreviewBackgroundId;
   onBackgroundChange: (next: PreviewBackgroundId) => void;
   previewTitle: string;
@@ -57,7 +60,11 @@ export default function LivePreviewPanel({
 
         <PreviewBackgroundPicker value={background} onChange={onBackgroundChange} />
 
-        <ChannelPanel channels={channels} onChange={onChannelChange} />
+        <ChannelPanel
+          platforms={platforms}
+          channels={channels}
+          onChange={onChannelChange}
+        />
 
         <OverlayUrlBar url={url} configured={configured} />
       </div>

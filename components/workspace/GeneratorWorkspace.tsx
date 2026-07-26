@@ -15,20 +15,23 @@ import LivePreviewPanel from './LivePreviewPanel';
 import ToolConfigPanel from './ToolConfigPanel';
 import WorkspaceNav from './WorkspaceNav';
 import type { PreviewBackgroundId } from './PreviewBackground';
-import type { OverlayTool } from '@/lib/tools/registry';
+import type { OverlayTool, ToolChannels } from '@/lib/tools/registry';
 import type { SettingValue } from '@/lib/tools/settingTypes';
-import type { ViewerCounterChannels, ViewerPlatform } from '@/lib/viewerCounterConfig';
+import { buildOverlayUrl } from '@/lib/tools/toolContext';
 
-export default function GeneratorWorkspace<S extends Record<string, unknown>>({
+export default function GeneratorWorkspace<
+  S extends Record<string, unknown>,
+  P extends string,
+>({
   tool,
   baseUrl,
 }: {
-  tool: OverlayTool<S>;
+  tool: OverlayTool<S, P>;
   /** Origin the generated URL is built against. */
   baseUrl: string;
 }) {
   const [style, setStyle] = useState<S>(tool.defaults);
-  const [channels, setChannels] = useState<ViewerCounterChannels>({});
+  const [channels, setChannels] = useState<ToolChannels<P>>({});
   const [background, setBackground] = useState<PreviewBackgroundId>('checker');
 
   /* Carries every generic setting value shape. What a value means, and how it
@@ -37,15 +40,24 @@ export default function GeneratorWorkspace<S extends Record<string, unknown>>({
     setStyle((current) => tool.normalize({ ...current, [key]: next }));
   };
 
-  const changeChannel = (platform: ViewerPlatform, raw: string) => {
+  const changeChannel = (platform: P, raw: string) => {
     setChannels((current) => ({ ...current, [platform]: raw }));
   };
 
-  /* The single source of truth for every consumer below. Built with the
-     overlay's own serializer, so it is byte-identical to what the existing
-     generator produces for the same inputs. */
+  /* The single source of truth for every consumer below: the preview, the
+     readonly field, Copy, and Open all receive this exact string, so they
+     cannot disagree. Built from parts by one helper — the tool's own serializer
+     for the query, and the tool's optional context for anything after it. A
+     tool that declares no context, which is every tool today, yields precisely
+     `base + route + '?' + query`. */
   const url = useMemo(
-    () => `${baseUrl}${tool.overlayRoute}?${tool.serialize(channels, style)}`,
+    () =>
+      buildOverlayUrl({
+        baseUrl,
+        route: tool.overlayRoute,
+        query: tool.serialize(channels, style),
+        context: tool.context?.(style),
+      }),
     [baseUrl, tool, channels, style],
   );
 
@@ -69,6 +81,7 @@ export default function GeneratorWorkspace<S extends Record<string, unknown>>({
           <LivePreviewPanel
             url={url}
             configured={configured}
+            platforms={tool.platforms}
             channels={channels}
             onChannelChange={changeChannel}
             background={background}

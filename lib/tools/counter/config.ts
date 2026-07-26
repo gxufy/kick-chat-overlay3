@@ -22,7 +22,7 @@ import {
   type ViewerCounterStyle,
   type ViewerPlatform,
 } from '@/lib/viewerCounterConfig';
-import type { OverlayTool, ToolChannels } from '../registry';
+import type { OverlayTool, ToolChannels, ToolPlatform } from '../registry';
 import { COUNTER_CATALOG } from './settings';
 
 /** Re-exported for workspace code so it has one import site for counter types. */
@@ -65,18 +65,43 @@ export function normalizeCounterStyle(
 
 /** Platforms whose typed channel normalizes to a usable name, in display order. */
 export function configuredCounterPlatforms(
-  channels: ToolChannels,
+  channels: ToolChannels<ViewerPlatform>,
 ): ViewerPlatform[] {
   return PLATFORM_ORDER.filter((platform) =>
     Boolean(normalizeChannel(channels[platform])),
   );
 }
 
-export const counterTool: OverlayTool<ViewerCounterStyle> = {
+/** Field labels, unchanged from the ones the channel panel used to hold. */
+const PLATFORM_LABEL: Record<ViewerPlatform, string> = {
+  twitch: 'Twitch',
+  youtube: 'YouTube',
+  kick: 'Kick',
+  tiktok: 'TikTok',
+};
+
+/**
+ * Channel inputs, ordered by the overlay's own PLATFORM_ORDER.
+ *
+ * Derived rather than written out again, so display order, serialization order,
+ * and poll-key order cannot drift apart. Every platform validates with the
+ * overlay's own normalizeChannel — no second rule.
+ */
+export const COUNTER_PLATFORMS: readonly ToolPlatform<ViewerPlatform>[] =
+  PLATFORM_ORDER.map((key) => ({
+    key,
+    label: PLATFORM_LABEL[key],
+    placeholder: 'channel name',
+    normalize: normalizeChannel,
+    invalidMessage: 'Only letters, numbers, "." "_" "-" (max 50 chars).',
+  }));
+
+export const counterTool: OverlayTool<ViewerCounterStyle, ViewerPlatform> = {
   id: 'counter',
   label: 'Viewer Counter',
   workspaceRoute: '/tools/counter',
   overlayRoute: '/counter',
+  platforms: COUNTER_PLATFORMS,
   catalog: COUNTER_CATALOG,
   defaults: DEFAULT_STYLE,
   normalize: normalizeCounterStyle,

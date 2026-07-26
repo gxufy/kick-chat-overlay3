@@ -12,12 +12,12 @@ import Head from 'next/head';
 import type { GetStaticPaths, GetStaticProps } from 'next';
 import { useEffect, useState } from 'react';
 import GeneratorWorkspace from '@/components/workspace/GeneratorWorkspace';
-import { TOOLS, findTool } from '@/lib/tools/registry';
+import { TOOL_IDS, findTool } from '@/lib/tools/registry';
 
 type Props = { toolId: string };
 
 export const getStaticPaths: GetStaticPaths = () => ({
-  paths: TOOLS.map((tool) => ({ params: { tool: tool.id } })),
+  paths: TOOL_IDS.map((id) => ({ params: { tool: id } })),
   fallback: false,
 });
 
@@ -48,7 +48,12 @@ export default function ToolWorkspacePage({ toolId }: Props) {
         <title>{`${tool.label} | multichat-gxufy`}</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <GeneratorWorkspace tool={tool} baseUrl={baseUrl} />
+      {/* `use` hands back the descriptor with its style and platform types
+          intact, so this route needs no per-tool branch — now or when a second
+          tool with a different config shape is registered. */}
+      {tool.use((descriptor) => (
+        <GeneratorWorkspace tool={descriptor} baseUrl={baseUrl} />
+      ))}
     </>
   );
 }

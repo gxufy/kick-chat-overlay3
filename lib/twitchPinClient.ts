@@ -18,6 +18,8 @@ export type TwitchPinApiBroadcaster = {
 /** Minimal pin-message shape returned by the pins API. */
 export type TwitchPinApiMessage = {
   messageId: string;
+  /** Twitch's real numeric sender id — keys 7TV cosmetics lookups. */
+  senderUserId: string;
   senderUserLogin: string;
   senderUserName: string;
   pinnedByUserLogin: string;
@@ -278,6 +280,7 @@ export async function fetchTwitchChannelPin(
   if (pin !== null) {
     const requiredStringFields: Array<keyof TwitchPinApiMessage> = [
       'messageId',
+      'senderUserId',
       'senderUserLogin',
       'senderUserName',
       'pinnedByUserLogin',
@@ -293,6 +296,15 @@ export async function fetchTwitchChannelPin(
           'lookup-failed',
         );
       }
+    }
+
+    // Twitch user ids are numeric; a non-digit id is a malformed response.
+    if (!/^\d+$/.test(pin.senderUserId as string)) {
+      throw new TwitchPinApiError(
+        'Twitch pin lookup failed.',
+        response.status,
+        'lookup-failed',
+      );
     }
 
     if (!isValidTimestamp(pin.startsAt)) {

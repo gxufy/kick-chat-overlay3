@@ -49,7 +49,7 @@ function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
     message: {
       platform: 'twitch',
       id: `${pin.messageId}:${pin.updatedAt}`,
-      senderId: '',        // the pins API deliberately omits the numeric id
+      senderId: pin.senderUserId,  // real Twitch id — keys 7TV entitlements
       username: pin.senderUserName,
       color: '',           // no color in the payload → fallbackColor()
       badges: [],
@@ -149,6 +149,8 @@ export default function Page() {
    * pinHandlerRef bridges to the main effect's handlePin so buildParsed
    * (and all cosmetics/emote logic) is reused rather than duplicated. */
   const pinHandlerRef = useRef<((pin: UnifiedPin | null) => void) | null>(null);
+  /** Bridge to the main effect's cosmetics fetcher — pin authors may never chat. */
+  const cosmeticsWantRef = useRef<((platform: 'kick' | 'twitch', senderId: string) => void) | null>(null);
   /** msg.id of the pin this poller installed, or '' when it owns none. */
   const twitchPinIdRef = useRef('');
   /** messageId:updatedAt of the last pin handed to the pin handler. */
@@ -224,6 +226,19 @@ export default function Page() {
           return { ...buildParsed(m.raw as UnifiedMessage), timestamp: m.timestamp };
         });
         if (touched) dirty = true;
+        /* Repaint the visible Twitch pin too: pin authors are queued
+           separately and their cosmetics usually land after the banner
+           was built. Reuses msg.id, so PinBanner's cycle never restarts. */
+        setPinnedMessage(prev => {
+          if (!prev) return prev;
+          const { platform, senderId, raw } = prev.msg;
+          if (platform !== 'twitch' || !senderId || !raw) return prev;
+          if (!keySet.has(`twitch:${senderId}`)) return prev;
+          return {
+            ...prev,
+            msg: { ...buildParsed(raw as UnifiedMessage), id: prev.msg.id, timestamp: prev.msg.timestamp },
+          };
+        });
       },
     );
     cleanups.push(() => cosmeticsFetcher.stop());
@@ -390,6 +405,13 @@ export default function Page() {
        polled pins reuse buildParsed instead of duplicating it. */
     pinHandlerRef.current = handlePin;
     cleanups.push(() => { pinHandlerRef.current = null; });
+
+    /* Same bridge for cosmetics: pin authors are queued explicitly because
+       they may never send a chat message during this session. */
+    cosmeticsWantRef.current = (platform, senderId) => {
+      if (cfg.sevenTVCosmeticsEnabled) cosmeticsFetcher.want(platform, senderId);
+    };
+    cleanups.push(() => { cosmeticsWantRef.current = null; });
 
     /* ── Kick (incl. 7TV emotes/cosmetics) ── */
     if (kickChannel) {
@@ -830,6 +852,11 @@ export default function Page() {
         const key = `${pin.messageId}:${pin.updatedAt}`;
         if (twitchPinKeyRef.current === key) return;
         const unified = toUnifiedTwitchPin(pin);
+        // Queue the author for 7TV cosmetics. Past the dedupe guard, so this
+        // runs once per distinct pin; the fetcher dedupes by key as well.
+        if (unified.message.senderId) {
+          cosmeticsWantRef.current?.('twitch', unified.message.senderId);
+        }
         pinHandlerRef.current?.(unified);
         // Refs track ownership only after the handler has run.
         twitchPinKeyRef.current = key;

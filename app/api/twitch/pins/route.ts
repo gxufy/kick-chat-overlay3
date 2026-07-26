@@ -247,6 +247,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const messageId = nonEmpty(pObj.messageId);
+    const senderUserId = nonEmpty(pObj.senderUserId);
     const senderUserLogin = nonEmpty(pObj.senderUserLogin);
     const senderUserName = nonEmpty(pObj.senderUserName);
     const pinnedByUserLogin = nonEmpty(pObj.pinnedByUserLogin);
@@ -275,6 +276,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (
       messageId === null ||
+      senderUserId === null ||
       senderUserLogin === null ||
       senderUserName === null ||
       pinnedByUserLogin === null ||
@@ -289,11 +291,21 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    // Twitch user ids are numeric — reject anything else at the boundary.
+
+    if (!/^\d+$/.test(senderUserId)) {
+      return Response.json(
+        { error: 'Twitch pin lookup failed.' },
+        { status: 500, headers: cacheHeaders() },
+      );
+    }
+
     return Response.json(
       {
         broadcaster: responseBroadcaster,
         pin: {
           messageId,
+          senderUserId,
           senderUserLogin,
           senderUserName,
           pinnedByUserLogin,

@@ -33,6 +33,10 @@ import { SunsetBanner } from '../components/SunsetBanner';
  * URL fragment. Validated here, never rewritten, never logged. */
 const TWITCH_CONN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Delay between successful pin polls. 5s is the poller's own floor
+ *  (MIN_INTERVAL_MS), so this is the fastest cadence it will honour. */
+const TWITCH_PIN_INTERVAL_MS = 5_000;
+
 /** True when *value* looks like a Twitch connection id. */
 function isTwitchConnectionId(value: string): boolean {
   return TWITCH_CONN_RE.test(value);
@@ -816,6 +820,7 @@ export default function Page() {
     const stopPolling = startTwitchPinPoller({
       connectionId,
       login: twitchPinLogin,
+      intervalMs: TWITCH_PIN_INTERVAL_MS,
       onPin: pin => {
         if (pin === null) {
           clearOwnedTwitchPin();

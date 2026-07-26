@@ -113,6 +113,31 @@ weight file exists per family, so the selector could not represent real distinct
 weights. `font`, `textSize`, `label`, `showLabel`, and `weight` query parameters
 from older builds are harmlessly ignored.
 
+### Generator workspace — batch 1 (implemented, browser testing outstanding)
+
+Additive only. `/multichat`, `/counter`, the existing Viewer Counter generator
+tab, and every already-copied overlay URL are untouched, and nothing redirects
+to the new route.
+
+- [x] `/tools/counter` — three-column workspace: tool navigation, catalog-driven appearance settings, and a live preview column holding channel inputs and the overlay URL.
+- [x] `lib/tools/settingTypes.ts` — setting descriptor types. Toggle and select only; colour, slider, number, and multi-select are not implemented.
+- [x] `lib/tools/registry.ts` + `lib/tools/counter/{config,settings}.ts` — tool descriptor and the Viewer Counter control catalog. `lib/viewerCounterConfig.ts` remains the authoritative implementation; the descriptor calls its serializer, so workspace and existing-generator URLs are identical for the same inputs.
+- [x] `components/workspace/OverlayPreviewFrame.tsx` — one shared preview implementation. `CounterPreview` is now a thin wrapper around it with unchanged behaviour.
+- [x] One derived URL string feeds the preview iframe, the readonly URL field, Copy, and Open. The workspace never writes to the address bar.
+- [x] Preview-background selector (transparent / dark / light) as workspace-only state: applied to the container that wraps the iframe, never added to the URL, never injected into the overlay document.
+- [x] Copy and Open stay visible when unconfigured and explain why in an inline live region instead of copying a channel-less URL or firing `alert()`.
+- [x] Vitest + jsdom + React Testing Library, `npm test` / `npm run test:watch`, 70 unit tests across config, catalog, channel detection, and preview debounce/teardown.
+
+Deliberately not in this batch: no `postMessage` protocol (an appearance change
+navigates the iframe), no test-message composer, no overlay-to-parent status
+protocol, no hidden settings, no feature flag, no paste-link channel
+extraction, no design-gallery route, no MultiChat migration, and no MultiChat
+parser tests — those arrive when that parser is extracted.
+
+- [ ] Manual browser verification of `/tools/counter` at 1920 / 1024 / 375 px.
+- [ ] Manual keyboard and screen-reader pass on the workspace; no automated accessibility tooling is installed, so axe/CI accessibility checks remain outstanding.
+- [ ] Manual confirmation that leaving `/tools/counter` stops the preview overlay's polling.
+
 ### Verification still outstanding
 
 - [ ] Manual OBS transparent browser-source test at narrow and wide dimensions.

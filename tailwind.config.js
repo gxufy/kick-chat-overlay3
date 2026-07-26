@@ -4,6 +4,22 @@ module.exports = {
   content: ['./pages/**/*.{js,ts,jsx,tsx}', './components/**/*.{js,ts,jsx,tsx}', './app/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      /* Generator-workspace surface tokens. Used only by components under
+         components/workspace and components/ui — no overlay rendering CSS
+         reads these, and no existing stylesheet was changed to adopt them. */
+      colors: {
+        'ws-bg': '#101012',
+        'ws-surface': '#17171a',
+        'ws-border': '#2a2a30',
+        'ws-control': '#22222a',
+        'ws-control-hover': '#2c2c36',
+        'ws-text': '#ededf0',
+        'ws-muted': '#9a9aa5',
+        'ws-accent': '#6d4aff',
+        'ws-accent-hover': '#7f60ff',
+        'ws-ring': '#8b6cff',
+        'ws-danger': '#f87171',
+      },
       keyframes: {
         slide: { '0%': { transform: 'translateX(-100%)', opacity: '0' }, '100%': { transform: 'translateX(0)', opacity: '1' } },
         fade: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },

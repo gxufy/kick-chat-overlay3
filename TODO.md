@@ -236,17 +236,54 @@ into a query parameter stays with each tool's own serializer.
 
 - [ ] Manual browser confirmation of the new controls at 1920 / 1024 / 375 px.
 
+### MultiChat migration — batch 3: shell generalization (implemented)
+
+Infrastructure only. Viewer Counter is still the only registered tool, no new
+route exists, and no MultiChat behaviour was added.
+
+- [x] Registry holds many tools. A registered entry hides its descriptor's style
+      and platform type parameters behind `use`, because a plain union of
+      `OverlayTool<A, PA> | OverlayTool<B, PB>` stops inferring once a second
+      tool joins — `normalize` and `serialize` are contravariant. The route
+      therefore needs no per-tool branch when batch 4 registers MultiChat. No
+      `any`, no cast.
+- [x] `TOOL_IDS` drives `getStaticPaths`; `findTool` returns `undefined` for an
+      unknown id, so `/tools/unknown` is still a real 404.
+- [x] Platform metadata moved onto the descriptor as `ToolPlatform<P>`: key,
+      label, placeholder, normalizer, invalid message. `ChannelPanel` has no
+      platform list, no counter import, and no platform names in it.
+- [x] Channel state is keyed by the tool's own `P`, so one tool's channels
+      cannot be indexed with another tool's platform.
+- [x] `lib/tools/toolContext.ts` — an optional `ToolContext` with one optional
+      `fragment` field, plus `buildOverlayUrl`, the single place a workspace URL
+      is derived. A fragment is normalized to exactly one `#`, an empty one
+      emits none, and it is always placed after the query. Nothing here names a
+      platform, a provider, or a login concept.
+- [x] Counter declares no `context`, so its URL is byte-identical to the old
+      concatenation — asserted against `buildViewerCounterQuery` directly.
+
+Counter platform order is `PLATFORM_ORDER` — Twitch, **YouTube, Kick**, TikTok —
+derived from `lib/viewerCounterConfig` rather than restated, so display,
+serialization, and poll-key order cannot drift. The batch 3 brief listed
+Twitch/Kick/YouTube/TikTok; that is not the order the shipped panel has ever
+rendered, and preserving current behaviour won.
+
+Not done here, deliberately: no `multichatTool`, no `lib/tools/multichat/**`, no
+`/tools/multichat`, no connect/disconnect UI, no fragment parsing, no OAuth
+route change, and no `enabledWhen` or dynamic catalog predicate.
+
+- [ ] Manual browser confirmation of `/tools/counter` at 1920 / 1024 / 375 px.
+
 ### MultiChat migration — remaining batches (not started)
 
 Nothing below is implemented, and `/tools/multichat` does not exist.
-
-- [ ] Batch 3 — shell generalization only: multiple tool registration, platform
-      metadata on descriptors, `ToolContext`, OAuth-aware context, and a channel
-      panel that is not counter-shaped. The setting value pipeline is done and is
-      not part of batch 3.
-- [ ] Batch 4 — register the MultiChat tool descriptor and control catalog.
+- [ ] Batch 4 — register the MultiChat tool descriptor and control catalog,
+      including its platform definitions and its own setting catalog. Still
+      pending: nothing about MultiChat is modelled yet.
 - [ ] Batch 5 — ship the `/tools/multichat` workspace, including the
-      real-overlay iframe preview and the Twitch connect/disconnect panel.
+      real-overlay iframe preview, the Twitch connect/disconnect panel, and
+      whatever OAuth-derived value it supplies through the tool context. Still
+      pending: the context added in batch 3 is generic and carries nothing.
 - [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
       repoint the OAuth return, update homepage and nav links, and retire the
       legacy generator. `/multichat` stays a working overlay route permanently.

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import type { OverlayConfig } from '../pages/multichat';
+import type { MultichatConfig } from '../lib/multichatConfig';
 import type { ParsedMessage } from '../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../lib/render';
 import type { Platform } from '../lib/types';
@@ -11,7 +11,7 @@ export interface PinnedState {
 }
 
 interface Props {
-  config: OverlayConfig;
+  config: MultichatConfig;
   messages: ParsedMessage[];
   fadingIds: Set<string>;
   pinnedMessage: PinnedState | null;
@@ -153,10 +153,9 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
 }
 
 export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader }: Props) {
-  const cfg = config as OverlayConfig & {
-    font?:string; stroke?:string; emoteScale?:number;
-    hideNames?:boolean;
-  };
+  /* Fully typed by MultichatConfig — the schema already declares every field
+     read below, so no intersection or cast is needed. */
+  const cfg = config;
 
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
@@ -233,7 +232,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             overflow: hidden !important;
             height: 100vh !important;
             position: relative !important;
-            background: ${(cfg as any).bgColor || 'transparent'} !important;
+            background: ${cfg.bgColor || 'transparent'} !important;
           }
           /* Next.js inserts #__next between <body> and our content.
              Make it invisible to layout so position:absolute;bottom:0
@@ -355,9 +354,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         bottom:     0,
         overflow:   'hidden',
         background: 'transparent',
-        color:      (cfg as any).fontColor || 'white',
-        fontWeight: (cfg as any).msgBold === false ? 400 : 800,
-        textTransform: (cfg as any).msgCaps ? 'uppercase' as const : undefined,
+        color:      cfg.fontColor || 'white',
+        fontWeight: cfg.msgBold === false ? 400 : 800,
+        textTransform: cfg.msgCaps ? 'uppercase' as const : undefined,
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,

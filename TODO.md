@@ -188,14 +188,62 @@ added for them and none were removed.
 - [ ] Manual browser and OBS confirmation that legacy overlay URLs render
       identically to pre-batch screenshots.
 
+### MultiChat migration — batch 2: generic setting control types (implemented)
+
+`Setting` is now a six-member union: the original `toggle` and `select`, plus
+`text`, `color`, `number`, and `multiselect`. Each is generic — no MultiChat
+field names, no CSV or bitmask encoding, no colour normalization, no
+serialization. `SettingRow` renders all six through an exhaustive switch with a
+compile-time `never` branch, and `SettingsList` threads the widened value union
+into rows.
+
+- [x] `components/ui/inputs/ColorInput.tsx` — text value plus native swatch, no
+      third-party picker, value passed through verbatim.
+- [x] `components/ui/inputs/NumberInput.tsx` — finite numbers only, never NaN,
+      unit rendered as linked text rather than folded into the value.
+- [x] `components/ui/inputs/MultiSelect.tsx` — native checkboxes, each with its
+      own label; emitted subsets deduplicated and ordered by declaration.
+- [x] Static `disabled` / `disabledReason` on the descriptor base, applied via a
+      `display: contents` `<fieldset disabled>` wrapper that only renders when a
+      setting declares it.
+
+Not done here, deliberately:
+
+- No MultiChat control catalog and no `/tools/multichat` route.
+- No `ToolContext` and no contextual `enabledWhen` predicate. `disabled` is a
+  static declaration only; OAuth-aware and sibling-dependent enabling belongs to
+  batch 3.
+- `/tools/counter` is still the only registered workspace tool, still exactly six
+  toggle/select settings, and its markup, defaults, and overlay URLs are
+  unchanged.
+
+The whole setting pipeline carries all six value shapes:
+
+```
+SettingRow → SettingsList → ToolConfigPanel → GeneratorWorkspace → tool.normalize
+```
+
+Every layer's change callback is `(key: keyof S & string, next: SettingValue) => void`
+where `SettingValue = boolean | string | number | readonly string[]`. A number
+arrives as a number and a multi-select as a `readonly string[]`; nothing is
+stringified, CSV-encoded, or guarded away in the generic layer. Turning a value
+into a query parameter stays with each tool's own serializer.
+
+- [x] `text` rows use a stacked layout because `TextInput` owns its own
+      `<label for>`. `TextInput` gained one optional `describedBy` prop so the
+      row's description and disabled reason link to the field; no other change
+      to it.
+
+- [ ] Manual browser confirmation of the new controls at 1920 / 1024 / 375 px.
+
 ### MultiChat migration — remaining batches (not started)
 
 Nothing below is implemented, and `/tools/multichat` does not exist.
 
-- [ ] Batch 2 — extend the setting catalog with colour, number, text, and
-      multi-select control types plus a dependency predicate.
-- [ ] Batch 3 — generalise the tool registry, channel panel, and workspace
-      shell to more than one tool.
+- [ ] Batch 3 — shell generalization only: multiple tool registration, platform
+      metadata on descriptors, `ToolContext`, OAuth-aware context, and a channel
+      panel that is not counter-shaped. The setting value pipeline is done and is
+      not part of batch 3.
 - [ ] Batch 4 — register the MultiChat tool descriptor and control catalog.
 - [ ] Batch 5 — ship the `/tools/multichat` workspace, including the
       real-overlay iframe preview and the Twitch connect/disconnect panel.

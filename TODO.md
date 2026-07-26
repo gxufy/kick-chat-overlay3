@@ -73,7 +73,59 @@ Pages Router handler per `CLAUDE.md`, and no existing route was migrated.
 
 - [ ] Deduplicate TikTok server connections per channel (noted in `DEPLOY.md`).
 
-## 8. Explicitly out of scope — not started, not claimed
+## 8. Viewer Counter
+
+### Baseline that already existed before this batch
+
+- [x] `/counter` standalone overlay page reachable as an OBS browser source.
+- [x] `/api/viewers` server route for Twitch, YouTube, and TikTok counts.
+- [x] Kick counts fetched browser-side (its API blocks server IPs).
+- [x] Generator counter tab at `/multichat?tab=counter`, auto-opened from the homepage card.
+- [x] Permanent Copy action — the counter tab never had a separate Generate step.
+- [x] Combined-total and per-platform layouts, platform icons, pill background, shadow/stroke controls.
+
+### Shipped in this batch
+
+- [x] `components/ViewerCounterDisplay.tsx` — single shared renderer used by both the overlay and the generator preview, ending the duplicated presentation logic.
+- [x] `lib/viewerCounterConfig.ts` — shared parameter types, defaults, enums, validation, URL serialization, and the availability model.
+- [x] `CounterPreview` reduced to a thin live-preview wrapper: it embeds the real same-origin `/counter` route in an iframe using the exact URL the Copy button provides. No synthetic counts, no drift timers, no duplicated platform logic.
+- [x] Four-state availability model (offline / live / live-unknown / unavailable) so an undeterminable count is never displayed or summed as zero.
+- [x] Bounded 60s stale window: a failed refresh retains the last good value, then drops it.
+- [x] YouTube `originalViewCount` fallback removed — it is cumulative views, not concurrent viewers. Live-but-unparseable now reports live/unknown.
+- [x] Non-overlapping polling: the next poll is scheduled only after the previous one settles, with one `AbortController` per cycle aborted on unmount and on channel change.
+- [x] Polling keyed on a stable primitive channel key, so restyling never restarts polling.
+- [x] API cache TTL lowered from 12s to 8s, below the 10s client cadence, plus process-local in-flight Promise coalescing with generation-safe cleanup.
+- [x] Bounded per-source upstream timeouts.
+- [x] Dead `metric` parameter and unused `peak`/`sum`/`samples` state removed, along with the header comment that claimed average/peak support.
+- [x] New generator control: alignment — backward compatible.
+- [x] Process-local cache bounded to 500 entries with least-recently-written eviction; a refresh moves its key to the newest position.
+- [x] Preview shows real viewer data: because it embeds `/counter`, it inherits the live counts, the availability model, the 10s cadence, and the offline behaviour exactly. Live-but-unknown shows an em dash; confirmed-offline platforms are absent; no channels renders no iframe at all.
+- [x] Preview URL changes debounced by 350 ms with cleanup on every change and on unmount, so typing a channel reloads the iframe once at the pause rather than on every keystroke.
+- [x] Font-face rules live in the shared renderer so the overlay and preview load the same face, declared at its real source weight (DejaVuSans-Bold 700).
+- [x] Counter controls kept: configured platform channels, combined vs per-platform, platform icons, pill background, alignment, text shadow, stroke.
+- [x] Shadow and stroke moved onto counter-specific state, read only from the counter query/config. They no longer share MultiChat's shadow and stroke state, so restyling chat cannot change a generated counter URL.
+
+The counter has a fixed font (DejaVu Sans Bold), fixed size (34 px), and fixed
+weight (700) — deliberately not configurable. Typography is independent of the
+MultiChat overlay so restyling chat never affects an already generated counter
+URL. A font-weight control was built and then removed before commit: only one
+weight file exists per family, so the selector could not represent real distinct
+weights. `font`, `textSize`, `label`, `showLabel`, and `weight` query parameters
+from older builds are harmlessly ignored.
+
+### Verification still outstanding
+
+- [ ] Manual OBS transparent browser-source test at narrow and wide dimensions.
+- [ ] Manual multi-platform combined-total test against per-platform mode with real live channels.
+- [ ] Manual cleanup/reconnect test confirming no requests continue after navigating away.
+- [ ] Manual confirmation that a live YouTube stream with an unparseable count shows the unavailable marker rather than a number.
+
+### Known limitations
+
+- The generator preview is a real `/counter` instance, so it polls the platform APIs like any overlay. An open Counter tab counts as one additional viewer-count consumer, and the preview is empty whenever every configured channel is offline.
+- `/api/viewers` deduplication and caching are process-local. Multiple serverless instances or machines each keep their own cache; nothing is shared or distributed.
+
+## 9. Explicitly out of scope — not started, not claimed
 
 None of the following were touched, and none are shipped:
 
@@ -81,4 +133,5 @@ None of the following were touched, and none are shipped:
 - Native Twitch emote-fragment rendering (tracked in section 2).
 - The App Router versus Pages Router migration decision (tracked in section 5).
 - Applying the Supabase schema SQL — documented, but a manual human step (section 4).
-- Viewer counter, TikTok features beyond the dedup note, preview parity, responsive layout, and homepage/navigation work. Not tracked as roadmap items anywhere in the repository; listed only to record that the Twitch work did not address them.
+- MultiWidget Alerts — not started.
+- TikTok features beyond the dedup note (section 7), homepage/navigation redesign, and unrelated responsive-layout work. Not tracked as roadmap items anywhere in the repository; listed only to record that neither the Twitch nor the Viewer Counter work addressed them.

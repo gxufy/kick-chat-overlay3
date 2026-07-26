@@ -51,7 +51,7 @@ function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
       id: `${pin.messageId}:${pin.updatedAt}`,
       senderId: pin.senderUserId,  // real Twitch id — keys 7TV entitlements
       username: pin.senderUserName,
-      color: '',           // no color in the payload → fallbackColor()
+      color: pin.color,    // '' → fallbackColor()
       badges: [],
       text: pin.text,
       emotes: [],          // no native emote offsets in the payload

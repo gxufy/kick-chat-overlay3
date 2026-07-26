@@ -5,6 +5,7 @@
  */
 
 import { getStoredTwitchChannelPin } from '@/lib/server/twitchStoredChannelPin';
+import { getStoredTwitchUserChatColor } from '@/lib/server/twitchStoredUserChatColor';
 
 /* ------------------------------------------------------------------ */
 /* Next.js exports                                                     */
@@ -300,12 +301,33 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    // --- Resolve the author's chat color (never fatal) ---
+    //
+    // Only reached when a pin exists, so an empty channel costs no request.
+    // The helper already swallows its own failures; the extra guard and shape
+    // re-test keep `color` provably '' or #RRGGBB whatever happens upstream.
+
+    let color = '';
+
+    try {
+      color = await getStoredTwitchUserChatColor(rawConnectionId, senderUserId);
+    } catch {
+      color = '';
+    }
+
+    if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) {
+      color = color.toUpperCase();
+    } else {
+      color = '';
+    }
+
     return Response.json(
       {
         broadcaster: responseBroadcaster,
         pin: {
           messageId,
           senderUserId,
+          color,
           senderUserLogin,
           senderUserName,
           pinnedByUserLogin,

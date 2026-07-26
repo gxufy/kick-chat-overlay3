@@ -20,6 +20,8 @@ export type TwitchPinApiMessage = {
   messageId: string;
   /** Twitch's real numeric sender id — keys 7TV cosmetics lookups. */
   senderUserId: string;
+  /** Uppercase `#RRGGBB`, or `''` when unset or unavailable. */
+  color: string;
   senderUserLogin: string;
   senderUserName: string;
   pinnedByUserLogin: string;
@@ -296,6 +298,19 @@ export async function fetchTwitchChannelPin(
           'lookup-failed',
         );
       }
+    }
+
+    /* color is not in requiredStringFields: '' is a legitimate value for a
+       user with no color configured, and that loop rejects empty strings. */
+    if (
+      typeof pin.color !== 'string' ||
+      (pin.color !== '' && !/^#[0-9a-fA-F]{6}$/.test(pin.color))
+    ) {
+      throw new TwitchPinApiError(
+        'Twitch pin lookup failed.',
+        response.status,
+        'lookup-failed',
+      );
     }
 
     // Twitch user ids are numeric; a non-digit id is a malformed response.

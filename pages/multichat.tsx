@@ -3,7 +3,13 @@
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import { z } from 'zod';
+import {
+  hasConfiguredMultichatChannel,
+  multichatKickChannel,
+  multichatPlatformCount,
+  safeParseMultichatConfig,
+  type MultichatConfig,
+} from '../lib/multichatConfig';
 import {
   getSevenTVGlobalEmotes,
   getSevenTVChannelEmotes,
@@ -62,78 +68,10 @@ function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
   };
 }
 
-const QuerySchema = z.object({
-  /** legacy param — same as kick= */
-  channel: z.string().optional(),
-  kick: z.string().optional(),
-  twitch: z.string().optional(),
-  youtube: z.string().optional(),
-  tiktok: z.string().optional(),
-  sevenTVCosmeticsEnabled: z.string().optional().transform(v => v !== 'false'),
-  sevenTVEmotesEnabled: z.string().optional().transform(v => v !== 'false'),
-  textShadow: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'small','3':'medium','4':'large'};
-    return map[v??''] ?? (['none','small','medium','large'].includes(v??'') ? v! : 'large');
-  }),
-  textSize: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'small','2':'medium','3':'large'};
-    return map[v??''] ?? (['small','medium','large'].includes(v??'') ? v! : 'medium');
-  }),
-  animation: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'slide','3':'fade'};
-    return map[v??''] ?? (['none','slide','fade'].includes(v??'') ? v! : 'slide');
-  }),
-  showPinEnabled: z.string().optional().transform(v => v === 'true'),
-  showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
-  /* UChat-style colorable mentions — default ON (mentionColor=false to disable) */
-  mentionColor: z.string().optional().transform(v => v !== 'false'),
-  /* chat background: 'transparent' (default) or a hex color like 191919 */
-  bgColor: z.string().optional().transform(v =>
-    /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  /* channel-point redeems (kick/twitch highlighted messages) */
-  showRedeems: z.string().optional().transform(v => v !== 'false'),
-  /* StreamNook sourceTag: none | dot | label | icon (default icon —
-     official brand marks, same art Streamlabs uses) */
-  sourceTag: z.string().optional().transform(v =>
-    (['none','dot','label','icon'].includes(v ?? '') ? v! : 'icon') as 'none'|'dot'|'label'|'icon'),
-  /* profile pictures (yt/tiktok) — off by default */
-  showAvatars: z.string().optional().transform(v => v === 'true'),
-  font: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'baloo','2':'segoe','3':'roboto','4':'lato','5':'noto','6':'sourcecode','7':'impact','8':'comfortaa','9':'dancing','10':'indieflower','11':'opensans','12':'alsina'};
-    return map[v??''] ?? v ?? 'opensans';
-  }),
-  stroke: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'thin','3':'medium','4':'thick','5':'thicker'};
-    return map[v??''] ?? (['none','thin','medium','thick','thicker'].includes(v??'') ? v! : 'none');
-  }),
-  emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
-  fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
-  /* ── UChat-ported settings ── */
-  msgBold: z.string().optional().transform(v => v !== 'false'),
-  msgCaps: z.string().optional().transform(v => v === 'true'),
-  fontColor: z.string().optional().transform(v =>
-    /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  paintShadows: z.string().optional().transform(v => v !== 'false'),
-  modAction: z.string().optional().transform(v => v !== 'false'),
-  userBL: z.string().optional().transform(v => v ?? ''),
-  prefixBL: z.string().optional().transform(v => v ?? ''),
-  /* per-platform pins: CSV of kick,twitch,youtube,tiktok
-   * - absent → default to all four (backward compat)
-   * - present but empty → [] (no pins at all)
-   * - valid names → only those; invalid ignored, duplicates removed */
-  pinPlatforms: z.string().optional().transform(v => {
-    const all = ['kick', 'twitch', 'youtube', 'tiktok'];
-    if (v === undefined) return all;       // param absent → default
-    if (v === '') return [];                // param explicitly empty → none
-    const picked = [...new Set(v.split(',').map(s => s.trim().toLowerCase()).filter(s => all.includes(s)))];
-    return picked.length ? picked : all;    // no valid names → fallback to all
-  }),
-  hideNames: z.string().optional().transform(v => v === 'true'),
-  botNames: z.string().optional().transform(v => v ?? ''),
-  ttsEnabled: z.string().optional().transform(v => v !== 'false'),
-});
-
-export type OverlayConfig = z.infer<typeof QuerySchema>;
+/* The query schema, defaults, aliases, and serializer now live in
+ * lib/multichatConfig.ts. OverlayConfig is kept as an alias so the many
+ * references below (and ChatOverlay's own typing) read unchanged. */
+export type OverlayConfig = MultichatConfig;
 
 export default function Page() {
   const router = useRouter();
@@ -194,12 +132,12 @@ export default function Page() {
     if (!router.isReady) return;
     setReady(true);
 
-    const parsed = QuerySchema.safeParse(router.query);
+    const parsed = safeParseMultichatConfig(router.query);
     if (!parsed.success) return;
     const cfg = parsed.data;
-    const kickChannel = cfg.kick || cfg.channel || '';
-    const platformCount = [kickChannel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length;
-    if (platformCount === 0) return;
+    const kickChannel = multichatKickChannel(cfg);
+    const platformCount = multichatPlatformCount(cfg);
+    if (!hasConfiguredMultichatChannel(cfg)) return;
 
     setConfig(cfg);
     stateRef.current.config = cfg;

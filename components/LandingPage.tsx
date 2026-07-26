@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
+import { buildMultichatQuery } from '../lib/multichatConfig';
 import CounterPreview from './CounterPreview';
 import {
   ALIGNMENTS,
@@ -255,37 +256,24 @@ export default function LandingPage() {
   const twitchPinReady = !!twitchConnId && matchedTwitch;
   const effectivePinPlats = twitchPinReady ? pinPlats : pinPlats.filter(p => p !== 'twitch');
 
-  const params = new URLSearchParams({
-    ...(channel.trim() ? { kick: channel.trim() } : {}),
-    ...(twitch.trim()  ? { twitch: twitch.trim().replace(/^@/, '') } : {}),
-    ...(youtube.trim() ? { youtube: youtube.trim().replace(/^@/, '') } : {}),
-    ...(tiktok.trim()  ? { tiktok: tiktok.trim().replace(/^@/, '') } : {}),
-    // no platform filled → placeholder so the URL preview stays valid
-    ...(!channel.trim() && !twitch.trim() && !youtube.trim() && !tiktok.trim() ? { kick: 'yourchannel' } : {}),
-    sevenTVEmotesEnabled:    String(sevenTVE),
-    sevenTVCosmeticsEnabled: String(sevenTVC),
-    textSize, font, textShadow, stroke, animation,
-    ...(fadeBool && fade !== '' ? { fade } : {}),
-    showPinEnabled:        String(showPin),
-    ...(platformIcons ? {} : { sourceTag: 'none' }),
-    ...(mentionColor ? {} : { mentionColor: 'false' }),
-    ...(bgColor ? { bgColor: bgColor.replace('#', '') } : {}),
-    ...(emoteScale !== '' ? { emoteScale } : {}),
-    ...(msgBold ? {} : { msgBold: 'false' }),
-    ...(msgCaps ? { msgCaps: 'true' } : {}),
-    ...(modAction ? {} : { modAction: 'false' }),
-    ...(paintShadows ? {} : { paintShadows: 'false' }),
-    ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),
-    /* per-platform pins: omit when all four selected (overlay default),
-       encode '' when none selected, encode CSV for subsets */
-    ...(effectivePinPlats.length === 0 ? { pinPlatforms: '' } : {}),
-    ...(effectivePinPlats.length > 0 && effectivePinPlats.length < 4 ? { pinPlatforms: effectivePinPlats.join(',') } : {}),
-    hideNames:   String(hideNames),
-    ...(botNames.trim() ? { botNames: botNames.trim() } : {}),
-    ...(userBL.trim() ? { userBL: userBL.trim() } : {}),
-    ...(prefixBL.trim() ? { prefixBL: prefixBL.trim() } : {}),
-  });
-  const overlayBase = `${baseUrl}/multichat?${params.toString()}`;
+  /* Serialization lives in lib/multichatConfig.ts, so the copied URL and any
+     future consumer of the same state produce byte-identical output. Every
+     inclusion rule, boolean spelling, and parameter order is unchanged. */
+  const multichatQuery = buildMultichatQuery(
+    { kick: channel, twitch, youtube, tiktok },
+    {
+      sevenTVEmotesEnabled: sevenTVE,
+      sevenTVCosmeticsEnabled: sevenTVC,
+      textSize, font, textShadow, stroke, animation,
+      fade, fadeEnabled: fadeBool,
+      showPinEnabled: showPin,
+      platformIcons, mentionColor, bgColor, emoteScale,
+      msgBold, msgCaps, modAction, paintShadows, fontColor,
+      pinPlatforms: effectivePinPlats,
+      hideNames, botNames, userBL, prefixBL,
+    },
+  );
+  const overlayBase = `${baseUrl}/multichat?${multichatQuery}`;
   const overlayFragment = matchedTwitch && twitchConnId
     ? new URLSearchParams({ twitchConnectionId: twitchConnId }).toString()
     : '';

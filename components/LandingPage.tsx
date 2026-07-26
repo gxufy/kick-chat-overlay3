@@ -5,6 +5,19 @@ import { useRouter } from 'next/router';
 import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
 import CounterPreview from './CounterPreview';
+import {
+  ALIGNMENTS,
+  PLATFORM_ORDER,
+  STROKES,
+  TEXT_SHADOWS,
+  buildViewerCounterQuery,
+  normalizeChannel,
+  type CounterAlign,
+  type CounterStroke,
+  type CounterTextShadow,
+  type ViewerCounterChannels,
+  type ViewerCounterStyle,
+} from '../lib/viewerCounterConfig';
 
 const FONTS: [string, string, string][] = [
   ['baloo',       'Baloo Tammudu',          "'Baloo Tammudu 2', cursive"],
@@ -111,10 +124,15 @@ export default function LandingPage() {
   const [bgColor,     setBgColor]     = useState('');      // '' = transparent
   const [customMsgs,  setCustomMsgs]  = useState<Array<{ user: string; color: string; msg: string }>>([]);
   const [testInput,   setTestInput]   = useState('');
+  /* Counter state is entirely its own: the counter has fixed typography and
+     never reads MultiChat's font, size, shadow, or stroke state, so
+     restyling chat cannot change an already generated counter URL. */
   const [vcCombined,  setVcCombined]  = useState('true');
-  const [vcFont,      setVcFont]      = useState('dejavu');
   const [vcIcons,     setVcIcons]     = useState('true');
   const [vcBg,        setVcBg]        = useState('true');
+  const [vcAlign,     setVcAlign]     = useState<CounterAlign>('left');
+  const [vcTextShadow, setVcTextShadow] = useState<CounterTextShadow>('small');
+  const [vcStroke,    setVcStroke]    = useState<CounterStroke>('none');
   const [copiedCounter, setCopiedCounter] = useState(false);
   const [activeTab,   setActiveTab]   = useState<'counter' | 'commands' | 'setup' | null>(null);
   const [emoteScale,  setEmoteScale]  = useState('');
@@ -273,18 +291,35 @@ export default function LandingPage() {
     : '';
   const overlayUrl = overlayFragment ? `${overlayBase}#${overlayFragment}` : overlayBase;
 
-  const counterParams = new URLSearchParams({
-    ...(channel.trim() ? { kick: channel.trim() } : {}),
-    ...(twitch.trim()  ? { twitch: twitch.trim().replace(/^@/, '') } : {}),
-    ...(youtube.trim() ? { youtube: youtube.trim().replace(/^@/, '') } : {}),
-    ...(tiktok.trim()  ? { tiktok: tiktok.trim().replace(/^@/, '') } : {}),
-    combined: vcCombined,
-    font: vcFont,
-    icons: vcIcons,
-    bg: vcBg,
-    textSize, textShadow, stroke,
-  });
-  const counterUrl = `${baseUrl}/counter?${counterParams.toString()}`;
+  /* Counter style, shared verbatim with the preview and serialized into the
+     overlay URL by the same helper the overlay parses with. */
+  const counterStyle: ViewerCounterStyle = {
+    combined: vcCombined === 'true',
+    icons: vcIcons === 'true',
+    bg: vcBg === 'true',
+    textShadow: vcTextShadow,
+    stroke: vcStroke,
+    align: vcAlign,
+  };
+
+  /* Shared by the copied URL and the preview, so the preview always shows
+     exactly the platforms the overlay will. */
+  const counterChannels: ViewerCounterChannels = {
+    kick: channel,
+    twitch,
+    youtube,
+    tiktok,
+  };
+
+  const counterQuery = buildViewerCounterQuery(counterChannels, counterStyle);
+  const counterUrl = `${baseUrl}/counter?${counterQuery}`;
+
+  /* The live preview embeds this exact URL, so the preview and the copied
+     overlay can never disagree. Validated with the same normalizer the
+     overlay parses with, so a half-typed or invalid name shows no preview. */
+  const counterConfigured = PLATFORM_ORDER.some((platform) =>
+    Boolean(normalizeChannel(counterChannels[platform])),
+  );
 
   const copyCounter = () => {
     navigator.clipboard.writeText(counterUrl);
@@ -992,12 +1027,6 @@ export default function LandingPage() {
                 <option value="false">Per platform</option>
               </select>
             </label>
-            <label>Font{' '}
-              <select value={vcFont} onChange={e => setVcFont(e.target.value)}>
-                <option value="dejavu">DejaVu Sans Bold</option>
-                <option value="montserrat">Montserrat Bold</option>
-              </select>
-            </label>
             <label>Icons{' '}
               <select value={vcIcons} onChange={e => setVcIcons(e.target.value)}>
                 <option value="true">Show</option>
@@ -1010,19 +1039,34 @@ export default function LandingPage() {
                 <option value="false">Off</option>
               </select>
             </label>
+            <label>Align{' '}
+              <select value={vcAlign} onChange={e => setVcAlign(e.target.value as CounterAlign)}>
+                {ALIGNMENTS.map(a => (
+                  <option key={a} value={a}>{a[0].toUpperCase() + a.slice(1)}</option>
+                ))}
+              </select>
+            </label>
+            <label>Shadow{' '}
+              <select value={vcTextShadow}
+                onChange={e => setVcTextShadow(e.target.value as CounterTextShadow)}>
+                {TEXT_SHADOWS.map(s => (
+                  <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            </label>
+            <label>Stroke{' '}
+              <select value={vcStroke}
+                onChange={e => setVcStroke(e.target.value as CounterStroke)}>
+                {STROKES.map(s => (
+                  <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div id="counter-example" className={previewWhite ? 'white' : 'checkered'}
             style={{ border:'1px solid #444', borderRadius:6, overflow:'hidden', padding:'14px 12px', marginTop:8 }}>
-            <CounterPreview
-              combined={vcCombined === 'true'}
-              font={vcFont}
-              icons={vcIcons === 'true'}
-              bg={vcBg === 'true'}
-              textSize={textSize}
-              textShadow={textShadow}
-              stroke={stroke}
-            />
+            <CounterPreview url={counterUrl} configured={counterConfigured} />
           </div>
           <div className="url-box" style={{ marginTop:8 }}>
             <div className="url-code">{counterUrl}</div>
@@ -1031,7 +1075,9 @@ export default function LandingPage() {
             </button>
           </div>
           <p style={{ color:'#555', fontSize:'0.76rem', margin:'6px 0 0' }}>
-            Real-time counts, offline platforms slide out. OBS size: 400 × 80.
+            Real-time concurrent viewers, offline platforms slide out. OBS size: 400 × 80.
+            The preview is the live overlay itself, so it only shows platforms that
+            are actually streaming — an empty preview means none are.
           </p>
         </div>
         )}

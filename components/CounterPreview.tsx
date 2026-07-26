@@ -1,119 +1,74 @@
-/* CounterPreview — landing-page live preview of the /counter overlay.
- * Mirrors counter.tsx styling exactly (pill, glass bg, icon boxes,
- * rolling number) but feeds fake per-platform counts that drift every
- * few seconds so the animation is visible. Order matches ORDER in
- * counter.tsx: twitch → youtube → kick → tiktok.
+/* CounterPreview — live preview of the /counter overlay in the generator.
+ *
+ * It embeds the real same-origin /counter route in an iframe using the very
+ * same URL the Copy button hands out. There is no synthetic data and no
+ * duplicated platform logic: the preview shows the actual concurrent-viewer
+ * counts, the actual availability behaviour (em dash for live-but-unknown,
+ * nothing for confirmed offline), and the actual polling cadence, because it
+ * *is* the overlay.
+ *
+ * The incoming URL changes on every keystroke in a channel field, so reloads
+ * are debounced: the iframe only navigates once typing has paused.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-type Plat = 'twitch' | 'youtube' | 'kick' | 'tiktok';
-const ORDER: Plat[] = ['twitch', 'youtube', 'kick', 'tiktok'];
+/** How long the incoming URL must hold still before the iframe reloads. */
+const PREVIEW_DEBOUNCE_MS = 350;
 
-const SIZES = { small: 22, medium: 34, large: 48 } as const;
+/**
+ * Fixed preview viewport height. Tall enough for one pill row at the
+ * counter's fixed 34 px type plus the overlay's own 8 px padding, without
+ * constraining width — the counter aligns left/center/right inside it.
+ */
+const PREVIEW_HEIGHT = 80;
 
-const ICONS: Record<Plat, JSX.Element> = {
-  kick: <svg viewBox="0 0 24 24" fill="#53FC19" style={{ height: '78%', width: 'auto', margin: 'auto' }}><path d="M1.333 0h8v5.333H12V2.667h2.667V0h8v8H20v2.667h-2.667v2.666H20V16h2.667v8h-8v-2.667H12v-2.666H9.333V24h-8Z"/></svg>,
-  twitch: <img src="/platform-twitch.png" alt="Twitch" style={{ height: '100%', width: 'auto' }} />,
-  youtube: (
-    <svg viewBox="0 0 24 24" style={{ height: '100%', width: 'auto' }}>
-      <path fill="#FF0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/>
-      <path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12z"/>
-    </svg>
-  ),
-  tiktok: <img src="/platform-tiktok.png" alt="TikTok" style={{ height: '100%', width: 'auto' }} />,
-};
-
-/* base fake counts per platform (drift ±3% every tick) */
-const BASE: Record<Plat, number> = { twitch: 12483, youtube: 3921, kick: 8117, tiktok: 1354 };
-
-function RollingCount({ value, fontSize }: { value: number; fontSize: number }) {
-  const [shown, setShown] = useState(value);
-  const fromRef = useRef(value);
-  const rafRef = useRef<number>();
-  useEffect(() => {
-    const from = fromRef.current;
-    if (from === value) return;
-    const start = performance.now();
-    const dur = 600;
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / dur, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setShown(Math.round(from + (value - from) * eased));
-      if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else fromRef.current = value;
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [value]);
-  return <span style={{ fontSize, fontVariantNumeric: 'tabular-nums' }}>{shown.toLocaleString()}</span>;
-}
-
-export default function CounterPreview({ combined, font, icons, bg, textSize, textShadow, stroke }: {
-  combined: boolean; font: string; icons: boolean; bg: boolean;
-  textSize: string; textShadow: string; stroke: string;
+export default function CounterPreview({
+  url,
+  configured,
+}: {
+  /** The generated /counter URL — identical to the one Copy provides. */
+  url: string;
+  /** Whether at least one normalized platform channel is configured. */
+  configured: boolean;
 }) {
-  const [counts, setCounts] = useState<Record<Plat, number>>({ ...BASE });
+  /* The last settled URL, or null when there is nothing valid to show.
+     Deliberately never seeded from `url`: at mount `url` is the channel-less
+     default, and using it would let the iframe load that URL the instant a
+     first character makes `configured` true, before the debounce has run. */
+  const [settledUrl, setSettledUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const iv = setInterval(() => {
-      setCounts(prev => {
-        const next = { ...prev };
-        for (const p of ORDER) {
-          const drift = Math.round(BASE[p] * (Math.random() * 0.06 - 0.03));
-          next[p] = Math.max(0, prev[p] + drift);
-        }
-        return next;
-      });
-    }, 2500);
-    return () => clearInterval(iv);
-  }, []);
+    /* Only a configured URL is ever settled, so no channel-less URL can reach
+       the iframe's src — not at mount, and not on any later transition back
+       to configured. */
+    const next = configured ? url : null;
 
-  const fontFamily = font === 'montserrat' ? "'Montserrat', sans-serif" : "'DejaVu Sans', sans-serif";
-  const fontSize = SIZES[(textSize as keyof typeof SIZES)] ?? SIZES.medium;
-  const iconSize = Math.round(fontSize * 0.9);
-  const shadow =
-    textShadow === 'small' ? 'drop-shadow(2px 2px 0.2rem black)' :
-    textShadow === 'medium' ? 'drop-shadow(2px 2px 0.35rem black)' :
-    textShadow === 'large' ? 'drop-shadow(2px 2px 0.5rem black)' : '';
-  const strokeCss = ({ thin: '1px black', medium: '2px black', thick: '3px black', thicker: '4px black' } as Record<string, string>)[stroke] ?? '';
+    const timeout = setTimeout(() => setSettledUrl(next), PREVIEW_DEBOUNCE_MS);
 
-  const pill: React.CSSProperties = {
-    display: 'inline-flex', alignItems: 'center', gap: Math.round(fontSize * 0.28),
-    ...(bg ? { background: 'rgba(20,20,24,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', borderRadius: 999, padding: `${Math.round(fontSize * 0.22)}px ${Math.round(fontSize * 0.5)}px` } : {}),
-    fontFamily, fontWeight: 700, color: '#fff',
-    ...(shadow ? { filter: shadow } : {}),
-    ...(strokeCss ? { WebkitTextStroke: strokeCss } : {}),
-  };
+    /* Runs before the next effect and on unmount, so a pending reload is
+       always cancelled by newer typing or by leaving the Counter tab. */
+    return () => clearTimeout(timeout);
+  }, [url, configured]);
 
-  const iconBox = (p: Plat) => (
-    <span key={p} style={{ height: iconSize, width: iconSize, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-      {ICONS[p]}
-    </span>
-  );
-
-  const total = ORDER.reduce((n, p) => n + counts[p], 0);
+  /* Nothing configured, or nothing settled yet: render no iframe at all, so no
+     overlay mounts and no polling starts. The `configured` half is checked on
+     every render, so clearing the last channel removes the iframe immediately
+     rather than after the debounce. */
+  if (!configured || !settledUrl) return null;
 
   return (
-    <>
-      <style>{`
-        @font-face { font-family: 'Montserrat'; src: url('/fonts/Montserrat-SemiBold.ttf') format('truetype'); font-weight: 700; }
-        @font-face { font-family: 'DejaVu Sans'; src: url('/fonts/DejaVuSans-Bold.ttf') format('truetype'); font-weight: 700; }
-      `}</style>
-      <div style={{ display: 'flex', gap: Math.round(fontSize * 0.5), flexWrap: 'wrap' }}>
-        {combined ? (
-          <div style={pill}>
-            {icons && ORDER.map(iconBox)}
-            <RollingCount value={total} fontSize={fontSize} />
-          </div>
-        ) : (
-          ORDER.map(p => (
-            <div key={p} style={pill}>
-              {icons && iconBox(p)}
-              <RollingCount value={counts[p]} fontSize={fontSize} />
-            </div>
-          ))
-        )}
-      </div>
-    </>
+    <iframe
+      src={settledUrl}
+      title="Live viewer counter preview"
+      scrolling="no"
+      style={{
+        display: 'block',
+        width: '100%',
+        height: PREVIEW_HEIGHT,
+        border: 'none',
+        background: 'transparent',
+        overflow: 'hidden',
+      }}
+    />
   );
 }

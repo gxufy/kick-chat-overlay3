@@ -138,6 +138,71 @@ parser tests — those arrive when that parser is extracted.
 - [ ] Manual keyboard and screen-reader pass on the workspace; no automated accessibility tooling is installed, so axe/CI accessibility checks remain outstanding.
 - [ ] Manual confirmation that leaving `/tools/counter` stops the preview overlay's polling.
 
+### MultiChat migration — batch 1: config extraction (implemented)
+
+Behaviour-preserving refactor only. No route, visual, overlay, generator
+control, OAuth, or Twitch-pin change. Every already-copied overlay URL parses
+and renders exactly as before.
+
+- [x] `lib/multichatConfig.ts` — the authoritative MultiChat parser and
+      serializer. The zod schema moved verbatim out of `pages/multichat.tsx`,
+      and the `URLSearchParams` assembly moved verbatim out of
+      `components/LandingPage.tsx`.
+- [x] **Two deliberately separate default sets, not reconciled.**
+      `MULTICHAT_OVERLAY_DEFAULTS` is what an omitted parameter resolves to on
+      a `/multichat` URL — `textShadow` is `large` there, and changing it would
+      restyle existing overlay URLs. `MULTICHAT_GENERATOR_DEFAULTS` is where
+      the generator's controls begin — `textShadow` is `small` there. The
+      generator always writes the parameter explicitly, so the two never have
+      to agree. Neither value is a bug and neither was changed.
+- [x] Preserved exactly: every parameter, enum, numeric alias
+      (`textSize` 1–3, `textShadow` 1–4, `animation` 1–3, `stroke` 1–5,
+      `font` 1–12), boolean coercion, `parseInt` fade and `parseFloat`
+      emoteScale semantics, bare-hex colour handling, `pinPlatforms`
+      absent/empty/partial distinction, array-valued parameter rejection,
+      unknown-key stripping, and overlay-versus-generator mode detection.
+- [x] Preserved serializer quirks, deliberately not cleaned up: `kick` keeps a
+      leading `@` while the other three strip it, a channel-less state emits
+      the `kick=yourchannel` placeholder, `hideNames` is always emitted,
+      `pinPlatforms` is omitted at all four and empty at none, and parameter
+      order and percent-encoding are unchanged.
+- [x] `LandingPage` now delegates to `buildMultichatQuery`. Its state
+      declarations, initial values, controls, preview, Viewer Counter tab,
+      OAuth fragment handling, connect/disconnect behaviour, styling, and
+      layout are untouched.
+- [x] `ChatOverlay` imports `MultichatConfig` from `lib/multichatConfig.ts`
+      instead of a type from `pages/multichat.tsx`, and the config intersection
+      cast plus the four `(cfg as any)` configuration reads are gone.
+- [x] `pages/multichat.tsx` no longer owns a schema; `OverlayConfig` remains
+      exported as an alias of `MultichatConfig`.
+- [x] 105 unit tests in `tests/unit/multichatConfig.test.ts`, with every
+      expected value captured from the pre-extraction implementation at
+      `3e111a3` via a throwaway read-only harness and embedded as literals, so
+      the suite can genuinely fail. Serialized URLs are asserted as complete
+      strings, since order and encoding are part of the compatibility surface.
+
+Compatibility-only parameters, still parsed and read by no runtime code:
+`ttsEnabled`, `showAvatars`, `showSystemMsgs`, `showRedeems`. No controls were
+added for them and none were removed.
+
+- [ ] Manual browser and OBS confirmation that legacy overlay URLs render
+      identically to pre-batch screenshots.
+
+### MultiChat migration — remaining batches (not started)
+
+Nothing below is implemented, and `/tools/multichat` does not exist.
+
+- [ ] Batch 2 — extend the setting catalog with colour, number, text, and
+      multi-select control types plus a dependency predicate.
+- [ ] Batch 3 — generalise the tool registry, channel panel, and workspace
+      shell to more than one tool.
+- [ ] Batch 4 — register the MultiChat tool descriptor and control catalog.
+- [ ] Batch 5 — ship the `/tools/multichat` workspace, including the
+      real-overlay iframe preview and the Twitch connect/disconnect panel.
+- [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
+      repoint the OAuth return, update homepage and nav links, and retire the
+      legacy generator. `/multichat` stays a working overlay route permanently.
+
 ### Verification still outstanding
 
 - [ ] Manual OBS transparent browser-source test at narrow and wide dimensions.

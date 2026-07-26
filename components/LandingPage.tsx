@@ -135,6 +135,8 @@ export default function LandingPage() {
   const [twitchLogin,   setTwitchLogin]   = useState('');
   const router = useRouter();
   const activated = useRef(false);
+  const [twitchDisconnecting, setTwitchDisconnecting] = useState(false);
+  const [twitchDisconnectErr, setTwitchDisconnectErr] = useState('');
   const [pinPreviewMounted, setPinPreviewMounted] = useState(false);
   const [pinOpacity, setPinOpacity] = useState(1);
 
@@ -159,6 +161,13 @@ export default function LandingPage() {
       setTwitchConnId(connId);
       setTwitchLogin(norm);
       setTwitch(norm);
+      /* The callback is a full-page load, so pinPlats has just been reset to
+         its default without 'twitch'. Completing OAuth *is* the opt-in, so
+         re-add it here — never merely because a channel name was typed.
+         Disconnect still strips it via effectivePinPlats. */
+      setPinPlats(prev =>
+        prev.includes('twitch') ? prev : [...prev, 'twitch'],
+      );
     }
 
     window.history.replaceState(
@@ -196,6 +205,35 @@ export default function LandingPage() {
      overlay is never told to expect pins it cannot fetch. The user's chip
      choice in pinPlats is kept, so a temporary channel edit is not lost. */
   const matchedTwitch = twitch.trim().toLowerCase().replace(/^@/, '') === twitchLogin.replace(/^@/, '');
+
+  /* Disconnect the stored Twitch connection. The id is sent in a POST body
+     and never placed in a query string, the DOM, or a log. Guarded by a
+     pending flag so a double-click cannot fire duplicate requests. */
+  async function disconnectTwitch(): Promise<void> {
+    if (!twitchConnId || twitchDisconnecting) return;
+
+    setTwitchDisconnecting(true);
+    setTwitchDisconnectErr('');
+
+    try {
+      const res = await fetch('/api/twitch/oauth/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId: twitchConnId }),
+      });
+
+      if (!res.ok) throw new Error('failed');
+
+      // Clearing the id also drops twitchConnectionId from the overlay URL,
+      // which is built from twitchConnId below. The typed channel is kept.
+      setTwitchConnId('');
+      setTwitchLogin('');
+    } catch {
+      setTwitchDisconnectErr('Could not disconnect. Try again.');
+    } finally {
+      setTwitchDisconnecting(false);
+    }
+  }
   const twitchPinReady = !!twitchConnId && matchedTwitch;
   const effectivePinPlats = twitchPinReady ? pinPlats : pinPlats.filter(p => p !== 'twitch');
 
@@ -499,10 +537,36 @@ export default function LandingPage() {
                   Connect
                 </a>
               </div>
-              {twitchConnId && matchedTwitch && (
-                <span style={{ fontSize:'0.7rem', color:'#7ae', fontWeight:600 }}>
-                  Connected as {twitchLogin}
-                </span>
+              {/* Shown whenever a connection exists — a channel-name mismatch
+                  must never hide the way to disconnect. matchedTwitch still
+                  governs whether the overlay URL carries the fragment. */}
+              {twitchConnId && (
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                  <span style={{ fontSize:'0.7rem', color:'#7ae', fontWeight:600 }}>
+                    Connected as {twitchLogin}
+                  </span>
+                  <button type="button" onClick={disconnectTwitch}
+                    disabled={twitchDisconnecting}
+                    style={{
+                      fontSize:'0.66rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
+                      padding:'3px 8px', borderRadius:6,
+                      cursor: twitchDisconnecting ? 'default' : 'pointer',
+                      border:'1px solid rgba(255,255,255,.18)', background:'transparent',
+                      color: twitchDisconnecting ? '#666' : '#9aa',
+                    }}>
+                    {twitchDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                  {!matchedTwitch && (
+                    <span style={{ fontSize:'0.66rem', color:'#c95' }}>
+                      Channel name does not match the connected account.
+                    </span>
+                  )}
+                  {twitchDisconnectErr && (
+                    <span style={{ fontSize:'0.66rem', color:'#e77' }} role="alert">
+                      {twitchDisconnectErr}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             <div className="platform-input">

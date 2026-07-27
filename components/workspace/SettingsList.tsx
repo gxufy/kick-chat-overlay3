@@ -7,6 +7,7 @@
 import SettingRow from './SettingRow';
 import {
   visibleSettings,
+  type CatalogAvailability,
   type SettingCatalog,
   type SettingValue,
 } from '@/lib/tools/settingTypes';
@@ -15,11 +16,14 @@ export default function SettingsList<S extends Record<string, unknown>>({
   catalog,
   config,
   onChange,
+  availability = {},
 }: {
   catalog: SettingCatalog<S>;
   config: S;
   /** Receives whichever value shape the changed setting's control produces. */
   onChange: (key: keyof S & string, next: SettingValue) => void;
+  /** Per-setting option gating from the active tool. Absent means all available. */
+  availability?: CatalogAvailability;
 }) {
   const settings = visibleSettings(catalog);
 
@@ -31,6 +35,7 @@ export default function SettingsList<S extends Record<string, unknown>>({
           setting={setting}
           value={config[setting.key] as SettingValue}
           onChange={onChange}
+          availability={availability[setting.key]}
         />
       ))}
     </div>

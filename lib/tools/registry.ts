@@ -16,7 +16,7 @@
  *
  * Browser-safe — no server-only imports, no secrets.
  */
-import type { SettingCatalog } from './settingTypes';
+import type { OptionAvailability, SettingCatalog } from './settingTypes';
 import type { ToolContext } from './toolContext';
 import { counterTool } from './counter/config';
 import { multichatTool } from './multichat/config';
@@ -69,14 +69,76 @@ export type ToolPlatform<P extends string = string> = {
   invalidMessage?: string;
 };
 
+/** Props every runtime panel component receives. Generic over `R` only —
+ *  nothing here names a platform or a connection. */
+export type RuntimePanelProps<R> = {
+  runtime: R;
+  /**
+   * Replace runtime, or update it from its current value.
+   *
+   * The updater form exists because a panel's mount effect necessarily closes
+   * over the runtime as it was at mount. Spreading that snapshot would discard
+   * any field the shell folded in since — `fromChannels`, for one. Taking the
+   * current value as an argument makes a write independent of when the closure
+   * was captured.
+   */
+  onChange: (next: R | ((current: R) => R)) => void;
+  /**
+   * Persist the workspace draft now.
+   *
+   * A panel calls this immediately before any navigation that leaves the page,
+   * so unsaved channels and settings survive the round trip. The shell owns what
+   * a draft contains and where it is stored; the panel only says "I am about to
+   * leave". Deliberately not automatic on every keystroke: a write per character
+   * is wasteful, and the only moment the draft is actually needed is a
+   * deliberate departure.
+   */
+  onBeforeLeave: () => void;
+};
+
+/**
+ * Optional tool-owned runtime state, orthogonal to `S` (appearance) and
+ * channel state. Exists for state that is neither: a Twitch connection is
+ * not a colour and not a channel name, so it does not belong in either.
+ *
+ * Nothing here is platform-specific — `R` is opaque to the shell, which only
+ * ever stores it, hands it to `Panel`, and passes it back to `sync` and
+ * `optionAvailability`. A tool that declares no `runtime` never has this type
+ * instantiated with anything but `undefined`.
+ */
+export type ToolRuntimeSupport<S, P extends string, R> = {
+  initial: R;
+  /** Rendered in the preview column, above the channel panel. */
+  Panel?: (props: RuntimePanelProps<R>) => JSX.Element | null;
+  /** Reconcile `style` against the current runtime (e.g. drop a selection
+   *  that runtime no longer supports). Called after every runtime change. */
+  sync?: (style: S, runtime: R) => S;
+  /**
+   * Fold current channel state into runtime.
+   *
+   * Some runtime state depends on what the user typed — a connection is only
+   * usable if a channel names the connected account. The shell calls this
+   * whenever channels change so the tool can mirror what it needs, without the
+   * shell knowing which platform matters or why.
+   */
+  fromChannels?: (runtime: R, channels: ToolChannels<P>) => R;
+  /** Availability for options of multiselect settings, keyed by setting key
+   *  then option value. A setting/option absent here is always available. */
+  optionAvailability?: (
+    runtime: R,
+  ) => Partial<Record<keyof S & string, Record<string, OptionAvailability>>>;
+};
+
 /**
  * A tool the generator workspace can host.
  *
  * `S` is the tool's style/appearance config — the part driven by the setting
  * catalog. `P` is the union of its platform keys, so channel state for one tool
- * cannot be indexed with another tool's platform.
+ * cannot be indexed with another tool's platform. `R` is opaque runtime state
+ * (e.g. a Twitch connection); tools that declare no `runtime` never have it
+ * instantiated with anything but `undefined`.
  */
-export type OverlayTool<S, P extends string = string> = {
+export type OverlayTool<S, P extends string = string, R = undefined> = {
   /** Stable id; also the `/tools/[tool]` route segment. */
   id: string;
   /** Name shown in workspace navigation. */
@@ -119,10 +181,13 @@ export type OverlayTool<S, P extends string = string> = {
   previewNote?: string;
   /**
    * Optional workspace state this tool contributes to its overlay URL. Given
-   * the current style so a future tool can vary it; returning nothing — as
-   * every tool does today — yields a URL identical to plain serialization.
+   * the current style and runtime so a tool can vary it; returning nothing —
+   * as every tool without a `runtime` does today — yields a URL identical to
+   * plain serialization.
    */
-  context?: (style: S) => ToolContext | undefined;
+  context?: (style: S, runtime: R) => ToolContext | undefined;
+  /** Optional tool-owned runtime state beyond appearance and channels. */
+  runtime?: ToolRuntimeSupport<S, P, R>;
 };
 
 /**
@@ -149,15 +214,18 @@ export type RegisteredTool = {
   /** Carried through as-is; they name no style field, so nothing is erased. */
   previewNote?: string;
   help?: readonly ToolHelpSection[];
-  /** Apply `consume` to the concrete descriptor. */
-  use: <R>(
-    consume: <S extends ToolStyle, P extends string>(tool: OverlayTool<S, P>) => R,
-  ) => R;
+  /** Apply `consume` to the concrete descriptor. `Out` is the caller's own
+   *  result type; `R` below is the descriptor's runtime type, also hidden. */
+  use: <Out>(
+    consume: <S extends ToolStyle, P extends string, R>(
+      tool: OverlayTool<S, P, R>,
+    ) => Out,
+  ) => Out;
 };
 
 /** Hide a descriptor's type parameters so tools of any shape can sit together. */
-function register<S extends ToolStyle, P extends string>(
-  tool: OverlayTool<S, P>,
+function register<S extends ToolStyle, P extends string, R>(
+  tool: OverlayTool<S, P, R>,
 ): RegisteredTool {
   return {
     id: tool.id,
@@ -177,9 +245,10 @@ function register<S extends ToolStyle, P extends string>(
  *
  * MultiChat comes first, matching the order the workspace nav already showed it
  * in while it was an unregistered direct link. Its overlay still lives at
- * `/multichat`, and the existing generator there stays reachable and unchanged —
- * navigation links to it separately as MultiChat (Classic), since it is the only
- * place a Twitch account can be connected today.
+ * `/multichat`, and the original generator stays reachable and unchanged at
+ * `/classic/multichat` — navigation links to it separately as MultiChat
+ * (Classic). It is no longer the only place a Twitch account can be connected;
+ * the workspace does that through the descriptor's `runtime` panel.
  */
 export const TOOLS: readonly RegisteredTool[] = [
   register(multichatTool),

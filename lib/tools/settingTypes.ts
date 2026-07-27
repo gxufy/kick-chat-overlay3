@@ -48,6 +48,44 @@ export type SettingOption<V extends string = string> = {
   label: string;
 };
 
+/**
+ * Whether one option is currently selectable, and why not.
+ *
+ * Separate from the descriptor's static `disabled`, which the catalog declares
+ * once. This is computed per render from workspace runtime state, so a control
+ * can become available while the page is open. Nothing here names a platform, an
+ * OAuth provider, or a tool: the workspace asks a tool whether an option is
+ * available and renders the answer.
+ */
+export type OptionAvailability = {
+  readonly available: boolean;
+  /**
+   * Why the option cannot be chosen. Required in spirit whenever `available` is
+   * false — an option greyed out with no reason is a dead end — and rendered as
+   * text associated with the control, not as a colour change alone.
+   */
+  readonly reason?: string;
+};
+
+/**
+ * A tool's answer for each of a setting's options.
+ *
+ * Keyed by option value. A value absent from the map is available: the common
+ * case stays free of boilerplate, and only genuinely gated options are listed.
+ */
+export type SettingAvailability = Readonly<Record<string, OptionAvailability>>;
+
+/** Availability for every setting a tool gates, keyed by setting key. */
+export type CatalogAvailability = Readonly<Record<string, SettingAvailability>>;
+
+/** Whether an option is selectable, defaulting to yes. */
+export function optionAvailable(
+  availability: SettingAvailability | undefined,
+  value: string,
+): OptionAvailability {
+  return availability?.[value] ?? { available: true };
+}
+
 /** Boolean control. */
 export type ToggleSetting<C> = SettingBase<C> & {
   type: 'toggle';

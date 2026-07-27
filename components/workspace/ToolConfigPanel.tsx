@@ -6,7 +6,11 @@
 import SettingsList from './SettingsList';
 import ToolHelpPanel from './ToolHelpPanel';
 import type { ToolHelpSection } from '@/lib/tools/registry';
-import type { SettingCatalog, SettingValue } from '@/lib/tools/settingTypes';
+import type {
+  CatalogAvailability,
+  SettingCatalog,
+  SettingValue,
+} from '@/lib/tools/settingTypes';
 
 export default function ToolConfigPanel<S extends Record<string, unknown>>({
   toolLabel,
@@ -14,6 +18,7 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
   config,
   onChange,
   help = [],
+  availability = {},
 }: {
   toolLabel: string;
   catalog: SettingCatalog<S>;
@@ -21,6 +26,8 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
   onChange: (key: keyof S & string, next: SettingValue) => void;
   /** Reference material from the descriptor; empty renders nothing. */
   help?: readonly ToolHelpSection[];
+  /** Which options the tool currently gates, keyed by setting key. */
+  availability?: CatalogAvailability;
 }) {
   return (
     <section
@@ -39,7 +46,12 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
         </p>
 
         <div className="mt-4">
-          <SettingsList catalog={catalog} config={config} onChange={onChange} />
+          <SettingsList
+            catalog={catalog}
+            config={config}
+            onChange={onChange}
+            availability={availability}
+          />
         </div>
 
         {/* Below the catalog, not interleaved with it: reference material must

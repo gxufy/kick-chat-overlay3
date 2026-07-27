@@ -22,7 +22,12 @@ import NumberInput from '@/components/ui/inputs/NumberInput';
 import Select from '@/components/ui/inputs/Select';
 import TextInput from '@/components/ui/inputs/TextInput';
 import Toggle from '@/components/ui/inputs/Toggle';
-import type { Setting, SettingValue } from '@/lib/tools/settingTypes';
+import {
+  optionAvailable,
+  type Setting,
+  type SettingAvailability,
+  type SettingValue,
+} from '@/lib/tools/settingTypes';
 
 /** Read a value as a string list, falling back when the config disagrees. */
 function asStringList(
@@ -33,20 +38,55 @@ function asStringList(
   return value;
 }
 
+/**
+ * Distinct reasons for this setting's currently unavailable options.
+ *
+ * Only settings that actually have options can gate any, so anything else
+ * returns nothing. Reasons are deduplicated: several options blocked by one
+ * cause should read as one sentence, not the same sentence repeated.
+ */
+function unavailableReasons<S>(
+  setting: Setting<S>,
+  availability: SettingAvailability | undefined,
+): string[] {
+  if (!availability) return [];
+  if (setting.type !== 'multiselect' && setting.type !== 'select') return [];
+
+  const reasons: string[] = [];
+  for (const option of setting.options) {
+    const state = optionAvailable(availability, option.value);
+    if (state.available) continue;
+    if (state.reason && !reasons.includes(state.reason)) reasons.push(state.reason);
+  }
+  return reasons;
+}
+
 export default function SettingRow<S>({
   setting,
   value,
   onChange,
+  availability,
 }: {
   setting: Setting<S>;
   /** Current value for this setting's key. */
   value: SettingValue;
   onChange: (key: keyof S & string, next: SettingValue) => void;
+  /** Which of this setting's options are currently selectable. */
+  availability?: SettingAvailability;
 }) {
   const inputId = `setting-${setting.key}`;
   const descriptionId = setting.description ? `${inputId}-desc` : undefined;
   const reasonId = setting.disabledReason ? `${inputId}-reason` : undefined;
-  const describedBy = [descriptionId, reasonId].filter(Boolean).join(' ') || undefined;
+
+  /* Reasons for options the tool currently gates, deduplicated and rendered as
+     real text under the control. An option that is merely greyed out tells the
+     user nothing about how to enable it — and colour alone is not an accessible
+     signal, so the explanation is in the accessibility tree via
+     aria-describedby, not just visible. */
+  const gatedReasons = unavailableReasons(setting, availability);
+  const gatedId = gatedReasons.length > 0 ? `${inputId}-gated` : undefined;
+  const describedBy =
+    [descriptionId, reasonId, gatedId].filter(Boolean).join(' ') || undefined;
 
   /* Wraps the row body so a disabled setting is inert. `display: contents`
    * keeps the fieldset out of the layout entirely. */
@@ -70,6 +110,17 @@ export default function SettingRow<S>({
         <p id={reasonId} className="mt-0.5 text-xs leading-snug text-ws-muted">
           {setting.disabledReason}
         </p>
+      ) : null}
+      {/* Runtime gating, distinct from the catalog's static disabledReason: this
+          can change while the page is open. */}
+      {gatedId ? (
+        <div id={gatedId}>
+          {gatedReasons.map((reason) => (
+            <p key={reason} className="mt-0.5 text-xs leading-snug text-amber-400">
+              {reason}
+            </p>
+          ))}
+        </div>
       ) : null}
     </>
   );
@@ -161,6 +212,11 @@ export default function SettingRow<S>({
             value={asStringList(value, setting.default)}
             options={setting.options}
             disabled={setting.disabled}
+            /* Per-option gating, so one unavailable choice does not disable the
+               whole group — the others stay usable. */
+            unavailable={setting.options
+              .filter((o) => !optionAvailable(availability, o.value).available)
+              .map((o) => o.value)}
             describedBy={describedBy}
             onChange={(next) => onChange(setting.key, next)}
           />

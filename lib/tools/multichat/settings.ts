@@ -222,14 +222,16 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'pinPlatforms',
     type: 'multiselect',
     label: 'Pins from',
-    /* Still no gating: `disabled` is static, so it cannot express "a matching
-       Twitch account is connected". Contextual predicates are later work. The
-       copy therefore states the requirement plainly instead of implying this
-       workspace can satisfy it — it cannot, since it has no connect control and
-       contributes no connection to the URL. Twitch is absent from the workspace
-       defaults, so nothing here selects an option that would not work. */
+    /* Gating is no longer static. `disabled` here could only ever be a constant,
+       so the Twitch requirement is expressed at runtime instead — the descriptor's
+       `optionAvailability` blocks just that one option and supplies the reason,
+       which changes as the user connects and edits the channel.
+       So this description states only what is always true; anything conditional
+       is the runtime's to say, and saying it here too would go stale the moment
+       someone connects. Twitch is absent from the workspace defaults, so nothing
+       here selects an option that would not work. */
     description:
-      'An empty selection turns pins off for every platform. Native Twitch pins additionally require a connected Twitch account, which this workspace cannot set up yet — use MultiChat (Classic) to connect Twitch and generate that URL.',
+      'An empty selection turns pins off for every platform. Native Twitch pins additionally require a connected Twitch account matching the Twitch channel above.',
     options: PIN_OPTIONS,
     default: D.pinPlatforms,
   },

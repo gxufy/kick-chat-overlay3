@@ -16,6 +16,7 @@ export default function MultiSelect({
   options,
   onChange,
   disabled = false,
+  unavailable,
   describedBy,
 }: {
   /** Prefix for per-option input ids. */
@@ -26,9 +27,18 @@ export default function MultiSelect({
   options: readonly SettingOption[];
   onChange: (next: readonly string[]) => void;
   disabled?: boolean;
+  /**
+   * Option values that cannot currently be chosen.
+   *
+   * Per-option, so the rest of the group stays usable — unlike `disabled`, which
+   * makes the whole fieldset inert. The reason is rendered by the caller and
+   * linked through `describedBy`, so this is never a colour-only signal.
+   */
+  unavailable?: readonly string[];
   describedBy?: string;
 }) {
   const selected = new Set(value);
+  const blocked = new Set(unavailable ?? []);
 
   return (
     <fieldset
@@ -42,13 +52,17 @@ export default function MultiSelect({
         {options.map((option) => {
           const optionId = `${id}-${option.value}`;
           const checked = selected.has(option.value);
+          /* An unavailable option is only blocked while unchecked. If it is
+             somehow still checked, it stays operable so the user can clear it
+             rather than being stuck with a selection they cannot remove. */
+          const optionDisabled = disabled || (blocked.has(option.value) && !checked);
           return (
             <div key={option.value} className="flex items-center gap-1.5">
               <input
                 id={optionId}
                 type="checkbox"
                 checked={checked}
-                disabled={disabled}
+                disabled={optionDisabled}
                 onChange={() => {
                   const next = new Set(selected);
                   if (checked) next.delete(option.value);
@@ -63,7 +77,11 @@ export default function MultiSelect({
               />
               <label
                 htmlFor={optionId}
-                className="cursor-pointer text-xs text-ws-text"
+                className={
+                  optionDisabled
+                    ? 'cursor-not-allowed text-xs text-ws-muted'
+                    : 'cursor-pointer text-xs text-ws-text'
+                }
               >
                 {option.label}
               </label>

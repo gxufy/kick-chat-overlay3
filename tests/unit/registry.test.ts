@@ -251,7 +251,9 @@ describe('centralized overlay URL derivation', () => {
         baseUrl: 'https://example.com',
         route: counterTool.overlayRoute,
         query,
-        context: counterTool.context?.(DEFAULT_STYLE),
+        /* The counter declares no runtime, so its context — if it had one —
+           would be called with `undefined` as the runtime. */
+        context: counterTool.context?.(DEFAULT_STYLE, undefined),
       }),
     ).toBe(`https://example.com${counterTool.overlayRoute}?${query}`);
   });

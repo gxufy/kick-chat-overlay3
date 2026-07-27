@@ -160,3 +160,43 @@ describe('draft persistence stays scoped to its own tool', () => {
     expect(keys.some((key) => key.includes('multichat'))).toBe(false);
   });
 });
+
+describe('the counter starts no pin polling', () => {
+  /* "Declares no runtime" above implies this, but only implies it. The failure
+     that would matter is a network request, so the request layer is what is
+     asserted: a counter workspace must never call POST /api/twitch/pins, which
+     is the only thing the poller ever calls. Configuring a Twitch channel is
+     the state most likely to tempt a shared shell into starting pin polling. */
+
+  const pinCalls = (fetchSpy: ReturnType<typeof vi.fn>) =>
+    fetchSpy.mock.calls.filter(([url]) => String(url).includes('/api/twitch/pins'));
+
+  it('issues no pin request across its whole lifecycle', () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const { unmount } = mount();
+    fireEvent.change(screen.getByLabelText('Twitch'), { target: { value: 'somechannel' } });
+    settle();
+    // Well past the poller's 5s floor, so a started poll would have fired.
+    act(() => void vi.advanceTimersByTime(30_000));
+    expect(pinCalls(fetchSpy)).toEqual([]);
+
+    unmount();
+    act(() => void vi.advanceTimersByTime(30_000));
+    expect(pinCalls(fetchSpy)).toEqual([]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('renders no pin setting for a poller to be gated on', () => {
+    // The MultiChat catalog's twitch pin option is what starts polling there.
+    const keys = COUNTER_CATALOG.map((setting) => String(setting.key));
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.filter((key) => /pin/i.test(key))).toEqual([]);
+  });
+});

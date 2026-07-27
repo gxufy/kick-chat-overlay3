@@ -32,10 +32,11 @@ import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
 import {
-  legacyRedirectTarget,
-  resolveLegacyMultichatRoute,
+  resolveMultichatRoute,
+  wantsCounterSection,
 } from '../lib/multichatRouting';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
+import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
 
 /* Twitch pin polling: the generator appends an opaque connection id as a
@@ -93,7 +94,67 @@ function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
  * references below (and ChatOverlay's own typing) read unchanged. */
 export type OverlayConfig = MultichatConfig;
 
+/**
+ * `/multichat` — the overlay OBS loads, and the generator that produces its URL.
+ *
+ * One route serves both, decided by whether the URL names a channel. That is not
+ * a convenience: every scene collection anybody has ever configured points a
+ * browser source at this path with channel parameters, and those files are not
+ * going to be edited. So a channel-carrying URL renders the overlay, permanently,
+ * and nothing about it redirects.
+ *
+ * A visit with no channel is somebody opening the site rather than a browser
+ * source starting up, so it renders the generator. `/tools/multichat`,
+ * `/tools/counter`, and `/classic/multichat` all redirect here.
+ *
+ * The two are separate components rather than branches inside one, because the
+ * overlay's effects — IRC connections, cosmetics fetches, the pin poller — must
+ * not run on a generator visit. Not rendering the component is what guarantees
+ * that, rather than a growing set of early returns inside each effect.
+ */
 export default function Page() {
+  const router = useRouter();
+
+  /* The URL fragment, captured once on the client.
+   *
+   * Fragments are never sent to the server and never appear in `router.query`,
+   * so this is the only way anything here can see one. Held in state and set
+   * from an effect rather than read during render: reading
+   * `window.location.hash` while rendering would differ between the server pass
+   * (no window) and the client pass, which is exactly the hydration mismatch
+   * this page cannot afford. `null` means "not looked yet". */
+  const [hash, setHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    /* Effects are client-only, so window is available here and only here. */
+    setHash(window.location.hash);
+  }, []);
+
+  /* Overlay or generator, by one pure rule (lib/multichatRouting). Channel
+     parameters are checked first and always win. */
+  const route = resolveMultichatRoute(router.isReady ? router.query : {});
+
+  /* Nothing is decided until the query is parsed. Rendering the generator here
+     would mount it for a split second on every overlay load in OBS. */
+  if (!router.isReady) return null;
+
+  if (route.kind === 'generator') {
+    /* Waiting for the fragment read, so a visitor returning from OAuth is not
+       shown the generator before the connection in the fragment can be adopted.
+       One client render, not a network round trip. */
+    if (hash === null) return null;
+    return (
+      <ClassicGenerator
+        focusCounter={wantsCounterSection(router.query, hash)}
+      />
+    );
+  }
+
+  return <MultichatOverlay />;
+}
+
+/** The overlay itself. Mounted only for a channel-carrying URL. */
+function MultichatOverlay() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [config, setConfig] = useState<OverlayConfig | null>(null);
@@ -147,63 +208,6 @@ export default function Page() {
     channel: null,
     config: null,
   });
-
-  /* The URL fragment, captured once on the client.
-   *
-   * Fragments are never sent to the server and never appear in `router.query`,
-   * so this is the only way the route decision can see one. Held in state and
-   * populated from an effect rather than read during render: reading
-   * `window.location.hash` while rendering would differ between the server pass
-   * (no window) and the client pass, which is exactly the hydration mismatch
-   * this page cannot afford. `null` means "not looked yet". */
-  const [hash, setHash] = useState<string | null>(null);
-
-  useEffect(() => {
-    /* Effects are client-only, so window is available here and only here. */
-    setHash(window.location.hash);
-  }, []);
-
-  /* Overlay or generator, decided by one pure rule (lib/multichatRouting).
-     Computed on every render so the branches below and the redirect effect can
-     never disagree about which one this visit is. The hash is passed as '' until
-     it has been captured, which only ever delays a redirect — a channel-carrying
-     overlay URL resolves to 'overlay' from the query alone and never waits. */
-  const route = resolveLegacyMultichatRoute(
-    router.isReady ? router.query : {},
-    hash ?? '',
-  );
-
-  /* Forward channel-less visits to the canonical generator route, fragment and
-     all. `replace`, not `push`, so Back returns to wherever the user came from
-     rather than bouncing through this path again — and so the fragment-bearing
-     intermediate URL is not left in history. */
-  const redirectTo = legacyRedirectTarget(route);
-
-  /* Belt-and-braces against issuing the same `replace` twice.
-   *
-   * Strict Mode's double-invoked mount is already handled by the `hash === null`
-   * gate below — both invocations return early, because the hash has not been
-   * captured yet on either. This ref is therefore not load-bearing today, and
-   * the test suite cannot demonstrate a case where it fires; it is kept because
-   * the gate protecting it is incidental, and any future change that makes the
-   * hash available during the first commit would turn a double-invoke into two
-   * racing navigations. The destination is stored rather than a boolean so a
-   * genuinely different target is still honoured. */
-  const redirected = useRef('');
-
-  useEffect(() => {
-    if (!router.isReady) return;
-    /* Wait for the hash to have been looked at. Redirecting before then would
-       drop a fragment that was present, which is the whole bug this guards. */
-    if (hash === null) return;
-    if (!redirectTo) return;
-    if (redirected.current === redirectTo) return;
-    redirected.current = redirectTo;
-    router.replace(redirectTo);
-    /* `router` is intentionally absent: its identity changes on every
-       navigation, and re-running this would re-issue the same replace. */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, hash, redirectTo]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -909,11 +913,6 @@ export default function Page() {
   }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
 
   if (!ready) return null;
-
-  /* A channel-less visit is a generator visit, and the generator has moved.
-     Rendering nothing while the replace is in flight, rather than flashing the
-     old page first. Overlay visits never reach this branch. */
-  if (route.kind === 'redirect') return null;
 
   if (error) {
     return (

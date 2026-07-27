@@ -1,22 +1,23 @@
-/* What a visit to the legacy /multichat URL should actually do.
+/* What a visit to /multichat should actually do.
  *
- * `/multichat` has carried two jobs since the beginning: it is the overlay OBS
- * loads, and it was also the generator page. Those are now split — the generator
- * is the workspace at /tools/multichat, and the original UI stays reachable at
- * /classic/multichat — but the overlay half can never move. URLs with channel
- * parameters are sitting in OBS scene collections that nobody will edit, so
- * serving the overlay for them is a permanent commitment, not a migration step.
+ * `/multichat` carries two jobs, and this module is the one rule that decides
+ * which one a given visit is:
  *
- * The rule is therefore one-directional: a channel parameter means overlay, and
- * only a visit with no channel at all is a generator visit worth forwarding.
+ *   - A query naming any channel is the overlay OBS loads. Those URLs sit in
+ *     scene collections nobody will edit, so serving the overlay for them is a
+ *     permanent commitment, not a migration step. Checked first, so nothing added
+ *     later can preempt it.
+ *   - Anything else — no channel at all — is a generator visit, and the generator
+ *     is the revamped original Classic page rendered by this same route. Nothing
+ *     redirects: the canonical generator address *is* `/multichat`.
+ *
+ * The previous split (generator at /tools/multichat, original at
+ * /classic/multichat) is gone. Both of those paths now redirect here.
+ *
  * Deciding it here, as a pure function of the query, keeps the page from
  * expressing it as a chain of conditions that a later edit could reorder.
  */
 import type { ParsedUrlQuery } from 'querystring';
-import {
-  buildConnectionFragment,
-  readConnectionFromFragment,
-} from './twitchConnection';
 
 /** Every parameter that names a channel. `channel` is the legacy Kick alias. */
 export const MULTICHAT_CHANNEL_PARAMS = [
@@ -27,33 +28,34 @@ export const MULTICHAT_CHANNEL_PARAMS = [
   'tiktok',
 ] as const;
 
-/** The canonical generator routes the legacy path forwards to. */
-export const CANONICAL_MULTICHAT_ROUTE = '/tools/multichat';
-export const CANONICAL_COUNTER_ROUTE = '/tools/counter';
+/** The canonical generator address. A bare visit renders, never forwards. */
+export const CANONICAL_MULTICHAT_ROUTE = '/multichat';
 
 /**
- * Serve the overlay, or forward to a canonical generator route.
+ * The embedded Viewer Counter's anchor id.
  *
- * `hash` is the fragment to carry to the destination, already validated and
- * rebuilt from its recognized fields — never the caller's raw hash. It is '' for
- * every route that has no connection to preserve, so a caller can always
- * concatenate it without checking.
+ * The counter is a panel inside the one generator rather than a route of its
+ * own, so "go to the counter" is a fragment, not a path. Exported because three
+ * places need to agree on it: the panel's `id`, the link that targets it, and
+ * the redirect that retires `/tools/counter`.
  */
-export type LegacyMultichatRoute =
+export const COUNTER_SECTION_ID = 'viewer-counter';
+
+/** Where a request for the Counter generator lands. */
+export const CANONICAL_COUNTER_ROUTE = `${CANONICAL_MULTICHAT_ROUTE}#${COUNTER_SECTION_ID}`;
+
+/** Serve the overlay, or serve the generator. There is no third answer. */
+export type MultichatRoute =
   | { readonly kind: 'overlay' }
-  | {
-      readonly kind: 'redirect';
-      readonly pathname: string;
-      readonly hash: string;
-    };
+  | { readonly kind: 'generator' };
 
 /**
  * Whether a query value names a channel.
  *
- * An empty value does not: `?kick=` is what an unfilled generator field
- * produces, and treating it as a channel would serve an overlay that can never
- * connect to anything. Repeated parameters arrive as an array and count if any
- * entry is non-empty, so `?kick=&kick=name` is still an overlay request.
+ * An empty value does not: `?kick=` is what an unfilled form submits, and
+ * treating it as a channel would serve an overlay that can never connect to
+ * anything. Repeated parameters arrive as an array and count if any entry is
+ * non-empty, so `?kick=&kick=name` is still an overlay request.
  */
 function namesChannel(value: string | string[] | undefined): boolean {
   if (typeof value === 'string') return value.trim().length > 0;
@@ -67,66 +69,33 @@ export function hasChannelParam(query: ParsedUrlQuery): boolean {
 }
 
 /**
- * Whether `?tab=counter` was asked for.
+ * What a `/multichat` visit resolves to.
  *
- * Matched exactly on a single string value. A repeated `tab` is not honoured:
- * it is ambiguous, and the safe reading of an ambiguous generator request is the
- * MultiChat workspace, which is where an unrecognized tab already goes.
+ * Channel parameters win outright: an overlay URL that happens to carry
+ * `tab=counter`, an OAuth fragment, or any other generator-shaped input still
+ * renders chat, so no scene that works today can be redirected or re-rendered
+ * out from under itself.
+ *
+ * A pure function of the query, with no hash argument, because the generator now
+ * lives at this address: a fragment no longer has to survive a forward, it is
+ * simply read by the page that renders here.
  */
-function wantsCounterTab(query: ParsedUrlQuery): boolean {
-  return query['tab'] === 'counter';
+export function resolveMultichatRoute(query: ParsedUrlQuery): MultichatRoute {
+  return hasChannelParam(query) ? { kind: 'overlay' } : { kind: 'generator' };
 }
 
 /**
- * What a `/multichat` visit resolves to.
+ * Whether this visit asked for the Viewer Counter panel specifically.
  *
- * Three cases, in this order, and the order is the whole safety property:
+ * Two spellings, because two different eras of link exist: `?tab=counter` is
+ * what the original generator's counter tab used and what old bookmarks carry,
+ * and `#viewer-counter` is the current anchor. Both mean "start me at the
+ * counter", and both are honoured on a generator visit only.
  *
- * 1. Channel parameters win outright. An overlay URL that happens to carry
- *    `tab=counter`, an OAuth fragment, or any other generator-shaped input still
- *    renders chat, so no scene that works today can be redirected out from under
- *    itself. This is checked first precisely so nothing added later can preempt
- *    it.
- *
- * 2. A valid OAuth fragment on a channel-less visit forwards to the MultiChat
- *    workspace *with the fragment preserved*. This is the compatibility path for
- *    an authorization that began before the callback destination moved: the user
- *    is mid-flow, holding a connection the workspace can still adopt, and
- *    dropping the fragment would force them to authorize again. It outranks
- *    `tab=counter` because a pending MultiChat connection is a stronger
- *    statement of intent than a stale tab parameter.
- *
- * 3. Otherwise the query decides, and no fragment is carried.
- *
- * `hash` is passed in rather than read from `window`, so this stays a pure
- * function usable during server rendering. Pass '' when there is no hash.
+ * A repeated `tab` is not honoured: it is ambiguous, and the safe reading of an
+ * ambiguous request is the top of the generator.
  */
-export function resolveLegacyMultichatRoute(
-  query: ParsedUrlQuery,
-  hash = '',
-): LegacyMultichatRoute {
-  if (hasChannelParam(query)) return { kind: 'overlay' };
-
-  /* Validated by the authoritative parser, then re-serialized from just the two
-     recognized fields. An arbitrary, malformed, or duplicate-keyed fragment
-     yields null here and is dropped before canonical routing continues — it is
-     never forwarded, and never converted into a query parameter. */
-  const connection = readConnectionFromFragment(hash);
-  if (connection) {
-    return {
-      kind: 'redirect',
-      pathname: CANONICAL_MULTICHAT_ROUTE,
-      hash: buildConnectionFragment(connection),
-    };
-  }
-
-  if (wantsCounterTab(query)) {
-    return { kind: 'redirect', pathname: CANONICAL_COUNTER_ROUTE, hash: '' };
-  }
-  return { kind: 'redirect', pathname: CANONICAL_MULTICHAT_ROUTE, hash: '' };
-}
-
-/** The full destination to hand `router.replace`, fragment included. */
-export function legacyRedirectTarget(route: LegacyMultichatRoute): string {
-  return route.kind === 'redirect' ? `${route.pathname}${route.hash}` : '';
+export function wantsCounterSection(query: ParsedUrlQuery, hash = ''): boolean {
+  if (query['tab'] === 'counter') return true;
+  return hash.replace(/^#/, '') === COUNTER_SECTION_ID;
 }

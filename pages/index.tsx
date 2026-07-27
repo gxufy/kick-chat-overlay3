@@ -1,16 +1,23 @@
 /* / — personal hub (slaiqe.com structure: hero → skill tags → product
  * cards → CTA → socials footer).
  *
- * The generators live at /tools/multichat and /tools/counter, which is where the
- * two cards point. Old bookmarked /?kick=... overlay URLs still work: this page
- * forwards any channel-param URL straight to /multichat, which serves the
- * overlay permanently. That forward is deliberately unchanged — the canonical
- * route move applies to generator links, never to overlay URLs.
+ * Both cards point at /multichat, which is the generator when no channel is
+ * named. The viewer counter is a panel inside that generator rather than a page
+ * of its own, so its card links to the panel's anchor.
+ *
+ * Old bookmarked /?kick=... overlay URLs still work: this page forwards any
+ * channel-param URL straight to /multichat, which serves the overlay
+ * permanently. That forward is deliberately unchanged — it is the same rule that
+ * makes a channel-carrying /multichat an overlay rather than a generator.
  */
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { UI_FONT_SPECS, googleFontsImportCss } from '@/lib/overlayFonts';
+import {
+  CANONICAL_COUNTER_ROUTE,
+  CANONICAL_MULTICHAT_ROUTE,
+} from '@/lib/multichatRouting';
 
 const SOCIALS = [
   { label: 'X / Twitter', href: 'https://x.com/Gxufy_', icon: '𝕏' },
@@ -122,10 +129,10 @@ export default function Hub() {
         </div>
 
         <div className="cards">
-          {/* Canonical generator routes, not /multichat. That path still serves
-              the overlay and forwards a channel-less visit here anyway, so
-              linking it would only add a redirect hop. */}
-          <a className="card" href="/tools/multichat">
+          {/* /multichat with no channel parameters is the generator. A card link
+              carries none, so these reach the generator directly with no
+              redirect hop. */}
+          <a className="card" href={CANONICAL_MULTICHAT_ROUTE}>
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
               <span className="cb cb-kick">Kick</span>
@@ -141,7 +148,9 @@ export default function Hub() {
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
-          <a className="card" href="/tools/counter">
+          {/* The counter is a panel in that same generator, so this is an anchor
+              into it rather than a separate route. */}
+          <a className="card" href={CANONICAL_COUNTER_ROUTE}>
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
               <span className="cb cb-kick">Kick</span>
@@ -152,7 +161,8 @@ export default function Hub() {
             <h2>viewer counter — real-time counts</h2>
             <p>
               Create an OBS viewer-count overlay for Kick, Twitch, YouTube &amp;
-              TikTok. Real-time counts with offline platforms sliding out.
+              TikTok. Real-time counts with offline platforms sliding out. Its own
+              browser source, generated alongside the chat overlay.
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
@@ -175,7 +185,7 @@ export default function Hub() {
         </div>
 
         <footer>
-          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href="/tools/multichat">/tools/multichat</a></p>
+          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href={CANONICAL_MULTICHAT_ROUTE}>{CANONICAL_MULTICHAT_ROUTE}</a></p>
         </footer>
       </div>
     </>

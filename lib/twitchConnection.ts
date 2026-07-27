@@ -58,6 +58,25 @@ export function isValidTwitchLogin(value: unknown): value is string {
  * consumer read the second. `getAll` is checked instead, and any duplicate of
  * either key rejects the whole fragment.
  */
+/**
+ * Serialize a validated connection back into a URL fragment.
+ *
+ * Deliberately rebuilt from the two validated fields rather than passing an
+ * incoming hash through: forwarding a hash verbatim would carry along whatever
+ * else was in it, and the point of a redirect that preserves a connection is to
+ * preserve *only* the connection. Anything unrecognized is dropped by
+ * construction, not by a filter that could miss a case.
+ *
+ * Key order matches what the OAuth callback emits, so a preserved fragment is
+ * byte-identical to the one the callback would have produced.
+ */
+export function buildConnectionFragment(connection: TwitchConnection): string {
+  const params = new URLSearchParams();
+  params.set(TWITCH_CONNECTION_FRAGMENT_ID, connection.connectionId);
+  params.set(TWITCH_CONNECTION_FRAGMENT_LOGIN, connection.login);
+  return `#${params.toString()}`;
+}
+
 export function readConnectionFromFragment(hash: string): TwitchConnection | null {
   const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
 

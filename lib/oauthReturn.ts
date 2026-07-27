@@ -38,8 +38,17 @@ export const OAUTH_RETURN_CLASSIC = '/classic/multichat';
  * authorizing against the old code will present this destination, and refusing
  * it would fail that authorization for no benefit.
  *
- * With no configured channel this path renders the original generator, which
- * reads the fragment itself — so a return here still completes normally.
+ * How a return here completes, as of the route consolidation: `/multichat` no
+ * longer renders a generator at all. A channel-less visit forwards to
+ * `/tools/multichat`, and `pages/multichat.tsx` carries the connection fragment
+ * across that forward — validated and rebuilt from its two recognized fields, so
+ * the workspace's own fragment consumer adopts it exactly as if the callback had
+ * landed there directly. That forwarding is what makes this entry honest; it is
+ * asserted in tests/unit/legacyMultichatPage.test.tsx, and without it a return
+ * to this path would silently discard a completed authorization.
+ *
+ * A visit that *does* name a channel is an overlay and is never forwarded, which
+ * is why the fragment also still reaches the overlay's own pin poller.
  */
 export const OAUTH_RETURN_LEGACY = '/multichat';
 

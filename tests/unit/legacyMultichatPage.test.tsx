@@ -9,6 +9,7 @@
  * The overlay's own machinery (connectors, 7TV, pins) is not under test here and
  * is stubbed — this file is about which of the two things the route decides to be.
  */
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 /* vi.mock calls are hoisted above this import, so the page module below is
@@ -52,13 +53,31 @@ vi.mock('../../lib/twitchPinPoller', () => ({
   startTwitchPinPoller: () => () => {},
 }));
 
+/** A syntactically valid connection id. Synthetic — never a real one. */
+const TEST_ID = '123e4567-e89b-12d3-a456-426614174000';
+
+/* Sets the real fragment on jsdom's location.
+ *
+ * The page reads `window.location.hash`, not `router.query` — fragments are
+ * never sent to the server and never appear in the query. Driving this through
+ * the actual location object is the point: a test that only varied `query` could
+ * not observe the fragment being dropped, which is exactly how that bug shipped.
+ * Assigning `hash` in jsdom updates the URL without navigating. */
+function setHash(hash: string): void {
+  window.location.hash = hash;
+}
+
 beforeEach(() => {
   replace.mockClear();
   query = {};
   isReady = true;
+  setHash('');
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setHash('');
+});
 
 describe('overlay visits', () => {
   it('renders the overlay for a Kick channel and navigates nowhere', () => {
@@ -113,10 +132,131 @@ describe('generator visits', () => {
   });
 });
 
+/* The release-blocking case. An authorization that began before the callback
+   destination moved returns to /multichat carrying its connection in the
+   fragment. Forwarding without it silently discards a completed authorization
+   and sends the user back through Twitch for no reason. */
+describe('OAuth return to the legacy path', () => {
+  const VALID = `#twitchConnectionId=${TEST_ID}&twitch=someone`;
+
+  it('preserves a valid fragment when forwarding to the workspace', () => {
+    setHash(VALID);
+    render(<MultichatPage />);
+    expect(replace).toHaveBeenCalledWith(
+      `/tools/multichat#twitchConnectionId=${TEST_ID}&twitch=someone`,
+    );
+  });
+
+  it('preserves the fragment even when tab=counter is also present', () => {
+    query = { tab: 'counter' };
+    setHash(VALID);
+    render(<MultichatPage />);
+    expect(replace).toHaveBeenCalledWith(
+      `/tools/multichat#twitchConnectionId=${TEST_ID}&twitch=someone`,
+    );
+    expect(replace).not.toHaveBeenCalledWith('/tools/counter');
+  });
+
+  it('never converts the fragment into a query string', () => {
+    setHash(VALID);
+    render(<MultichatPage />);
+    const target = String(replace.mock.calls[0]?.[0] ?? '');
+    expect(target).toContain('#');
+    expect(target).not.toContain('?');
+    expect(target.indexOf(TEST_ID)).toBeGreaterThan(target.indexOf('#'));
+  });
+
+  /* A channel-carrying overlay URL with a fragment is the OBS pin case: the
+     fragment is the overlay's own poll credential, and the page must serve chat
+     rather than forward anything. */
+  it.each(['twitch', 'kick', 'youtube', 'tiktok'] as const)(
+    'still serves the overlay for a %s channel carrying a fragment',
+    (param) => {
+      query = { [param]: 'somechannel' };
+      setHash(VALID);
+      render(<MultichatPage />);
+      expect(screen.getByTestId('chat-overlay')).toBeTruthy();
+      expect(replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['a malformed uuid', '#twitchConnectionId=not-a-uuid&twitch=someone'],
+    ['an invalid login', `#twitchConnectionId=${TEST_ID}&twitch=has%20spaces`],
+    ['a duplicated login', `#twitchConnectionId=${TEST_ID}&twitch=someone&twitch=other`],
+    ['a duplicated id', `#twitchConnectionId=${TEST_ID}&twitchConnectionId=${TEST_ID}&twitch=someone`],
+    ['an unrelated fragment', '#section=faq'],
+  ])('drops %s and forwards canonically', (_label, hash) => {
+    setHash(hash);
+    render(<MultichatPage />);
+    expect(replace).toHaveBeenCalledWith('/tools/multichat');
+  });
+
+  it('carries only the two recognized fields', () => {
+    setHash(`#twitchConnectionId=${TEST_ID}&twitch=someone&admin=1`);
+    render(<MultichatPage />);
+    const target = String(replace.mock.calls[0]?.[0] ?? '');
+    expect(target).toBe(
+      `/tools/multichat#twitchConnectionId=${TEST_ID}&twitch=someone`,
+    );
+    expect(target).not.toContain('admin');
+  });
+
+  it('replaces once, not once per render', () => {
+    setHash(VALID);
+    const view = render(<MultichatPage />);
+    view.rerender(<MultichatPage />);
+    view.rerender(<MultichatPage />);
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  /* StrictMode double-invokes effects here (verified: the mount effect runs
+     twice), which a plain rerender cannot simulate — unchanged deps simply do
+     not re-run an effect. What this pins is the observable outcome: exactly one
+     navigation, to the right place. It does not isolate *which* mechanism
+     achieves that; the hash gate is what serializes the double mount, and the
+     ref guard in the page is unexercised insurance on top of it. */
+  it('replaces once under StrictMode double-invocation', () => {
+    setHash(VALID);
+    render(
+      <StrictMode>
+        <MultichatPage />
+      </StrictMode>,
+    );
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(
+      `/tools/multichat#twitchConnectionId=${TEST_ID}&twitch=someone`,
+    );
+  });
+
+  it('replaces once for a bare visit under StrictMode', () => {
+    render(
+      <StrictMode>
+        <MultichatPage />
+      </StrictMode>,
+    );
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith('/tools/multichat');
+  });
+
+  it('renders nothing while forwarding, so the old page never flashes', () => {
+    setHash(VALID);
+    render(<MultichatPage />);
+    expect(screen.queryByTestId('chat-overlay')).toBeNull();
+  });
+});
+
 describe('before the router is ready', () => {
   it('navigates nowhere until the query is known', () => {
     isReady = false;
     query = {};
+    render(<MultichatPage />);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('navigates nowhere with a fragment until the router is ready', () => {
+    isReady = false;
+    setHash(`#twitchConnectionId=${TEST_ID}&twitch=someone`);
     render(<MultichatPage />);
     expect(replace).not.toHaveBeenCalled();
   });

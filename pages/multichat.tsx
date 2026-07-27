@@ -31,7 +31,10 @@ import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
-import { resolveLegacyMultichatRoute } from '../lib/multichatRouting';
+import {
+  legacyRedirectTarget,
+  resolveLegacyMultichatRoute,
+} from '../lib/multichatRouting';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
 import { SunsetBanner } from '../components/SunsetBanner';
 
@@ -128,24 +131,62 @@ export default function Page() {
     config: null,
   });
 
+  /* The URL fragment, captured once on the client.
+   *
+   * Fragments are never sent to the server and never appear in `router.query`,
+   * so this is the only way the route decision can see one. Held in state and
+   * populated from an effect rather than read during render: reading
+   * `window.location.hash` while rendering would differ between the server pass
+   * (no window) and the client pass, which is exactly the hydration mismatch
+   * this page cannot afford. `null` means "not looked yet". */
+  const [hash, setHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    /* Effects are client-only, so window is available here and only here. */
+    setHash(window.location.hash);
+  }, []);
+
   /* Overlay or generator, decided by one pure rule (lib/multichatRouting).
      Computed on every render so the branches below and the redirect effect can
-     never disagree about which one this visit is. */
-  const route = resolveLegacyMultichatRoute(router.isReady ? router.query : {});
+     never disagree about which one this visit is. The hash is passed as '' until
+     it has been captured, which only ever delays a redirect — a channel-carrying
+     overlay URL resolves to 'overlay' from the query alone and never waits. */
+  const route = resolveLegacyMultichatRoute(
+    router.isReady ? router.query : {},
+    hash ?? '',
+  );
 
-  /* Forward channel-less visits to the canonical generator route.
-     `replace`, not `push`, so Back returns to wherever the user came from
-     rather than bouncing through this path again. */
-  const redirectTo = route.kind === 'redirect' ? route.pathname : '';
+  /* Forward channel-less visits to the canonical generator route, fragment and
+     all. `replace`, not `push`, so Back returns to wherever the user came from
+     rather than bouncing through this path again — and so the fragment-bearing
+     intermediate URL is not left in history. */
+  const redirectTo = legacyRedirectTarget(route);
+
+  /* Belt-and-braces against issuing the same `replace` twice.
+   *
+   * Strict Mode's double-invoked mount is already handled by the `hash === null`
+   * gate below — both invocations return early, because the hash has not been
+   * captured yet on either. This ref is therefore not load-bearing today, and
+   * the test suite cannot demonstrate a case where it fires; it is kept because
+   * the gate protecting it is incidental, and any future change that makes the
+   * hash available during the first commit would turn a double-invoke into two
+   * racing navigations. The destination is stored rather than a boolean so a
+   * genuinely different target is still honoured. */
+  const redirected = useRef('');
 
   useEffect(() => {
     if (!router.isReady) return;
+    /* Wait for the hash to have been looked at. Redirecting before then would
+       drop a fragment that was present, which is the whole bug this guards. */
+    if (hash === null) return;
     if (!redirectTo) return;
+    if (redirected.current === redirectTo) return;
+    redirected.current = redirectTo;
     router.replace(redirectTo);
     /* `router` is intentionally absent: its identity changes on every
        navigation, and re-running this would re-issue the same replace. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, redirectTo]);
+  }, [router.isReady, hash, redirectTo]);
 
   useEffect(() => {
     if (!router.isReady) return;

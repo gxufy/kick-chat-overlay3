@@ -13,6 +13,10 @@
  * expressing it as a chain of conditions that a later edit could reorder.
  */
 import type { ParsedUrlQuery } from 'querystring';
+import {
+  buildConnectionFragment,
+  readConnectionFromFragment,
+} from './twitchConnection';
 
 /** Every parameter that names a channel. `channel` is the legacy Kick alias. */
 export const MULTICHAT_CHANNEL_PARAMS = [
@@ -27,10 +31,21 @@ export const MULTICHAT_CHANNEL_PARAMS = [
 export const CANONICAL_MULTICHAT_ROUTE = '/tools/multichat';
 export const CANONICAL_COUNTER_ROUTE = '/tools/counter';
 
-/** Serve the overlay, or forward to a canonical generator route. */
+/**
+ * Serve the overlay, or forward to a canonical generator route.
+ *
+ * `hash` is the fragment to carry to the destination, already validated and
+ * rebuilt from its recognized fields — never the caller's raw hash. It is '' for
+ * every route that has no connection to preserve, so a caller can always
+ * concatenate it without checking.
+ */
 export type LegacyMultichatRoute =
   | { readonly kind: 'overlay' }
-  | { readonly kind: 'redirect'; readonly pathname: string };
+  | {
+      readonly kind: 'redirect';
+      readonly pathname: string;
+      readonly hash: string;
+    };
 
 /**
  * Whether a query value names a channel.
@@ -65,17 +80,53 @@ function wantsCounterTab(query: ParsedUrlQuery): boolean {
 /**
  * What a `/multichat` visit resolves to.
  *
- * Channel parameters are checked first and win outright. That ordering is the
- * whole safety property: an overlay URL that happens to carry `tab=counter` —
- * or any other generator-shaped parameter — still renders chat, so no scene
- * that works today can be redirected out from under itself.
+ * Three cases, in this order, and the order is the whole safety property:
+ *
+ * 1. Channel parameters win outright. An overlay URL that happens to carry
+ *    `tab=counter`, an OAuth fragment, or any other generator-shaped input still
+ *    renders chat, so no scene that works today can be redirected out from under
+ *    itself. This is checked first precisely so nothing added later can preempt
+ *    it.
+ *
+ * 2. A valid OAuth fragment on a channel-less visit forwards to the MultiChat
+ *    workspace *with the fragment preserved*. This is the compatibility path for
+ *    an authorization that began before the callback destination moved: the user
+ *    is mid-flow, holding a connection the workspace can still adopt, and
+ *    dropping the fragment would force them to authorize again. It outranks
+ *    `tab=counter` because a pending MultiChat connection is a stronger
+ *    statement of intent than a stale tab parameter.
+ *
+ * 3. Otherwise the query decides, and no fragment is carried.
+ *
+ * `hash` is passed in rather than read from `window`, so this stays a pure
+ * function usable during server rendering. Pass '' when there is no hash.
  */
 export function resolveLegacyMultichatRoute(
   query: ParsedUrlQuery,
+  hash = '',
 ): LegacyMultichatRoute {
   if (hasChannelParam(query)) return { kind: 'overlay' };
-  if (wantsCounterTab(query)) {
-    return { kind: 'redirect', pathname: CANONICAL_COUNTER_ROUTE };
+
+  /* Validated by the authoritative parser, then re-serialized from just the two
+     recognized fields. An arbitrary, malformed, or duplicate-keyed fragment
+     yields null here and is dropped before canonical routing continues — it is
+     never forwarded, and never converted into a query parameter. */
+  const connection = readConnectionFromFragment(hash);
+  if (connection) {
+    return {
+      kind: 'redirect',
+      pathname: CANONICAL_MULTICHAT_ROUTE,
+      hash: buildConnectionFragment(connection),
+    };
   }
-  return { kind: 'redirect', pathname: CANONICAL_MULTICHAT_ROUTE };
+
+  if (wantsCounterTab(query)) {
+    return { kind: 'redirect', pathname: CANONICAL_COUNTER_ROUTE, hash: '' };
+  }
+  return { kind: 'redirect', pathname: CANONICAL_MULTICHAT_ROUTE, hash: '' };
+}
+
+/** The full destination to hand `router.replace`, fragment included. */
+export function legacyRedirectTarget(route: LegacyMultichatRoute): string {
+  return route.kind === 'redirect' ? `${route.pathname}${route.hash}` : '';
 }

@@ -104,6 +104,91 @@ describe('homepage product cards', () => {
   });
 });
 
+describe('homepage bottom section', () => {
+  /* The old bottom was an announcement card promising unnamed future tools, with
+     a small Follow button inside it, above a row of three per-network icon
+     buttons. All of it is gone except the Follow link itself — whose href is a
+     link hub the user maintains and must not be guessed at, so it is asserted by
+     exact equality against the value it has always had. */
+  const PREVIOUS_FOLLOW_HREF = 'https://guns.lol/gxufy';
+
+  const follow = () => {
+    const el = document.querySelector('a.follow-cta');
+    expect(el, 'no follow CTA on the page').not.toBeNull();
+    return el as HTMLAnchorElement;
+  };
+
+  it('no longer promises more tools', () => {
+    render(<HomePage />);
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/more tools are on the way/i);
+    expect(text).not.toMatch(/multichat is the first/i);
+    expect(text).not.toMatch(/catch what/i);
+  });
+
+  it('offers no per-network social buttons', () => {
+    render(<HomePage />);
+    expect(document.querySelectorAll('a.social')).toHaveLength(0);
+    for (const gone of ['x.com', 'twitter', 'github.com', 'discord.com']) {
+      for (const href of hrefs()) {
+        expect(href?.toLowerCase()).not.toContain(gone);
+      }
+    }
+  });
+
+  it('drops the socials heading with the row it labelled', () => {
+    render(<HomePage />);
+    expect(document.body.textContent).not.toMatch(/socials/i);
+    expect(document.querySelector('.socials-title')).toBeNull();
+  });
+
+  it('has exactly one Follow CTA, named for the person not the handle', () => {
+    render(<HomePage />);
+    expect(document.querySelectorAll('a.follow-cta')).toHaveLength(1);
+    expect(follow().textContent?.trim()).toBe('Follow @gxufy');
+    // The X handle, which this is no longer specific to.
+    expect(document.body.textContent).not.toContain('@Gxufy_');
+    expect(document.body.textContent).not.toContain('@gxufy_');
+  });
+
+  it('preserves the previous destination exactly', () => {
+    render(<HomePage />);
+    expect(follow().getAttribute('href')).toBe(PREVIOUS_FOLLOW_HREF);
+    expect(follow().getAttribute('rel')).toContain('noreferrer');
+    expect(follow().getAttribute('target')).toBe('_blank');
+  });
+
+  it('is a prominent standalone CTA, not a button inside a card', () => {
+    render(<HomePage />);
+    /* Not nested in a card or banner: the requirement is one large CTA, and an
+       empty wrapper around it would be exactly what was removed. */
+    expect(follow().closest('.card')).toBeNull();
+    expect(follow().closest('.banner')).toBeNull();
+    expect(document.querySelectorAll('.banner')).toHaveLength(0);
+    // Directly in the content column, immediately before the footer.
+    expect(follow().parentElement?.className).toBe('wrap');
+    expect(follow().nextElementSibling?.tagName).toBe('FOOTER');
+  });
+
+  it('styles the CTA large, with hover and keyboard focus states', () => {
+    const css = render(<HomePage />).container.innerHTML;
+    const rule = css.match(/\.follow-cta \{([^}]*)\}/)![1];
+    expect(rule).toContain('display: block');
+    expect(rule).toContain('width: 100%');
+    // Same accent the cards use, not a new colour.
+    expect(rule).toContain('var(--accent)');
+    expect(css).toContain('.follow-cta:hover');
+    expect(css).toContain('.follow-cta:focus-visible');
+  });
+
+  it('keeps the footer underneath it, simple', () => {
+    render(<HomePage />);
+    const footer = document.querySelector('footer')!;
+    expect(footer.textContent).toMatch(/©/);
+    expect(footer.querySelectorAll('a')).toHaveLength(1);
+  });
+});
+
 /* The homepage keeps its own overlay forward: a /?kick=name link is an overlay
    request that predates the generator split, and it must still reach the
    overlay. */

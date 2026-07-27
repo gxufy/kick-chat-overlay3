@@ -31,6 +31,7 @@ import { multichatTool } from '@/lib/tools/multichat/config';
 import { counterTool } from '@/lib/tools/counter/config';
 import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
 import { COUNTER_CATALOG } from '@/lib/tools/counter/settings';
+import { CLASSIC_GENERATOR_CSS } from '@/components/classic/classicStyles';
 import { buildMultichatQuery } from '@/lib/multichatConfig';
 import { buildViewerCounterQuery } from '@/lib/viewerCounterConfig';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
@@ -256,8 +257,320 @@ describe('every catalog setting is reachable', () => {
     mount();
     for (const setting of COUNTER_CATALOG) {
       const control = document.getElementById(`vc-${String(setting.key)}`)!;
-      const label = document.querySelector(`label[for="${control.id}"]`);
-      expect(label?.textContent).toBe(setting.label);
+      /* A segmented group is named by its legend, a single control by a `for`
+         label. Both are accessible names taken from the descriptor, which is what
+         this asserts — not which element carries it. */
+      const named =
+        control.tagName === 'FIELDSET'
+          ? control.querySelector('legend')?.textContent
+          : document.querySelector(`label[for="${control.id}"]`)?.textContent;
+      expect(named).toBe(setting.label);
+    }
+  });
+});
+
+describe('direct controls in place of dropdowns', () => {
+  /* Every segmented choice and every slider must emit exactly what the dropdown
+     or field it replaced emitted. These tests compare against the catalog's own
+     option values and against the serializer, so a presentation change that
+     altered a value fails here rather than in a copied OBS URL. */
+
+  const segmented = (id: string) => {
+    const group = document.getElementById(id);
+    expect(group, `${id} is missing`).not.toBeNull();
+    expect(group!.tagName).toBe('FIELDSET');
+    return group as HTMLFieldSetElement;
+  };
+
+  const radios = (id: string) =>
+    Array.from(segmented(id).querySelectorAll('input[type="radio"]'));
+
+  it.each([
+    ['mc-textSize', 'textSize'],
+    ['mc-stroke', 'stroke'],
+    ['mc-textShadow', 'textShadow'],
+    ['mc-animation', 'animation'],
+    ['mc-sourceTag', 'sourceTag'],
+  ])('%s is a segmented group over the catalog values', (id, key) => {
+    mount();
+    const setting = MULTICHAT_CATALOG.find((s) => s.key === key)!;
+    expect(setting.type).toBe('select');
+    const options = (setting as { options: readonly { value: string }[] }).options;
+    expect(radios(id).map((r) => (r as HTMLInputElement).value)).toEqual(
+      options.map((o) => o.value),
+    );
+  });
+
+  it.each([
+    ['vc-align', 'align'],
+    ['vc-textShadow', 'textShadow'],
+    ['vc-stroke', 'stroke'],
+  ])('%s is a segmented group over the catalog values', (id, key) => {
+    mount();
+    const setting = COUNTER_CATALOG.find((s) => s.key === key)!;
+    const options = (setting as { options: readonly { value: string }[] }).options;
+    expect(radios(id).map((r) => (r as HTMLInputElement).value)).toEqual(
+      options.map((o) => o.value),
+    );
+  });
+
+  it('checks exactly the defaulted option on load', () => {
+    mount();
+    for (const [id, setting] of [
+      ['mc-stroke', MULTICHAT_CATALOG.find((s) => s.key === 'stroke')!],
+      ['vc-align', COUNTER_CATALOG.find((s) => s.key === 'align')!],
+    ] as const) {
+      const checked = radios(id).filter((r) => (r as HTMLInputElement).checked);
+      expect(checked).toHaveLength(1);
+      expect((checked[0] as HTMLInputElement).value).toBe(
+        (setting as { default: string }).default,
+      );
+    }
+  });
+
+  it('groups each setting under its own radio name, per prefix', () => {
+    /* Both catalogs have stroke and textShadow. A shared name would make picking
+       a chat stroke silently clear the counter's. */
+    mount();
+    expect(new Set(radios('mc-stroke').map((r) => (r as HTMLInputElement).name))).toEqual(
+      new Set(['mc-stroke']),
+    );
+    expect(new Set(radios('vc-stroke').map((r) => (r as HTMLInputElement).name))).toEqual(
+      new Set(['vc-stroke']),
+    );
+  });
+
+  it('serializes a segmented pick exactly as the dropdown did', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    fireEvent.click(document.getElementById('mc-sourceTag-dot')!);
+    expect(chatUrl()).toBe(
+      `${BASE}/multichat?${multichatTool.serialize(
+        { kick: 'somechannel' },
+        { ...multichatTool.defaults, sourceTag: 'dot' },
+      )}`,
+    );
+
+    fireEvent.click(document.getElementById('vc-align-right')!);
+    expect(counterUrl()).toBe(
+      `${BASE}/counter?${buildViewerCounterQuery(
+        { kick: 'somechannel' },
+        { ...counterTool.defaults, align: 'right' },
+      )}`,
+    );
+  });
+
+  it('keeps every segmented choice keyboard-reachable with a visible state', () => {
+    mount();
+    for (const radio of radios('mc-animation')) {
+      const input = radio as HTMLInputElement;
+      // Not hidden from the tab order, and labelled by the visible pill.
+      expect(input.disabled).toBe(false);
+      const label = document.querySelector(`label[for="${input.id}"]`);
+      expect(label).not.toBeNull();
+      expect(label!.className.includes('on')).toBe(input.checked);
+    }
+  });
+
+  it.each([
+    ['mc-fade', 'fade'],
+    ['mc-emoteScale', 'emoteScale'],
+  ])('%s is a slider over a real numeric range', (id, key) => {
+    mount();
+    const input = document.getElementById(id) as HTMLInputElement;
+    expect(input.type).toBe('range');
+    const setting = MULTICHAT_CATALOG.find((s) => s.key === key)!;
+    // Still the catalog's text setting; only the presentation changed.
+    expect(setting.type).toBe('text');
+  });
+
+  it('serializes a slider value as the plain number string', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    fireEvent.change(document.getElementById('mc-fade')!, { target: { value: '45' } });
+    expect(chatUrl()).toBe(
+      `${BASE}/multichat?${multichatTool.serialize(
+        { kick: 'somechannel' },
+        { ...multichatTool.defaults, fade: '45' },
+      )}`,
+    );
+    expect(chatUrl()).toContain('fade=45');
+  });
+
+  it('serializes a fractional slider value without trailing zeros', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    fireEvent.change(document.getElementById('mc-emoteScale')!, {
+      target: { value: '1.5' },
+    });
+    expect(chatUrl()).toContain('emoteScale=1.5');
+    expect(chatUrl()).toBe(
+      `${BASE}/multichat?${multichatTool.serialize(
+        { kick: 'somechannel' },
+        { ...multichatTool.defaults, emoteScale: '1.5' },
+      )}`,
+    );
+  });
+
+  it('keeps the blank state a slider cannot express reachable', () => {
+    /* Blank suppresses the parameter entirely. Without the button, one drag would
+       commit emoteScale to every URL from then on. */
+    mount();
+    typeChannel('kick', 'somechannel');
+    expect(chatUrl()).not.toContain('emoteScale');
+
+    fireEvent.change(document.getElementById('mc-emoteScale')!, {
+      target: { value: '2' },
+    });
+    expect(chatUrl()).toContain('emoteScale=2');
+
+    const scope = document.getElementById('mc-emoteScale')!.closest('.classic-field')!;
+    fireEvent.click(within(scope as HTMLElement).getByRole('button', { name: 'Default' }));
+    expect(chatUrl()).not.toContain('emoteScale');
+  });
+
+  it('announces the blank state rather than showing a misleading number', () => {
+    mount();
+    const slider = document.getElementById('mc-emoteScale')!;
+    expect(slider.getAttribute('aria-valuetext')).toBe('Default');
+    fireEvent.change(slider, { target: { value: '2' } });
+    expect(document.getElementById('mc-emoteScale')!.getAttribute('aria-valuetext')).toBe(
+      '2 ×',
+    );
+  });
+
+  it.each([['mc-font'], ['vc-combined']])(
+    '%s keeps the control type that suits it',
+    (id) => {
+      /* Font is twelve unordered families — a dropdown. Booleans stay switches.
+         Neither is a candidate for a slider or a pill row. */
+      mount();
+      const el = document.getElementById(id)!;
+      expect(el.tagName === 'SELECT' || (el as HTMLInputElement).type === 'checkbox').toBe(
+        true,
+      );
+    },
+  );
+
+  it('keeps the font dropdown listing every family', () => {
+    mount();
+    const select = document.getElementById('mc-font') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    const setting = MULTICHAT_CATALOG.find((s) => s.key === 'font')!;
+    const options = (setting as { options: readonly { value: string }[] }).options;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(
+      options.map((o) => o.value),
+    );
+  });
+
+  it('leaves the default URLs byte-identical to before the control change', () => {
+    /* The whole point: presentation moved, values did not. */
+    mount();
+    typeChannel('kick', 'somechannel');
+    expect(chatUrl()).toBe(
+      `${BASE}/multichat?${multichatTool.serialize(
+        { kick: 'somechannel' },
+        multichatTool.defaults,
+      )}`,
+    );
+    expect(counterUrl()).toBe(
+      `${BASE}/counter?${buildViewerCounterQuery(
+        { kick: 'somechannel' },
+        counterTool.defaults,
+      )}`,
+    );
+  });
+});
+
+describe('density', () => {
+  it('bounds the page width and keeps an outer gutter', () => {
+    /* Read off the stylesheet rather than measured: jsdom computes no layout, so
+       a getBoundingClientRect assertion here would be meaningless. */
+    const page = CLASSIC_GENERATOR_CSS.match(/\.page \{([^}]*)\}/)![1];
+    const max = Number(page.match(/max-width:\s*(\d+)px/)![1]);
+    expect(max).toBeGreaterThanOrEqual(1450);
+    expect(max).toBeLessThanOrEqual(1550);
+    // Centred, with a gutter that keeps it off the viewport edge.
+    expect(page).toContain('margin: 0 auto');
+    const gutter = Number(page.match(/padding:\s*0\s+(\d+)px/)![1]);
+    expect(gutter).toBeGreaterThanOrEqual(24);
+    expect(gutter).toBeLessThanOrEqual(48);
+  });
+
+  it('gives MultiChat more of the row than the Counter, without stretching', () => {
+    const grid = CLASSIC_GENERATOR_CSS.match(
+      /\.tool-grid \{\s*display: grid;([\s\S]*?)grid-template-areas/,
+    )![1];
+    const [chat, counter] = grid
+      .match(/grid-template-columns:\s*minmax\(0,\s*([\d.]+)fr\)\s*minmax\(0,\s*([\d.]+)fr\)/)!
+      .slice(1)
+      .map(Number);
+    expect(chat / counter).toBeGreaterThanOrEqual(1.25);
+    expect(chat / counter).toBeLessThanOrEqual(1.4);
+  });
+
+  it('puts both output actions in one group beside the field', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    for (const region of ['.panel-chat-output', '.panel-counter-output']) {
+      const actions = panel(region).querySelector('.url-actions');
+      expect(actions, `${region} has no action group`).not.toBeNull();
+      const scope = within(actions as HTMLElement);
+      expect(scope.getByRole('button', { name: 'Copy' })).toBeDefined();
+      expect(scope.getByRole('link', { name: 'Open' })).toBeDefined();
+      // The field is a sibling, not a parent, so it can wrap on its own.
+      expect(panel(region).querySelector('.url-code')!.contains(actions!)).toBe(false);
+    }
+  });
+
+  it('lays both output cards out identically', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    const shape = (region: string) =>
+      Array.from(panel(region).querySelectorAll('.url-box > *')).map((el) => el.className);
+    expect(shape('.panel-counter-output')).toEqual(['url-code', 'url-actions']);
+    expect(shape('.panel-chat-output')).toEqual([
+      'url-code',
+      'url-actions',
+      'url-warn',
+    ]);
+  });
+
+  it('uses multi-column settings tables on wide screens only', () => {
+    mount();
+    /* The class declares the intent; the media queries in the stylesheet are what
+       keep a phone at one column. Both are asserted, because the class alone
+       would not prove the narrow case. */
+    expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-3').length)
+      .toBeGreaterThan(0);
+    expect(
+      document.querySelectorAll('.panel-counter-settings .form_table.cols-2').length,
+    ).toBe(1);
+    expect(CLASSIC_GENERATOR_CSS).toMatch(
+      /@media \(min-width: 1000px\)[\s\S]*?\.form_table\.cols-2 \{ grid-template-columns: repeat\(2/,
+    );
+    expect(CLASSIC_GENERATOR_CSS).toMatch(
+      /@media \(min-width: 1500px\)[\s\S]*?\.form_table\.cols-3 \{ grid-template-columns: repeat\(3/,
+    );
+    // The base rule is one column, so narrow widths inherit it.
+    expect(CLASSIC_GENERATOR_CSS).toMatch(/\.form_table \{[\s\S]*?grid-template-columns: 1fr;/);
+  });
+
+  it('does not reserve a line for the absent fragment warning', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    expect(panel('.panel-chat-output').querySelector('.url-warn')!.textContent).toBe('');
+    expect(CLASSIC_GENERATOR_CSS).toContain('.url-warn:empty { display: none; }');
+  });
+
+  it('keeps touch targets from following desktop density', () => {
+    /* Density is a desktop goal. The narrow block re-pads exactly the controls
+       that would otherwise fall under a comfortable tap size. */
+    const narrow = CLASSIC_GENERATOR_CSS.slice(
+      CLASSIC_GENERATOR_CSS.indexOf('@media (max-width: 720px)'),
+    );
+    for (const selector of ['.classic-chip-label', '.classic-seg-label', '.classic-clear']) {
+      expect(narrow).toContain(selector);
     }
   });
 });
@@ -447,7 +760,8 @@ describe('OAuth preserves both tools', () => {
   it('writes a draft for each tool before navigating away', () => {
     mount();
     typeChannel('kick', 'somechannel');
-    fireEvent.change(document.getElementById('mc-textSize')!, { target: { value: 'large' } });
+    // A segmented pick and a switch, one per tool.
+    fireEvent.click(document.getElementById('mc-textSize-large')!);
     fireEvent.click(document.getElementById('vc-icons')!);
     leave();
 
@@ -469,7 +783,7 @@ describe('OAuth preserves both tools', () => {
     mount();
     typeChannel('twitch', 'streamer');
     fireEvent.change(document.getElementById('mc-font')!, { target: { value: 'roboto' } });
-    fireEvent.change(document.getElementById('vc-align')!, { target: { value: 'right' } });
+    fireEvent.click(document.getElementById('vc-align-right')!);
     const expected = [chatUrl(), counterUrl()];
     leave();
 
@@ -477,7 +791,7 @@ describe('OAuth preserves both tools', () => {
     mount();
     expect((document.getElementById('channel-twitch') as HTMLInputElement).value).toBe('streamer');
     expect((document.getElementById('mc-font') as HTMLSelectElement).value).toBe('roboto');
-    expect((document.getElementById('vc-align') as HTMLSelectElement).value).toBe('right');
+    expect((document.getElementById('vc-align-right') as HTMLInputElement).checked).toBe(true);
     expect([chatUrl(), counterUrl()]).toEqual(expected);
   });
 

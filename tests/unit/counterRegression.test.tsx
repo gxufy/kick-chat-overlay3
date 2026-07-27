@@ -139,13 +139,22 @@ describe('the rendered counter panels show no connection surface', () => {
   it('renders exactly the six catalog settings and no more', () => {
     mount();
     const settings = panel('.panel-counter-settings');
-    const controls = settings.querySelectorAll('select, input');
-    expect(controls).toHaveLength(COUNTER_CATALOG.length);
+    /* Counted by setting, not by input: a segmented choice is a radio group, so
+       three alignments are three inputs for one setting. `.classic-field` is the
+       per-setting wrapper either presentation renders. */
+    expect(settings.querySelectorAll('.classic-field')).toHaveLength(
+      COUNTER_CATALOG.length,
+    );
     for (const setting of COUNTER_CATALOG) {
       expect(
         settings.querySelector(`#vc-${String(setting.key)}`),
         `vc-${String(setting.key)} is missing`,
       ).not.toBeNull();
+    }
+    /* And every input present belongs to one of them — nothing else has crept
+       into the panel. */
+    for (const input of Array.from(settings.querySelectorAll('select, input'))) {
+      expect(input.closest('.classic-field')).not.toBeNull();
     }
   });
 });

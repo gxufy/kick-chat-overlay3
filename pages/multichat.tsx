@@ -31,7 +31,7 @@ import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
-import LandingPage from '../components/LandingPage';
+import { resolveLegacyMultichatRoute } from '../lib/multichatRouting';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
 import { SunsetBanner } from '../components/SunsetBanner';
 
@@ -127,6 +127,25 @@ export default function Page() {
     channel: null,
     config: null,
   });
+
+  /* Overlay or generator, decided by one pure rule (lib/multichatRouting).
+     Computed on every render so the branches below and the redirect effect can
+     never disagree about which one this visit is. */
+  const route = resolveLegacyMultichatRoute(router.isReady ? router.query : {});
+
+  /* Forward channel-less visits to the canonical generator route.
+     `replace`, not `push`, so Back returns to wherever the user came from
+     rather than bouncing through this path again. */
+  const redirectTo = route.kind === 'redirect' ? route.pathname : '';
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!redirectTo) return;
+    router.replace(redirectTo);
+    /* `router` is intentionally absent: its identity changes on every
+       navigation, and re-running this would re-issue the same replace. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, redirectTo]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -818,15 +837,10 @@ export default function Page() {
 
   if (!ready) return null;
 
-  const hasChannel = !!(router.query.channel || router.query.kick || router.query.twitch || router.query.youtube || router.query.tiktok);
-  if (!hasChannel) {
-    return (
-      <>
-        <SunsetBanner variant="landing" />
-        <LandingPage />
-      </>
-    );
-  }
+  /* A channel-less visit is a generator visit, and the generator has moved.
+     Rendering nothing while the replace is in flight, rather than flashing the
+     old page first. Overlay visits never reach this branch. */
+  if (route.kind === 'redirect') return null;
 
   if (error) {
     return (

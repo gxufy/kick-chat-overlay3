@@ -41,6 +41,8 @@ import {
   type MultichatWorkspaceStyle,
 } from '@/lib/multichatConfig';
 import type { OverlayTool, ToolChannels, ToolPlatform } from '../registry';
+import { MULTICHAT_HELP } from './help';
+import { MULTICHAT_OBS_SIZE } from './obs';
 import { MULTICHAT_CATALOG } from './settings';
 
 export type { MultichatPlatform, MultichatWorkspaceStyle };
@@ -254,15 +256,15 @@ export const multichatTool: OverlayTool<MultichatWorkspaceStyle, MultichatPlatfo
   serialize: (channels, style) =>
     buildMultichatQuery(toMultichatChannels(channels), style),
   configuredPlatforms: configuredMultichatPlatforms,
-  /* From the generator's own OBS setup step, which tells users '680 × 280 works
-     great' (components/LandingPage.tsx). README.md's OBS Setup section instead
-     recommends 830 × 230; both are current, and the in-app guidance shown beside
-     this very tool wins. The discrepancy is logged in TODO rather than
-     reconciled here. */
-  obs: { width: 680, height: 280 },
+  /* Canonical size, from ./obs — the same constant the help section and the docs
+     now cite, so the two conflicting "recommended" values are gone. */
+  obs: MULTICHAT_OBS_SIZE,
   /* Accurate for what the iframe actually is: the real overlay, at the exact
      URL below it, connected to the real platforms. An empty preview is normal
      and is not a workspace failure. */
   previewNote:
     'A real /multichat overlay at this exact URL. It connects to the channels you configure and shows their actual messages, so it stays empty while those channels are offline or nobody is chatting.',
+  /* Commands are derived from the parser's own metadata, so this cannot document
+     a command the overlay does not implement. */
+  help: MULTICHAT_HELP,
 };

@@ -84,6 +84,7 @@ export default function GeneratorWorkspace<
             catalog={tool.catalog}
             config={style}
             onChange={changeSetting}
+            help={tool.help}
           />
 
           <LivePreviewPanel

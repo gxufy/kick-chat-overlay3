@@ -4,6 +4,8 @@
  * channel inputs: channel identity lives beside the preview it parameterizes.
  */
 import SettingsList from './SettingsList';
+import ToolHelpPanel from './ToolHelpPanel';
+import type { ToolHelpSection } from '@/lib/tools/registry';
 import type { SettingCatalog, SettingValue } from '@/lib/tools/settingTypes';
 
 export default function ToolConfigPanel<S extends Record<string, unknown>>({
@@ -11,11 +13,14 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
   catalog,
   config,
   onChange,
+  help = [],
 }: {
   toolLabel: string;
   catalog: SettingCatalog<S>;
   config: S;
   onChange: (key: keyof S & string, next: SettingValue) => void;
+  /** Reference material from the descriptor; empty renders nothing. */
+  help?: readonly ToolHelpSection[];
 }) {
   return (
     <section
@@ -35,6 +40,12 @@ export default function ToolConfigPanel<S extends Record<string, unknown>>({
 
         <div className="mt-4">
           <SettingsList catalog={catalog} config={config} onChange={onChange} />
+        </div>
+
+        {/* Below the catalog, not interleaved with it: reference material must
+            not push settings off the first screen. */}
+        <div className="mt-4">
+          <ToolHelpPanel sections={help} />
         </div>
       </div>
     </section>

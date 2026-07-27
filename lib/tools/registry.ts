@@ -24,6 +24,25 @@ import { multichatTool } from './multichat/config';
 /** Channel names keyed by the tool's own platform keys, as typed in. */
 export type ToolChannels<P extends string = string> = Partial<Record<P, string>>;
 
+/** One documented item — a command, a shortcut, whatever the tool has. */
+export type ToolHelpEntry = {
+  /** Rendered monospaced, as literal syntax to be typed. */
+  readonly syntax: string;
+  readonly summary: string;
+  readonly detail?: string;
+};
+
+/** A titled group of help entries, with optional prose above and below. */
+export type ToolHelpSection = {
+  readonly id: string;
+  readonly title: string;
+  /** Shown above the entries. */
+  readonly intro?: string;
+  readonly entries: readonly ToolHelpEntry[];
+  /** Shown below the entries — caveats, aliases, access requirements. */
+  readonly footnote?: string;
+};
+
 /**
  * What a tool's style config has to look like to be driven by a setting
  * catalog: a plain keyed object. Field names and value types stay the tool's own.
@@ -81,6 +100,15 @@ export type OverlayTool<S, P extends string = string> = {
   /** Suggested OBS browser-source size, also used for the preview viewport. */
   obs: { width: number; height: number };
   /**
+   * Reference material for this tool, rendered below its settings.
+   *
+   * Plain data, so the shell renders it without knowing what it describes: for
+   * MultiChat these are chat commands, and a different tool could document
+   * anything else in the same shape. A tool that declares none renders nothing
+   * at all, which is why the counter gains no empty section.
+   */
+  help?: readonly ToolHelpSection[];
+  /**
    * What the preview iframe is, in this tool's own terms.
    *
    * Owned by the descriptor because the accurate sentence differs per tool: the
@@ -118,8 +146,9 @@ export type RegisteredTool = {
   /** Widened for display and validation; each key stays a plain string here. */
   platforms: readonly ToolPlatform[];
   obs: { width: number; height: number };
-  /** Carried through as-is; it names no style field, so nothing is erased. */
+  /** Carried through as-is; they name no style field, so nothing is erased. */
   previewNote?: string;
+  help?: readonly ToolHelpSection[];
   /** Apply `consume` to the concrete descriptor. */
   use: <R>(
     consume: <S extends ToolStyle, P extends string>(tool: OverlayTool<S, P>) => R,
@@ -138,6 +167,7 @@ function register<S extends ToolStyle, P extends string>(
     platforms: tool.platforms,
     obs: tool.obs,
     previewNote: tool.previewNote,
+    help: tool.help,
     use: (consume) => consume(tool),
   };
 }

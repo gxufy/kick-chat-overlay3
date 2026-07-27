@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
 import { buildMultichatQuery } from '../lib/multichatConfig';
+import { MULTICHAT_COMMANDS } from '../lib/multichatCommands';
 import CounterPreview from './CounterPreview';
 import {
   ALIGNMENTS,
@@ -1074,15 +1075,16 @@ export default function LandingPage() {
         <div className="commands-section">
           <table className="cmd-table">
             <thead><tr><th>Command</th><th>Description</th><th>Access</th></tr></thead>
+            {/* Rows come from the parser's own command metadata, so this table
+                and the workspace's command list cannot disagree. */}
             <tbody>
-              <tr><td>!multichat ping</td><td>Pong! notification on screen</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat reload</td><td>Reloads the browser source</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat stop</td><td>Clears all active overlays</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat show / hide</td><td>Shows or hides the chat</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat refresh emotes</td><td>Reloads 7TV/BTTV/FFZ emotes live</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat img [url/emote] -t [s] -o [op]</td><td>Fullscreen image or emote. <code style={{color:'#4a84fa'}}>img clear</code> dismisses</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat yt [url/preset] -t [s] -m</td><td>Fullscreen video. Presets: bruh, vine-boom, rickroll, dc-ping, win-error</td><td className="cmd-access">Mod+</td></tr>
-              <tr><td>!multichat tts [message]</td><td>Text-to-speech in OBS</td><td className="cmd-access">Mod+</td></tr>
+              {MULTICHAT_COMMANDS.map((c) => (
+                <tr key={c.name}>
+                  <td>{c.syntax}</td>
+                  <td>{c.detail ? `${c.summary} ${c.detail}` : c.summary}</td>
+                  <td className="cmd-access">Mod+</td>
+                </tr>
+              ))}
             </tbody>
           </table>
           <p style={{ color:'#555', fontSize:'0.74rem', margin:'6px 0 0' }}>Works from any connected platform&rsquo;s chat. <code style={{color:'#4a84fa'}}>!kickchat</code> is an alias.</p>

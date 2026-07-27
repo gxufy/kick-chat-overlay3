@@ -37,6 +37,96 @@ export const MULTICHAT_PLATFORMS = ['kick', 'twitch', 'youtube', 'tiktok'] as co
 export type MultichatPlatform = (typeof MULTICHAT_PLATFORMS)[number];
 
 /* ------------------------------------------------------------------ */
+/* Authoritative enum tuples                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The value sets the parser accepts, extracted from the schema transforms
+ * below so a workspace catalog can reference them instead of restating them.
+ *
+ * Order is load-bearing twice over: it is the order the legacy numeric aliases
+ * map to (1-based index), and it is the order the generator's own <select>
+ * elements list. Both were already true of the inline arrays these replace, so
+ * nothing about parsing changed — only where the values live.
+ */
+
+/** `textShadow=` values. Legacy aliases 1–4. */
+export const MULTICHAT_TEXT_SHADOWS = ['none', 'small', 'medium', 'large'] as const;
+
+/** `textSize=` values. Legacy aliases 1–3. */
+export const MULTICHAT_TEXT_SIZES = ['small', 'medium', 'large'] as const;
+
+/** `animation=` values. Legacy aliases 1–3. */
+export const MULTICHAT_ANIMATIONS = ['none', 'slide', 'fade'] as const;
+
+/** `stroke=` values. Legacy aliases 1–5. */
+export const MULTICHAT_STROKES = ['none', 'thin', 'medium', 'thick', 'thicker'] as const;
+
+/**
+ * `sourceTag=` values, in parser order.
+ *
+ * All four are implemented by the overlay. The generator can only produce
+ * `icon` (by omitting the parameter) and `none` — see MULTICHAT_GENERATOR_DEFAULTS
+ * and buildMultichatQuery, which hold a boolean, not this enum.
+ */
+export const MULTICHAT_SOURCE_TAGS = ['none', 'dot', 'label', 'icon'] as const;
+
+/**
+ * The same four values in workspace display order, strongest tag first.
+ *
+ * Separate from MULTICHAT_SOURCE_TAGS because that tuple's order is the
+ * parser's and carries no legacy numeric aliases to preserve. A test asserts
+ * the two hold exactly the same set, so this cannot drift into a different
+ * vocabulary.
+ */
+export const MULTICHAT_SOURCE_TAG_ORDER = ['icon', 'dot', 'label', 'none'] as const;
+
+/** `font=` values, in generator display order. Legacy aliases 1–12. */
+export const MULTICHAT_FONTS = [
+  'baloo',
+  'segoe',
+  'roboto',
+  'lato',
+  'noto',
+  'sourcecode',
+  'impact',
+  'comfortaa',
+  'dancing',
+  'indieflower',
+  'opensans',
+  'alsina',
+] as const;
+
+export type MultichatTextShadow = (typeof MULTICHAT_TEXT_SHADOWS)[number];
+export type MultichatTextSize = (typeof MULTICHAT_TEXT_SIZES)[number];
+export type MultichatAnimation = (typeof MULTICHAT_ANIMATIONS)[number];
+export type MultichatStroke = (typeof MULTICHAT_STROKES)[number];
+export type MultichatSourceTag = (typeof MULTICHAT_SOURCE_TAGS)[number];
+export type MultichatFont = (typeof MULTICHAT_FONTS)[number];
+
+/**
+ * The legacy numeric alias map for a tuple: '1' → first value, and so on.
+ *
+ * Derived rather than written out, which is what keeps an alias from ever
+ * pointing at the wrong value. Produces exactly the maps that were inline here
+ * before.
+ */
+function numericAliases(values: readonly string[]): Record<string, string> {
+  return Object.fromEntries(values.map((value, index) => [String(index + 1), value]));
+}
+
+/** Resolve a raw parameter through its aliases, then its value set. */
+function fromEnum<T extends string>(
+  raw: string | undefined,
+  values: readonly T[],
+  fallback: T,
+): T {
+  const aliased = numericAliases(values)[raw ?? ''];
+  if (aliased !== undefined) return aliased as T;
+  return (values as readonly string[]).includes(raw ?? '') ? (raw as T) : fallback;
+}
+
+/* ------------------------------------------------------------------ */
 /* Parser — moved verbatim from pages/multichat.tsx                    */
 /* ------------------------------------------------------------------ */
 
@@ -49,18 +139,12 @@ export const MultichatQuerySchema = z.object({
   tiktok: z.string().optional(),
   sevenTVCosmeticsEnabled: z.string().optional().transform(v => v !== 'false'),
   sevenTVEmotesEnabled: z.string().optional().transform(v => v !== 'false'),
-  textShadow: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'small','3':'medium','4':'large'};
-    return map[v??''] ?? (['none','small','medium','large'].includes(v??'') ? v! : 'large');
-  }),
-  textSize: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'small','2':'medium','3':'large'};
-    return map[v??''] ?? (['small','medium','large'].includes(v??'') ? v! : 'medium');
-  }),
-  animation: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'slide','3':'fade'};
-    return map[v??''] ?? (['none','slide','fade'].includes(v??'') ? v! : 'slide');
-  }),
+  textShadow: z.string().optional().transform(v =>
+    fromEnum(v, MULTICHAT_TEXT_SHADOWS, 'large')),
+  textSize: z.string().optional().transform(v =>
+    fromEnum(v, MULTICHAT_TEXT_SIZES, 'medium')),
+  animation: z.string().optional().transform(v =>
+    fromEnum(v, MULTICHAT_ANIMATIONS, 'slide')),
   showPinEnabled: z.string().optional().transform(v => v === 'true'),
   /* compatibility-only: parsed for URL compatibility, read by no runtime code */
   showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
@@ -75,17 +159,17 @@ export const MultichatQuerySchema = z.object({
   /* StreamNook sourceTag: none | dot | label | icon (default icon —
      official brand marks, same art Streamlabs uses) */
   sourceTag: z.string().optional().transform(v =>
-    (['none','dot','label','icon'].includes(v ?? '') ? v! : 'icon') as 'none'|'dot'|'label'|'icon'),
+    ((MULTICHAT_SOURCE_TAGS as readonly string[]).includes(v ?? '')
+      ? v!
+      : 'icon') as MultichatSourceTag),
   /* profile pictures (yt/tiktok) — off by default */
   showAvatars: z.string().optional().transform(v => v === 'true'),
-  font: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'baloo','2':'segoe','3':'roboto','4':'lato','5':'noto','6':'sourcecode','7':'impact','8':'comfortaa','9':'dancing','10':'indieflower','11':'opensans','12':'alsina'};
-    return map[v??''] ?? v ?? 'opensans';
-  }),
-  stroke: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'thin','3':'medium','4':'thick','5':'thicker'};
-    return map[v??''] ?? (['none','thin','medium','thick','thicker'].includes(v??'') ? v! : 'none');
-  }),
+  /* Note the asymmetry, preserved: an unrecognized font passes through as-is,
+     where every other enum falls back to its default. */
+  font: z.string().optional().transform(v =>
+    numericAliases(MULTICHAT_FONTS)[v ?? ''] ?? v ?? 'opensans'),
+  stroke: z.string().optional().transform(v =>
+    fromEnum(v, MULTICHAT_STROKES, 'none')),
   emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
   fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
   /* ── UChat-ported settings ── */
@@ -264,6 +348,57 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   prefixBL: '',
 };
 
+/* ------------------------------------------------------------------ */
+/* Workspace style — the generator state, with the full sourceTag enum  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the generator workspace holds, as an explicit adapter over the legacy
+ * state.
+ *
+ * Identical to MultichatGeneratorStyle except that `platformIcons: boolean` is
+ * replaced by the full `sourceTag` enum. The legacy shape is untouched and still
+ * what LandingPage uses; that boolean can only express 'icon' (by omitting the
+ * parameter) and 'none', so the overlay's 'dot' and 'label' were unreachable
+ * from the generator. This type reaches them without changing the old one.
+ */
+export type MultichatWorkspaceStyle = Omit<MultichatGeneratorStyle, 'platformIcons'> & {
+  /** 'icon' omits the parameter, matching the overlay's own default. */
+  sourceTag: MultichatSourceTag;
+};
+
+/** Either style shape the authoritative serializer accepts. */
+export type MultichatSerializableStyle =
+  | MultichatGeneratorStyle
+  | MultichatWorkspaceStyle;
+
+/**
+ * Which sourceTag a style of either shape means.
+ *
+ * The legacy mapping is exactly what buildMultichatQuery has always encoded:
+ * platformIcons true means the parameter is omitted, and an omitted parameter
+ * parses as 'icon'; false means 'none'.
+ */
+export function multichatSourceTagOf(
+  style: MultichatSerializableStyle,
+): MultichatSourceTag {
+  if ('sourceTag' in style) return style.sourceTag;
+  return style.platformIcons ? 'icon' : 'none';
+}
+
+/**
+ * Where the workspace controls begin.
+ *
+ * Derived from MULTICHAT_GENERATOR_DEFAULTS rather than restated: every field is
+ * spread from it, and only `platformIcons` is swapped for the `sourceTag` it
+ * already means. textShadow therefore stays 'small' here, still distinct from
+ * the overlay's omission default of 'large'.
+ */
+export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {
+  const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;
+  return { ...shared, sourceTag: platformIcons ? 'icon' : 'none' };
+})();
+
 /** Channel state matching MULTICHAT_GENERATOR_DEFAULTS — all empty. */
 export const MULTICHAT_GENERATOR_DEFAULT_CHANNELS: MultichatChannels = {
   kick: '',
@@ -290,20 +425,29 @@ export const MULTICHAT_GENERATOR_DEFAULT_CHANNELS: MultichatChannels = {
  * The returned string carries no leading '?' and no fragment. Callers append
  * `#twitchConnectionId=…` themselves, so this function never handles the
  * connection id.
+ *
+ * Accepts either style shape. A legacy MultichatGeneratorStyle serializes
+ * exactly as it always has; a MultichatWorkspaceStyle can additionally emit
+ * `sourceTag=dot` and `sourceTag=label`, in the same slot, which the boolean
+ * could not reach. This remains the only MultiChat serializer — no caller
+ * appends or rewrites parameters afterwards.
  */
 export function buildMultichatQuery(
   channels: MultichatChannels,
-  style: MultichatGeneratorStyle,
+  style: MultichatSerializableStyle,
 ): string {
   const { kick: channel, twitch, youtube, tiktok } = channels;
   const {
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     textSize, font, textShadow, stroke, animation,
-    fade, fadeEnabled: fadeBool, showPinEnabled: showPin, platformIcons,
+    fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
     mentionColor, bgColor, emoteScale, msgBold, msgCaps, modAction,
     paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
     botNames, userBL, prefixBL,
   } = style;
+  /* Both shapes collapse to one tag. 'icon' omits the parameter, which is what
+     the legacy platformIcons=true branch did, so legacy output is unchanged. */
+  const sourceTag = multichatSourceTagOf(style);
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -317,7 +461,9 @@ export function buildMultichatQuery(
     textSize, font, textShadow, stroke, animation,
     ...(fadeBool && fade !== '' ? { fade } : {}),
     showPinEnabled:        String(showPin),
-    ...(platformIcons ? {} : { sourceTag: 'none' }),
+    /* Same slot the legacy sourceTag=none occupied — position is part of the
+       compatibility surface, so dot/label land here too rather than at the end. */
+    ...(sourceTag === 'icon' ? {} : { sourceTag }),
     ...(mentionColor ? {} : { mentionColor: 'false' }),
     ...(bgColor ? { bgColor: bgColor.replace('#', '') } : {}),
     ...(emoteScale !== '' ? { emoteScale } : {}),

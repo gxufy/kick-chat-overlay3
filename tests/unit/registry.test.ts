@@ -21,9 +21,9 @@ import {
 } from '@/lib/viewerCounterConfig';
 
 describe('registry', () => {
-  it('holds only the viewer counter in this batch', () => {
-    expect(TOOL_IDS).toEqual(['counter']);
-    expect(TOOLS).toHaveLength(1);
+  it('holds MultiChat and the viewer counter, in that order', () => {
+    expect(TOOL_IDS).toEqual(['multichat', 'counter']);
+    expect(TOOLS).toHaveLength(2);
   });
 
   it('has unique tool ids', () => {
@@ -36,8 +36,14 @@ describe('registry', () => {
     expect(findTool('counter')?.workspaceRoute).toBe('/tools/counter');
   });
 
+  it('finds MultiChat by its route segment', () => {
+    expect(findTool('multichat')?.id).toBe('multichat');
+    expect(findTool('multichat')?.label).toBe('MultiChat');
+    expect(findTool('multichat')?.workspaceRoute).toBe('/tools/multichat');
+    expect(findTool('multichat')?.overlayRoute).toBe('/multichat');
+  });
+
   it('returns undefined for an unknown, empty, or missing id', () => {
-    expect(findTool('multichat')).toBeUndefined();
     expect(findTool('unknown')).toBeUndefined();
     expect(findTool('')).toBeUndefined();
     expect(findTool(undefined)).toBeUndefined();
@@ -56,11 +62,26 @@ describe('registry', () => {
     expect(registered?.use((tool) => tool.catalog)).toBe(COUNTER_CATALOG);
   });
 
-  it('does not register a multichat tool or route', () => {
-    expect(TOOL_IDS).not.toContain('multichat');
+  it('registers exactly the two known workspace routes', () => {
+    expect(TOOLS.map((tool) => tool.workspaceRoute)).toEqual([
+      '/tools/multichat',
+      '/tools/counter',
+    ]);
+  });
+
+  it('carries previewNote through registration without losing it', () => {
+    /* The flat field the shell reads, and the descriptor field behind `use`,
+     * have to be the same string — a registration that dropped it would make
+     * the shell silently fall back to generic prose. */
     for (const tool of TOOLS) {
-      expect(tool.workspaceRoute).not.toContain('multichat');
+      expect(tool.previewNote).toBe(tool.use((descriptor) => descriptor.previewNote));
+      expect(tool.previewNote?.length).toBeGreaterThan(0);
     }
+  });
+
+  it('gives each tool its own preview note', () => {
+    const notes = TOOLS.map((tool) => tool.previewNote);
+    expect(new Set(notes).size).toBe(notes.length);
   });
 });
 

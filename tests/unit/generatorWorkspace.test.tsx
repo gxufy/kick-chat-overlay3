@@ -118,6 +118,19 @@ describe('channel fields come from the descriptor', () => {
     ).toEqual(['channel-twitch', 'channel-youtube', 'channel-kick', 'channel-tiktok']);
   });
 
+  it('keeps the counter preview caption exactly as it was hardcoded', () => {
+    render(<GeneratorWorkspace tool={counterTool} baseUrl={BASE} />);
+    /* The caption moved from PreviewViewport onto the descriptor. The rendered
+     * text must be unchanged, and must not be MultiChat's. */
+    expect(
+      screen.getByText(
+        'A real /counter overlay at this exact URL. It shows live counts and polls like any browser source, so it is empty while every configured channel is offline.',
+      ),
+    ).toBeTruthy();
+    expect(counterTool.previewNote).toContain('/counter');
+    expect(counterTool.previewNote).not.toContain('/multichat');
+  });
+
   it('still renders all six counter settings', () => {
     render(<GeneratorWorkspace tool={counterTool} baseUrl={BASE} />);
     for (const setting of counterTool.catalog) {

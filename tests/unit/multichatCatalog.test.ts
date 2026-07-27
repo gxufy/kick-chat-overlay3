@@ -4,7 +4,8 @@
  * authority on parsing and serialization behaviour; nothing here re-tests them.
  * These cover the descriptor layer instead: that it reuses the authoritative
  * defaults and enums rather than restating them, that it produces exactly the
- * string buildMultichatQuery produces, and that it is not registered.
+ * string buildMultichatQuery produces, and that it is registered as the first
+ * workspace tool while still generating URLs for the existing /multichat route.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -184,24 +185,36 @@ describe('registration boundary', () => {
     expect(multichatTool.catalog).toBe(MULTICHAT_CATALOG);
   });
 
-  it('is not present in TOOLS', () => {
-    expect(TOOLS.some((tool) => tool.id === 'multichat')).toBe(false);
-    expect(TOOLS).toHaveLength(1);
+  it('is present in TOOLS, first', () => {
+    expect(TOOLS.some((tool) => tool.id === 'multichat')).toBe(true);
+    expect(TOOLS).toHaveLength(2);
+    expect(TOOLS[0]?.id).toBe('multichat');
   });
 
-  it('leaves TOOL_IDS as exactly the counter', () => {
-    expect(TOOL_IDS).toEqual(['counter']);
+  it('puts multichat ahead of the counter in TOOL_IDS', () => {
+    expect(TOOL_IDS).toEqual(['multichat', 'counter']);
   });
 
-  it('is not findable by id, so /tools/multichat stays a 404', () => {
-    expect(findTool('multichat')).toBeUndefined();
+  it('is findable by id, so /tools/multichat is a real route', () => {
+    expect(findTool('multichat')).toBeDefined();
+    expect(findTool('multichat')?.workspaceRoute).toBe('/tools/multichat');
   });
 
-  it('produces no registered workspace route pointing at multichat', () => {
-    for (const tool of TOOLS) {
-      expect(tool.workspaceRoute).not.toContain('multichat');
-      expect(tool.overlayRoute).not.toContain('multichat');
-    }
+  it('registers the workspace route while keeping the legacy overlay route', () => {
+    const registered = findTool('multichat');
+    expect(registered?.workspaceRoute).toBe('/tools/multichat');
+    /* The generated URL still points at the existing overlay, not at the
+     * workspace — that is what keeps copied URLs valid if this route is ever
+     * withdrawn. */
+    expect(registered?.overlayRoute).toBe('/multichat');
+  });
+
+  it('hands back the same descriptor object through use', () => {
+    /* Compared inside the callback: returning the descriptor out of `use` would
+     * re-widen its type parameters, which is the very thing `use` exists to
+     * avoid. Object.is proves identity without that. */
+    expect(findTool('multichat')?.use((tool) => Object.is(tool, multichatTool))).toBe(true);
+    expect(findTool('multichat')?.use((tool) => tool.catalog)).toBe(MULTICHAT_CATALOG);
   });
 });
 

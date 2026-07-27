@@ -1,39 +1,29 @@
 /* GET /api/twitch/oauth/start — begin Twitch OAuth authorization.
  *
- * Generates a cryptographically random state, stores it in an HttpOnly
- * cookie, and redirects the browser to Twitch's OAuth authorization endpoint
- * using the Authorization Code Grant Flow.
+ * Generates a cryptographically random state, stores it in an HttpOnly cookie
+ * alongside the validated return destination, and redirects the browser to
+ * Twitch's OAuth authorization endpoint using the Authorization Code Grant Flow.
  *
  * The client secret is intentionally omitted from this route. It is used only
  * server-side during the authorization-code exchange in the callback route.
+ *
+ * `returnTo` selects which generator the browser comes back to. It is matched
+ * against an exact allowlist here and again in the callback, and it travels in an
+ * HttpOnly cookie rather than through Twitch, so neither a crafted start URL nor
+ * a crafted callback URL can redirect anywhere but an internal page. An absent or
+ * refused value falls back to the workspace; it is never echoed back to the
+ * client, so nothing unvalidated is reflected.
  */
 
-import crypto from 'node:crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
+import {
+  buildOAuthCookies,
+  generateOAuthState,
+} from '../../../../lib/server/oauthCookies';
+import { resolveReturnDestination } from '../../../../lib/oauthReturn';
 
-const STATE_BYTES = 32;
 const TWITCH_SCOPE = 'moderator:read:chat_messages';
 const TWITCH_AUTHORIZE = 'https://id.twitch.tv/oauth2/authorize';
-
-const STATE_COOKIE_NAME = 'twitch_oauth_state';
-const STATE_COOKIE_PATH = '/api/twitch/oauth';
-const STATE_COOKIE_MAX_AGE = 600;
-
-function buildStateCookie(state: string): string {
-  const parts = [
-    `${STATE_COOKIE_NAME}=${state}`,
-    `Path=${STATE_COOKIE_PATH}`,
-    `Max-Age=${STATE_COOKIE_MAX_AGE}`,
-    'SameSite=Lax',
-    'HttpOnly',
-  ];
-
-  if (process.env.NODE_ENV === 'production') {
-    parts.push('Secure');
-  }
-
-  return parts.join('; ');
-}
 
 export default function handler(
   req: NextApiRequest,
@@ -53,10 +43,13 @@ export default function handler(
     return;
   }
 
-  const state = crypto.randomBytes(STATE_BYTES).toString('hex');
+  const state = generateOAuthState();
+  /* Anything not exactly an allowlisted internal path becomes the default. A
+     repeated ?returnTo= arrives as an array and is refused by the same rule. */
+  const returnTo = resolveReturnDestination(req.query['returnTo']);
 
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Set-Cookie', buildStateCookie(state));
+  res.setHeader('Set-Cookie', buildOAuthCookies(state, returnTo));
 
   const authorizationUrl = new URL(TWITCH_AUTHORIZE);
   authorizationUrl.searchParams.set('response_type', 'code');

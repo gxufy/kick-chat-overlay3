@@ -12,6 +12,13 @@
 import crypto from 'node:crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import {
+  STATE_COOKIE_NAME,
+  buildClearOAuthCookies,
+  readCookie,
+  readReturnCookie,
+} from '../../../../lib/server/oauthCookies';
+import { resolveReturnDestination } from '../../../../lib/oauthReturn';
+import {
   exchangeTwitchAuthorizationCode,
 } from '../../../../lib/server/twitchOAuth';
 import {
@@ -28,31 +35,12 @@ import {
 /* Constants                                                           */
 /* ------------------------------------------------------------------ */
 
-const STATE_COOKIE_NAME = 'twitch_oauth_state';
-const STATE_COOKIE_PATH = '/api/twitch/oauth';
 const GENERIC_ERR = 'Twitch connection failed.';
 const AUTH_ERR = 'Twitch authorization was not completed.';
 
 /* ------------------------------------------------------------------ */
 /* Cookie helpers                                                      */
 /* ------------------------------------------------------------------ */
-
-/** Build a Set-Cookie header that clears the OAuth state cookie. */
-function buildClearStateCookie(): string {
-  const parts = [
-    `${STATE_COOKIE_NAME}=`,
-    `Path=${STATE_COOKIE_PATH}`,
-    'Max-Age=0',
-    'SameSite=Lax',
-    'HttpOnly',
-  ];
-
-  if (process.env.NODE_ENV === 'production') {
-    parts.push('Secure');
-  }
-
-  return parts.join('; ');
-}
 
 /**
  * Extract a single string value for a query parameter.
@@ -113,8 +101,16 @@ export default async function handler(
     return;
   }
 
-  /* --- Clear the OAuth state cookie --------------------------------- */
-  res.setHeader('Set-Cookie', buildClearStateCookie());
+  /* --- Clear both temporary OAuth cookies --------------------------- */
+  /* Set before any branch below, so every exit path clears them and a state
+     value can never be replayed — including the refusal paths. */
+  res.setHeader('Set-Cookie', buildClearOAuthCookies());
+
+  /* --- Resolve the return destination -------------------------------- */
+  /* From the HttpOnly cookie only, never from this request's query string, and
+     revalidated against the allowlist in case the cookie was tampered with.
+     Resolved here so the failure paths below cannot skip validation. */
+  const returnTo = resolveReturnDestination(readReturnCookie(req.headers.cookie));
 
   /* --- Reject array-valued parameters before extracting query values */
   if (
@@ -155,18 +151,7 @@ export default async function handler(
   }
 
   /* Parse the cookie to extract the OAuth state value */
-  const cookies = rawCookie
-    .split(';')
-    .map((c) => c.trim());
-
-  let cookieState: string | undefined;
-  for (const cookie of cookies) {
-    const [name, ...rest] = cookie.split('=');
-    if (name === STATE_COOKIE_NAME) {
-      cookieState = rest.join('=');
-      break;
-    }
-  }
+  const cookieState = readCookie(rawCookie, STATE_COOKIE_NAME);
 
   if (!cookieState || cookieState.length === 0) {
     res.status(400).json({ error: AUTH_ERR });
@@ -211,7 +196,10 @@ export default async function handler(
       twitch: validation.login,
     }).toString();
 
-    res.redirect(302, `/multichat#${fragment}`);
+    /* Fragment, not query: the connection id must not reach a server log, a
+       Referer header, or the address bar's shareable part. `returnTo` is an
+       allowlisted path, so this is a same-origin relative redirect. */
+    res.redirect(302, `${returnTo}#${fragment}`);
     return;
   } catch {
     /* All helper, configuration, encryption, and database errors */

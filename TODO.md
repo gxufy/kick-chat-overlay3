@@ -694,6 +694,76 @@ audit of the finished work turned up.
       serializer test. With the fix in place, partial defaults pass all 14, so the
       serializer is a sufficient defense on its own.
 
+### MultiChat migration — batch 10: demo preview and card design language (implemented)
+
+- [x] **The workspace could not show what a setting did.** The preview only ever
+      embedded the real overlay, which is correctly empty when no configured
+      channel is live. Every appearance setting was therefore unverifiable until
+      you went live, and this was the largest remaining gap against the classic
+      generator, whose preview always rendered something.
+- [x] **Demo mode** renders the production `ChatOverlay` over fixed sample
+      messages. It is the real renderer, not a mock-up, so appearance behaves
+      exactly as it will in OBS. Its config is round-tripped through
+      `parseMultichatConfig` — the overlay route's own parser — so the demo cannot
+      drift from the route it previews.
+- [x] Exactly one mode is mounted. Leaving the Live iframe mounted behind the demo
+      would keep a real overlay connected and polling while off screen.
+- [x] **Message creator** composes a message with a chosen platform, name, text,
+      and badges. Ids derive from a counter, not a clock, so output is
+      deterministic.
+- [x] **Command simulator** derives its list from `MULTICHAT_COMMANDS`, so it
+      cannot document a command the overlay does not implement. Buttons appear only
+      for the four commands whose effect it can genuinely reproduce (`hide`,
+      `show`, `ping`, `stop`); the rest are listed with an explicit statement that
+      they are not being faked, rather than pretending to reload a source or play a
+      video.
+- [x] `hide` sets `display:none` on the container, matching `setChatVisible` in
+      `pages/multichat.tsx`. An earlier attempt emptied the message list instead,
+      which was wrong twice over: it misrepresents the command, and `ChatOverlay`
+      tracks the ids it has already batched, so a removed message never returns —
+      `hide` was permanent and `show` a no-op. Caught by test.
+- [x] **No demo state can reach the overlay URL.** Six tests assert the URL is
+      byte-identical across entering demo mode, toggling sample groups, composing a
+      message, and running a simulated command.
+- [x] **Card design language.** `components/workspace/Card.tsx` plus the brand
+      chips and accent section headings ported from the classic generator. Applied
+      to every panel; `SettingsList` moves to `ws-raised` so it does not flatten
+      into the card it now sits inside.
+- [x] Platform chip colours are asserted equal to the overlay's own `PROVIDERS`
+      values, so the two copies of the four brand colours cannot drift.
+      Mutation-checked: drifting `ws-kick` fails the test.
+- [x] **Three defects this batch introduced, all caught by tests, all fixed.** A
+      duplicate accessible name — the "Overlay URL" card heading collided with the
+      field's own label, so `getByLabelText` matched two elements; the card is now
+      "OBS browser source", which also says what the URL is for. A decorative chip
+      repeating the platform name as a second DOM node; the label itself is now
+      styled as the chip, keeping one accessible name per field. And
+      `role="radio"` buttons for the mode switch, where this codebase uses native
+      inputs — rewritten as a native radio group.
+- [x] The background-picker accessibility tests queried every radio on the page
+      while naming one group. Scoped to the group each names, since a second
+      radiogroup now exists, and the new switch is held to the same assertions
+      rather than excluded from them.
+- [x] `PreviewBackgroundId` moved to `lib/tools/previewBackground` so the registry
+      can type a demo panel's `background` as that union instead of `string`,
+      without `lib` importing a type from `components`.
+- [x] 83 new tests (977 total, all passing). Typecheck and production build clean.
+
+**Setting parity with the classic generator is exact:** MultiChat 24/24, Viewer
+Counter 6/6. The classic's `pinOpacity` is not a missing setting — it is a local
+preview animation that never reaches the URL.
+
+#### Verification still outstanding
+
+- [ ] Manual browser verification of Demo mode at 1920 / 1024 / 375 px.
+- [ ] Manual keyboard and screen-reader pass over the mode switch, sample-group
+      toggles, message creator, and simulator. No automated accessibility tooling
+      is installed, so axe/CI checks remain outstanding for this batch as for
+      every earlier one.
+- [ ] Manual confirmation that switching to Demo stops the Live overlay's
+      polling — asserted in jsdom by the iframe being unmounted, not observed
+      against a running network.
+
 ### Security review — findings not acted on
 
 A read-only review of the OAuth lifecycle found the flow sound on CSRF state

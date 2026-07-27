@@ -39,7 +39,7 @@ Work from any connected platform's chat. Every command needs the same level — 
 
 ## OBS Setup
 
-1. Open **`/tools/multichat`**, fill in your channel name(s) — any one platform or all four — and configure options. The preview beside the settings is a real overlay at the exact URL you are about to copy.
+1. Open **`/tools/multichat`**, fill in your channel name(s) — any one platform or all four — and configure options. The preview beside the settings has two modes. **Live** is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet. **Demo** renders the same overlay over sample messages, so you can judge fonts, colours, and badges before going live; you can also compose your own test message and try the `!multichat` commands there. Nothing you do in Demo changes the URL.
 2. Click **Copy overlay URL**
 3. In OBS: **Add Source → Browser Source**, paste the URL
 4. Recommended size: **830 × 230**

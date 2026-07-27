@@ -10,6 +10,11 @@ import type { ReactNode } from 'react';
 export const PREVIEW_BACKGROUNDS = ['checker', 'dark', 'light'] as const;
 export type PreviewBackgroundId = (typeof PREVIEW_BACKGROUNDS)[number];
 
+/** Narrow an arbitrary string (e.g. from a restored draft) to a valid id. */
+export function isPreviewBackgroundId(value: string): value is PreviewBackgroundId {
+  return (PREVIEW_BACKGROUNDS as readonly string[]).includes(value);
+}
+
 const LABELS: Record<PreviewBackgroundId, string> = {
   checker: 'Transparent',
   dark: 'Dark',

@@ -8,6 +8,7 @@
  * accepted by /counter's parser too.
  */
 import TextInput from '@/components/ui/inputs/TextInput';
+import { chipClass, isChipPlatform } from '@/lib/tools/platformChrome';
 import type { ToolChannels, ToolPlatform } from '@/lib/tools/registry';
 
 export default function ChannelPanel<P extends string>({
@@ -21,8 +22,11 @@ export default function ChannelPanel<P extends string>({
   onChange: (platform: P, raw: string) => void;
 }) {
   return (
-    <fieldset className="space-y-3">
-      <legend className="text-sm font-medium text-ws-text">Channels</legend>
+    <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* The card around this panel carries the visible "Channels" heading, so
+          the legend would be a duplicate on screen — hidden, not removed, since
+          the fieldset still needs a name in the a11y tree. */}
+      <legend className="sr-only">Channels</legend>
       {platforms.map((platform) => {
         const raw = channels[platform.key] ?? '';
         const invalid = raw.length > 0 && !platform.normalize(raw);
@@ -36,6 +40,16 @@ export default function ChannelPanel<P extends string>({
             invalid={invalid}
             errorMessage={invalid ? platform.invalidMessage : undefined}
             onChange={(next) => onChange(platform.key, next)}
+            /* The label itself is styled as the platform's brand chip, the way
+               the classic generator tags each input. Restyling the one real
+               label rather than adding a decorative chip beside it keeps a
+               single accessible name — a second element repeating the platform
+               name would be read twice and would duplicate it in the DOM. */
+            labelClassName={
+              isChipPlatform(platform.key)
+                ? `mb-1.5 ${chipClass(platform.key)}`
+                : undefined
+            }
           />
         );
       })}

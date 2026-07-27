@@ -23,9 +23,9 @@ export default function ToolHelpPanel({
       {sections.map((section) => (
         <details
           key={section.id}
-          className="group rounded-lg border border-ws-border bg-ws-surface"
+          className="group rounded-xl border border-ws-border bg-ws-surface shadow-ws-card"
         >
-          <summary className="cursor-pointer rounded-lg px-4 py-3 text-sm font-medium text-ws-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-ring">
+          <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-medium text-ws-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-ring">
             {section.title}
             {/* Decorative: <details> already announces its own state. */}
             <span aria-hidden="true" className="ml-2 text-xs text-ws-muted">

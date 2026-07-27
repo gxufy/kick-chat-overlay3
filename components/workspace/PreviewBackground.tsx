@@ -7,13 +7,22 @@
  */
 import type { ReactNode } from 'react';
 
-export const PREVIEW_BACKGROUNDS = ['checker', 'dark', 'light'] as const;
-export type PreviewBackgroundId = (typeof PREVIEW_BACKGROUNDS)[number];
+/* The ids and their guard live in lib/tools/previewBackground so that
+   lib/tools/registry can type a demo panel's `background` prop as this union
+   rather than as `string`. Re-exported here so every existing import site keeps
+   working and there is still one definition. */
+export {
+  PREVIEW_BACKGROUNDS,
+  isPreviewBackgroundId,
+  type PreviewBackgroundId,
+} from '@/lib/tools/previewBackground';
 
-/** Narrow an arbitrary string (e.g. from a restored draft) to a valid id. */
-export function isPreviewBackgroundId(value: string): value is PreviewBackgroundId {
-  return (PREVIEW_BACKGROUNDS as readonly string[]).includes(value);
-}
+/* Imported as well as re-exported: a re-export does not bind the name in this
+   module's own scope, and the picker below iterates the list. */
+import {
+  PREVIEW_BACKGROUNDS,
+  type PreviewBackgroundId,
+} from '@/lib/tools/previewBackground';
 
 const LABELS: Record<PreviewBackgroundId, string> = {
   checker: 'Transparent',

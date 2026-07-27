@@ -79,7 +79,7 @@ export default function OverlayUrlBar({
         monospace
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 pt-1">
         <Button onClick={() => void copy()} variant="primary">
           Copy overlay URL
         </Button>

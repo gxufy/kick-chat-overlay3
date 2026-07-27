@@ -43,6 +43,7 @@ import {
   type MultichatWorkspaceStyle,
 } from '@/lib/multichatConfig';
 import type { OverlayTool, ToolChannels, ToolPlatform } from '../registry';
+import DemoPanel from '@/components/workspace/multichat/DemoPanel';
 import TwitchConnectionPanel from '@/components/workspace/multichat/TwitchConnectionPanel';
 import { MULTICHAT_HELP } from './help';
 import { MULTICHAT_OBS_SIZE } from './obs';
@@ -299,5 +300,15 @@ export const multichatTool: OverlayTool<
       return next === runtime.twitchChannel ? runtime : { ...runtime, twitchChannel: next };
     },
     optionAvailability: multichatOptionAvailability,
+  },
+  /* Demo mode. Exists because a live preview of an offline channel is correctly
+     empty, which tells you nothing about how your styling looks — the single
+     biggest gap between this workspace and the classic generator, whose preview
+     always showed something. The panel renders the production ChatOverlay over
+     sample messages, so it is the real renderer, not a mock-up. */
+  demo: {
+    label: 'Demo',
+    hint: 'Sample messages in the real overlay renderer. Nothing here changes the URL.',
+    Panel: DemoPanel,
   },
 };

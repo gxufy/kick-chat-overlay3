@@ -28,7 +28,9 @@ export default function SettingsList<S extends Record<string, unknown>>({
   const settings = visibleSettings(catalog);
 
   return (
-    <div className="rounded-lg border border-ws-border bg-ws-surface">
+    /* Raised, not ws-surface: this list now sits inside a card of that colour,
+       and matching it would flatten the two into one slab. */
+    <div className="overflow-hidden rounded-lg border border-ws-border bg-ws-raised">
       {settings.map((setting) => (
         <SettingRow
           key={setting.key}

@@ -16,6 +16,8 @@
  *
  * Browser-safe — no server-only imports, no secrets.
  */
+import type { ReactElement } from 'react';
+import type { PreviewBackgroundId } from './previewBackground';
 import type { OptionAvailability, SettingCatalog } from './settingTypes';
 import type { ToolContext } from './toolContext';
 import { counterTool } from './counter/config';
@@ -188,7 +190,46 @@ export type OverlayTool<S, P extends string = string, R = undefined> = {
   context?: (style: S, runtime: R) => ToolContext | undefined;
   /** Optional tool-owned runtime state beyond appearance and channels. */
   runtime?: ToolRuntimeSupport<S, P, R>;
+  /**
+   * Optional second preview mode, rendering sample data instead of a live feed.
+   *
+   * A live preview of an offline channel is correctly empty, which shows nothing
+   * about styling. A tool that can render representative sample data supplies a
+   * component here and the shell offers a Live/Demo switch; a tool that cannot —
+   * the counter, whose numbers are only meaningful when real — supplies nothing
+   * and the switch does not appear.
+   *
+   * Declared as a component rather than as data because what makes a convincing
+   * demo is tool-specific: MultiChat's is a message list with its own filters and
+   * composer. The shell hands over the serialized query, the viewport height, and
+   * the chosen preview background, and knows nothing else about it. In
+   * particular it does not know the demo exists as a concept beyond this field,
+   * which is what keeps chat-specific vocabulary out of the shell.
+   */
+  demo?: {
+    /** Label for the mode switch. */
+    label: string;
+    /** One line describing what the demo shows. */
+    hint: string;
+    Panel: ToolDemoPanel;
+  };
 };
+
+/**
+ * A tool's demo-mode panel.
+ *
+ * Receives only what the shell can supply without knowing the tool: the exact
+ * query string the URL bar shows, the OBS viewport height, the workspace's
+ * preview background, and whether the source tag was set explicitly. Everything
+ * else — which samples, which filters — is the panel's own state, which is why
+ * no demo choice can reach the generated URL.
+ */
+export type ToolDemoPanel = (props: {
+  query: string;
+  height: number;
+  background: PreviewBackgroundId;
+  sourceTagExplicit: boolean;
+}) => ReactElement | null;
 
 /**
  * A registered tool with its `S` and `P` hidden.

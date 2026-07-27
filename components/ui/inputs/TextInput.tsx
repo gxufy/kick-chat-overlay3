@@ -17,6 +17,7 @@ export default function TextInput({
   readOnly,
   monospace,
   describedBy,
+  labelClassName,
 }: {
   id: string;
   label: string;
@@ -30,6 +31,16 @@ export default function TextInput({
   monospace?: boolean;
   /** Ids of helper text owned by the caller, announced alongside the label. */
   describedBy?: string;
+  /**
+   * Replaces the label's own styling, keeping it a real `<label for>`.
+   *
+   * Used by the channel fields to render the label *as* the platform's brand
+   * chip. The alternative — a decorative chip beside a normal label — duplicates
+   * the platform name in the DOM, which is both redundant to a screen reader and
+   * exactly what the counter's regression test rightly flags. Restyling the one
+   * real label keeps a single accessible name per field.
+   */
+  labelClassName?: string;
 }) {
   const errorId = `${id}-error`;
   const showError = Boolean(errorMessage);
@@ -39,7 +50,12 @@ export default function TextInput({
 
   return (
     <div className="min-w-0">
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-ws-muted">
+      <label
+        htmlFor={id}
+        className={
+          labelClassName ?? 'mb-1 block text-xs font-medium text-ws-muted'
+        }
+      >
         {label}
       </label>
       <input

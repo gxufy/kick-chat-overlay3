@@ -75,10 +75,25 @@ describe('skip link', () => {
 /* Previously three role="radio" buttons: the ARIA pattern without the keyboard
    behaviour it promises. Native inputs get one tab stop and arrow keys from the
    platform, so this asserts they really are native. */
+/* The workspace now has more than one radiogroup — the preview Live/Demo switch
+   is the other — so these queries are scoped to the group each one names. The
+   assertions are unchanged in strictness; they are just aimed at the fieldset
+   under test rather than at every radio on the page. `groupOf` resolves the
+   fieldset from one of its own labels, so it cannot drift if the markup moves. */
+function groupOf(optionLabel: string): HTMLElement {
+  const input = screen.getByLabelText(optionLabel);
+  const fieldset = input.closest('fieldset');
+  expect(fieldset, `no fieldset around ${optionLabel}`).not.toBeNull();
+  return fieldset as HTMLElement;
+}
+
+const radiosIn = (group: HTMLElement) =>
+  Array.from(group.querySelectorAll<HTMLInputElement>('[role="radio"], input[type="radio"]'));
+
 describe('preview background picker', () => {
   it('is a native radio group, not ARIA-role buttons', () => {
     render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
-    const radios = screen.getAllByRole('radio');
+    const radios = radiosIn(groupOf('Transparent'));
     expect(radios.length).toBeGreaterThanOrEqual(3);
     for (const radio of radios) {
       expect(radio.tagName.toLowerCase()).toBe('input');
@@ -89,14 +104,14 @@ describe('preview background picker', () => {
   it('shares one name, so the platform treats them as one group', () => {
     render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
     const names = new Set(
-      screen.getAllByRole('radio').map((r) => r.getAttribute('name')),
+      radiosIn(groupOf('Transparent')).map((r) => r.getAttribute('name')),
     );
     expect(names.size).toBe(1);
   });
 
   it('has exactly one checked option and every option labelled', () => {
     render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
-    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    const radios = radiosIn(groupOf('Transparent'));
     expect(radios.filter((r) => r.checked)).toHaveLength(1);
     for (const label of ['Transparent', 'Dark', 'Light']) {
       expect(screen.getByLabelText(label)).toBeTruthy();
@@ -109,6 +124,46 @@ describe('preview background picker', () => {
     fireEvent.click(light);
     expect(light.checked).toBe(true);
     expect((screen.getByLabelText('Transparent') as HTMLInputElement).checked).toBe(false);
+  });
+});
+
+/* The preview mode switch held to the same bar as the background picker, rather
+   than merely being excluded from its assertions. */
+describe('preview mode switch', () => {
+  const mountMultichat = () =>
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+
+  it('is a native radio group, not ARIA-role buttons', () => {
+    mountMultichat();
+    const radios = radiosIn(groupOf('Live'));
+    expect(radios).toHaveLength(2);
+    for (const radio of radios) {
+      expect(radio.tagName.toLowerCase()).toBe('input');
+      expect(radio.getAttribute('type')).toBe('radio');
+    }
+  });
+
+  it('shares one name and has exactly one checked option', () => {
+    mountMultichat();
+    const radios = radiosIn(groupOf('Live'));
+    expect(new Set(radios.map((r) => r.getAttribute('name'))).size).toBe(1);
+    expect(radios.filter((r) => r.checked)).toHaveLength(1);
+  });
+
+  it('names the group, so it is not an unlabelled fieldset', () => {
+    mountMultichat();
+    expect(groupOf('Live').querySelector('legend')?.textContent).toBe('Preview mode');
+  });
+
+  it('starts on Live, so the honest preview is the default', () => {
+    mountMultichat();
+    expect((screen.getByLabelText('Live') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('is absent for a tool that declares no demo', () => {
+    render(<GeneratorWorkspace tool={counterTool} baseUrl="https://example.com" />);
+    expect(screen.queryByLabelText('Live')).toBeNull();
+    expect(screen.queryByText('Preview mode')).toBeNull();
   });
 });
 

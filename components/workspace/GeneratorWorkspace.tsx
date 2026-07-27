@@ -135,18 +135,40 @@ export default function GeneratorWorkspace<
      cannot disagree. Built from parts by one helper — the tool's own serializer
      for the query, and the tool's optional context for anything after it. A
      tool that declares no context yields precisely `base + route + '?' + query`. */
+  /* The query alone, kept separate because a demo panel parses it back through
+     the overlay's own schema. Derived here rather than re-split out of `url`,
+     which would have to guess where the query ends once a context fragment is
+     appended. */
+  const query = useMemo(
+    () => tool.serialize(channels, style),
+    [tool, channels, style],
+  );
+
   const url = useMemo(
     () =>
       buildOverlayUrl({
         baseUrl,
         route: tool.overlayRoute,
-        query: tool.serialize(channels, style),
+        query,
         context: tool.context?.(style, runtime),
       }),
-    [baseUrl, tool, channels, style, runtime],
+    [baseUrl, tool, query, style, runtime],
   );
 
   const configured = tool.configuredPlatforms(channels).length > 0;
+
+  /* Whether `sourceTag=` is actually in the query, read from the query itself.
+     `pages/multichat.tsx` derives this the same way — from the presence of the
+     raw parameter — because the parsed config defaults the field and so cannot
+     distinguish an explicit value from an omitted one. Deriving it here rather
+     than passing a constant matters: the MultiChat serializer omits the
+     parameter when the value is its default, so a hardcoded `true` would make a
+     demo honour a marker the real URL leaves to the route's own default. Tools
+     that never emit it simply always get false. */
+  const sourceTagExplicit = useMemo(
+    () => new URLSearchParams(query).has('sourceTag'),
+    [query],
+  );
 
   /* The tool's own words for what its preview is. Both registered tools supply
      one; the field is optional on the descriptor, so a tool added later without
@@ -201,6 +223,9 @@ export default function GeneratorWorkspace<
 
           <LivePreviewPanel
             url={url}
+            query={query}
+            demo={tool.demo}
+            sourceTagExplicit={sourceTagExplicit}
             configured={configured}
             platforms={tool.platforms}
             channels={channels}

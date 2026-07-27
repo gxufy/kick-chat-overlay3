@@ -19,6 +19,29 @@ module.exports = {
         'ws-accent-hover': '#7f60ff',
         'ws-ring': '#8b6cff',
         'ws-danger': '#f87171',
+        /* Raised surface for nested groups inside a card — the classic
+           generator's --card-2, which is what stops a card-inside-a-card from
+           reading as one flat slab. */
+        'ws-raised': '#20202a',
+        /* Platform brand colors, from lib/render's PROVIDERS. Duplicated as
+           Tailwind tokens because channel chrome is styled at build time while
+           PROVIDERS is consumed at render time; the parity test in
+           tests/unit/platformChrome.test.ts asserts the two agree. */
+        'ws-kick': '#53fc18',
+        'ws-twitch': '#9147ff',
+        'ws-youtube': '#ff0000',
+        'ws-tiktok': '#00f2ea',
+      },
+      boxShadow: {
+        /* The classic generator's --shadow. Chunky and doubled: a wide soft
+           ambient plus a tight contact shadow, which is what separates its cards
+           from the background instead of relying on the border alone. */
+        'ws-card': '0 4px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.5)',
+      },
+      backgroundImage: {
+        /* The accent glow behind the classic generator's header. */
+        'ws-glow':
+          'radial-gradient(ellipse 900px 420px at 50% -80px, rgba(109,74,255,0.10), transparent)',
       },
       keyframes: {
         slide: { '0%': { transform: 'translateX(-100%)', opacity: '0' }, '100%': { transform: 'translateX(0)', opacity: '1' } },

@@ -53,8 +53,15 @@ a { color: var(--accent); text-decoration: none; transition: opacity .2s; }
 a:hover { color: var(--accent-2); opacity: .85; }
 
 /* The centred column. Wider than the original 900px because two tool panels sit
-   side by side now; the panels themselves keep the original card proportions. */
-.page { max-width: 1180px; margin: 0 auto; padding: 0 20px 60px; }
+   side by side now; the panels themselves keep the original card proportions.
+
+   1500px with a 32px gutter: at 1920 that leaves ~210px of background either
+   side, which reads as a deliberately bounded page rather than the wide empty
+   gutters the 1180px column produced, and it stops well short of edge-to-edge.
+   The gutter is what holds the bound at intermediate widths — between about 1530
+   and 1560 the max-width stops binding and the padding takes over, so the page
+   never touches the viewport edge. */
+.page { max-width: 1500px; margin: 0 auto; padding: 0 32px 44px; }
 
 /* Focus, visible everywhere. The original page relied on the UA default, which
    several of its controls suppressed. */
@@ -84,15 +91,18 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 .platform-row { display: flex; gap: 6px; margin-top: 2px; }
 .platform-chip { font-size: 0.64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,0.03); }
 
-/* Cards — every section is one */
+/* Cards — every section is one. Padding and margins are tighter than the
+   original: the page is now four panels plus two full-width sections rather than
+   one column, so per-card padding is paid six times over and was pushing the
+   commands and setup cards below two screens on a 1080p display. */
 .card {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  padding: 20px 22px; margin-bottom: 22px; box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 14px; box-shadow: var(--shadow);
 }
-.card.hero { border-top: 2px solid var(--accent); padding: 26px 26px 20px; }
-.section-title { font-size: 0.8rem; color: var(--accent); font-weight: 700; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .12em; display: flex; align-items: center; gap: 8px; }
+.card.hero { border-top: 2px solid var(--accent); padding: 16px 18px 12px; }
+.section-title { font-size: 0.8rem; color: var(--accent); font-weight: 700; margin: 0 0 9px; text-transform: uppercase; letter-spacing: .12em; display: flex; align-items: center; gap: 8px; }
 .section-title::before { content: ''; width: 4px; height: 14px; border-radius: 2px; background: var(--accent); }
-.card-note { color: var(--dim); font-size: 0.78rem; margin: 8px 0 0; line-height: 1.55; }
+.card-note { color: var(--dim); font-size: 0.76rem; margin: 6px 0 0; line-height: 1.45; }
 
 /* ── The two-tool layout ──
    DOM order is the mobile order. On a desktop the four panels are placed into two
@@ -103,11 +113,15 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 @media (min-width: 1000px) {
   .tool-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* 1.35fr / 1fr: MultiChat has 24 settings and a 680px-wide preview, the
+       Counter has six and a 400px one, so an even split left the chat URL
+       wrapping while the counter column ran empty. Both minmax(0,…) so a long
+       unbroken URL cannot push a column past its share. */
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     grid-template-areas:
       'chat-output counter-output'
       'chat-settings counter-settings';
-    gap: 0 22px;
+    gap: 0 16px;
     align-items: start;
   }
   .panel-chat-output { grid-area: chat-output; }
@@ -117,23 +131,43 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 }
 
 /* Platform inputs — compact row, one per platform */
-.platform-inputs { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.platform-input { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: 1; min-width: 190px; }
-.platform-input input[type=text] { max-width: none; font-size: 0.92rem; padding: 9px 12px; width: 100%; }
+.platform-inputs { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.platform-input { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 190px; }
+.platform-input input[type=text] { max-width: none; font-size: 0.9rem; padding: 8px 12px; width: 100%; }
 .platform-tag { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; padding: 2px 10px; border-radius: 999px; }
 .kick-tag { color: #53fc18; border: 1px solid rgba(83,252,24,.55); background: rgba(83,252,24,.06); }
 .tw-tag { color: #a970ff; border: 1px solid rgba(145,70,255,.55); background: rgba(145,70,255,.07); }
 .yt-tag { color: #ff5b5b; border: 1px solid rgba(255,68,68,.55); background: rgba(255,68,68,.06); }
 .tt-tag { color: #25F4EE; border: 1px solid rgba(37,244,238,.5); background: rgba(37,244,238,.05); }
-.platform-hint { text-align: center; color: var(--dim); font-size: 0.78rem; margin: -6px 0 4px; }
+.platform-hint { text-align: center; color: var(--dim); font-size: 0.76rem; margin: -2px 0 2px; }
 
-/* Two-column control table — the Classic arrangement */
-.form_table { display: flex; gap: 0; margin-bottom: 4px; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 16px 4px 10px; }
-.form_col { flex: 1; padding: 0 18px; min-width: 0; }
-.form_col:first-child { border-right: 1px solid var(--line); }
-.form_row { display: flex; align-items: center; margin-bottom: 11px; gap: 8px; }
+/* Multi-column control table — the Classic arrangement, tightened.
+   Grid rather than flex so a third column can be added by class alone, and so
+   the dividers fall between columns without a :first-child rule per count. */
+.form_table {
+  display: grid; grid-template-columns: 1fr; gap: 0 14px; margin-bottom: 4px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 14px 7px;
+}
+.form_col { min-width: 0; }
+.form_row { display: flex; align-items: center; margin-bottom: 7px; gap: 8px; }
 .form_row.left { justify-content: flex-start; }
-.col-heading { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 10px; }
+.col-heading { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 7px; }
+
+/* Column counts, applied only where there is room for them. Below 1000px every
+   table is a single column, which is what keeps the mobile reading order equal
+   to the DOM order — the columns are grid tracks over one unchanged tree, so no
+   control is duplicated for a breakpoint. */
+@media (min-width: 1000px) {
+  .form_table.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form_table.cols-2 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
+}
+/* Three columns need the full-width breakpoint: inside the 1.35fr chat column a
+   third track would put two words per line on the longer labels. */
+@media (min-width: 1500px) {
+  .form_table.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .form_table.cols-3 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
+}
 
 input[type=text], input[type=number], select {
   background: #16161b; border: 1px solid var(--line); border-radius: 8px; color: var(--text);
@@ -147,22 +181,47 @@ input[type=text].short { width: 52px; }
 label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: none; }
 
 /* Catalog-driven control rows */
-.classic-field { margin-bottom: 4px; }
-.classic-field.stacked { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.classic-field.stacked label { font-size: 0.78rem; color: var(--dim); }
+.classic-field { margin-bottom: 2px; }
+.classic-field.stacked { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.classic-field.stacked label { font-size: 0.77rem; color: var(--dim); }
 .classic-field.stacked input[type=text] { width: 100%; font-size: 0.8rem; }
-.classic-help { font-size: 0.72rem; line-height: 1.45; color: var(--dim); margin: 2px 0 8px; }
+.classic-help { font-size: 0.71rem; line-height: 1.35; color: var(--dim); margin: 1px 0 5px; }
 .classic-help.warn { color: var(--warn); }
 
+/* Segmented pills — a radio group wearing the chip design language. The real
+   radio is the focus target and stays visually hidden; the label is the pill, so
+   arrow keys, the single tab stop, and group semantics are the platform's. */
+.classic-seg { border: none; margin: 0 0 7px; padding: 0; min-width: 0; }
+.classic-seg legend { font-size: 0.8rem; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.classic-seg-row { display: flex; flex-wrap: wrap; gap: 3px; background: #16161b; border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+.classic-seg-item { display: inline-flex; flex: 1 1 auto; }
+.classic-seg-item input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.classic-seg-label {
+  flex: 1; text-align: center; white-space: nowrap;
+  font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 6px;
+  cursor: pointer; color: var(--dim); transition: background .12s, color .12s;
+}
+.classic-seg-label:hover { color: var(--muted); background: rgba(255,255,255,.04); }
+.classic-seg-label.on { background: var(--accent); color: #fff; }
+.classic-seg-label.on:hover { background: var(--accent-2); color: #fff; }
+.classic-seg-item input:disabled + .classic-seg-label { opacity: .4; cursor: not-allowed; }
+/* The ring is drawn on the label because the radio itself is invisible. */
+.classic-seg-item input:focus-visible + .classic-seg-label { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+
+/* Slider row — track, live readout, and the button back to blank */
+.classic-range { display: flex; align-items: center; gap: 8px; }
+.classic-range input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 20px; cursor: pointer; }
+.classic-range-out { font-family: 'Roboto Mono', monospace; font-size: 0.72rem; color: var(--accent); min-width: 3.4em; text-align: right; }
+
 /* Pill toggles — the ChatIS signature control, scaled to our palette */
-.toggle-wrap { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-bottom: 4px; }
-.toggle-wrap > label:first-child { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: none; order: -1; flex: 1; text-align: right; }
-.toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; display: inline-block; }
-.toggle input { position: absolute; opacity: 0; width: 44px; height: 24px; margin: 0; cursor: pointer; z-index: 1; }
+.toggle-wrap { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-bottom: 2px; }
+.toggle-wrap > label:first-child { font-size: 0.82rem; color: var(--muted); cursor: pointer; user-select: none; order: -1; flex: 1; text-align: right; }
+.toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; display: inline-block; }
+.toggle input { position: absolute; opacity: 0; width: 40px; height: 22px; margin: 0; cursor: pointer; z-index: 1; }
 .toggle-slider { position: absolute; inset: 0; background: #34343e; border-radius: 999px; cursor: pointer; transition: background .2s ease-in-out; }
-.toggle-slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .2s ease-in-out; }
+.toggle-slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .2s ease-in-out; }
 .toggle input:checked + .toggle-slider { background: var(--accent); }
-.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
 /* The real checkbox is transparent, so its focus ring has to be drawn on the
    slider — without this the switches are keyboard-reachable but invisible. */
 .toggle input:focus-visible + .toggle-slider { outline: 2px solid var(--accent-2); outline-offset: 2px; }
@@ -212,63 +271,86 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-conn-btn:disabled { color: var(--dim); cursor: default; }
 
 /* Preview surfaces */
-.preview-label { font-size: 0.75rem; color: var(--dim); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.preview-label { font-size: 0.73rem; color: var(--dim); margin-bottom: 5px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .preview-label button { background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 0.72rem; padding: 3px 9px; cursor: pointer; transition: all .15s; text-transform: none; letter-spacing: 0; font-weight: 600; font-family: inherit; }
 .preview-label button:hover { border-color: var(--accent); color: var(--accent); }
 .preview-surface { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: inset 0 2px 12px rgba(0,0,0,.3); min-height: 90px; }
 .preview-surface.white { background: #46464e; }
 .preview-surface.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
-.preview-empty { display: flex; align-items: center; justify-content: center; padding: 26px 16px; color: var(--dim); font-size: 0.78rem; text-align: center; line-height: 1.5; }
+.preview-empty { display: flex; align-items: center; justify-content: center; padding: 20px 16px; color: var(--dim); font-size: 0.77rem; text-align: center; line-height: 1.45; }
 
-/* URL result */
-.url-box { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin-top: 12px; }
-.url-code { flex: 1 1 240px; min-width: 0; background: #101014; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-family: 'Roboto Mono', monospace; font-size: 0.7rem; color: var(--accent); word-break: break-all; line-height: 1.7; }
-.url-copy { flex-shrink: 0; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-weight: 800; font-size: 0.83rem; padding: 10px 20px; cursor: pointer; transition: background .15s; font-family: inherit; }
+/* URL result.
+   The field takes the row and the two actions sit beside it at their natural
+   height. Previously all three were align-items:stretch flex items, so Copy
+   and Open grew to match a URL that wrapped to three lines — a ~70px-tall Copy
+   button next to a two-line field. Now the actions are their own row-aligned
+   group and the field is free to wrap without dragging them with it. */
+.url-box { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; margin-top: 9px; }
+.url-code { flex: 1 1 220px; min-width: 0; background: #101014; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-family: 'Roboto Mono', monospace; font-size: 0.69rem; color: var(--accent); word-break: break-all; line-height: 1.55; max-height: 74px; overflow-y: auto; }
+.url-actions { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+.url-copy { background: var(--accent); color: #fff; border: none; border-radius: 8px; font-weight: 800; font-size: 0.78rem; padding: 7px 15px; cursor: pointer; transition: background .15s; font-family: inherit; white-space: nowrap; }
 .url-copy:hover { background: var(--accent-2); }
 .url-copy.ok { background: var(--ok); }
-.url-open { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.83rem; font-weight: 800; padding: 10px 18px; border-radius: 8px; background: transparent; border: 1px solid rgba(74,132,250,.5); color: var(--accent); }
+.url-open { display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 800; padding: 7px 14px; border-radius: 8px; background: transparent; border: 1px solid rgba(74,132,250,.5); color: var(--accent); white-space: nowrap; }
 .url-open:hover { background: rgba(74,132,250,.1); }
-.url-warn { flex-basis: 100%; font-size: 0.74rem; color: var(--warn); line-height: 1.5; margin: 0; }
+.url-warn { flex-basis: 100%; font-size: 0.72rem; color: var(--warn); line-height: 1.4; margin: 0; }
+/* Empty is the common case — no fragment — so it must not reserve a line. */
+.url-warn:empty { display: none; }
+/* Below the grid breakpoint the actions wrap under the field and share its
+   width, which is the touch-friendly arrangement. */
+@media (max-width: 999px) {
+  .url-actions { flex: 1 1 100%; }
+  .url-copy, .url-open { flex: 1; padding: 10px 14px; }
+}
 
 /* Commands table */
-.cmd-table { width: 100%; border-collapse: collapse; font-size: 0.79rem; }
-.cmd-table th { text-align: left; color: var(--dim); font-weight: 700; text-transform: uppercase; font-size: 0.68rem; letter-spacing: .08em; padding: 4px 10px 8px; border-bottom: 1px solid var(--line); }
-.cmd-table td { padding: 7px 10px; color: var(--muted); border-bottom: 1px solid rgba(44,44,53,.5); vertical-align: top; line-height: 1.45; }
+.cmd-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.cmd-table th { text-align: left; color: var(--dim); font-weight: 700; text-transform: uppercase; font-size: 0.68rem; letter-spacing: .08em; padding: 3px 10px 6px; border-bottom: 1px solid var(--line); }
+.cmd-table td { padding: 5px 10px; color: var(--muted); border-bottom: 1px solid rgba(44,44,53,.5); vertical-align: top; line-height: 1.4; }
 .cmd-table td:first-child { color: var(--accent); font-family: 'Roboto Mono', monospace; white-space: nowrap; font-size: 0.72rem; }
 .cmd-table tr:last-child td { border-bottom: none; }
 .cmd-table-wrap { overflow-x: auto; }
 
-/* Setup steps */
-.steps { list-style: none; padding: 0; margin: 0 0 14px; counter-reset: s; }
-.steps li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; font-size: 0.86rem; color: var(--muted); line-height: 1.55; }
-.steps li::before { content: counter(s); background: rgba(74,132,250,.12); border: 1px solid rgba(74,132,250,.4); border-radius: 50%; min-width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+/* Setup steps. Two side-by-side lists on a wide screen: they are independent
+   procedures for two independent browser sources, so stacking them was pure
+   height. */
+.steps { list-style: none; padding: 0; margin: 0 0 10px; counter-reset: s; }
+.steps li { counter-increment: s; display: flex; gap: 10px; align-items: flex-start; margin-bottom: 6px; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+.steps li::before { content: counter(s); background: rgba(74,132,250,.12); border: 1px solid rgba(74,132,250,.4); border-radius: 50%; min-width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
 .steps li strong { color: var(--text); }
-.setup-sub { font-size: 0.8rem; font-weight: 800; color: var(--text); margin: 16px 0 8px; }
+.setup-sub { font-size: 0.79rem; font-weight: 800; color: var(--text); margin: 0 0 6px; }
+.setup-cols { display: grid; grid-template-columns: 1fr; gap: 0 22px; }
+@media (min-width: 1000px) { .setup-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); } }
 
 /* Footer */
-footer { border-top: 1px solid var(--line); padding: 22px 0; text-align: center; font-size: 0.78rem; color: var(--dim); margin-top: 24px; }
+footer { border-top: 1px solid var(--line); padding: 16px 0; text-align: center; font-size: 0.77rem; color: var(--dim); margin-top: 14px; }
 footer p { margin: 4px 0; }
 footer a { color: var(--accent); }
 
 /* Tablet and narrow desktop: one column, so two unusably narrow panels never
    happen. The control table stacks at the same breakpoint the original used. */
+@media (max-width: 999px) {
+  /* One track, and the dividers off with it — the column rules above are inside
+     min-width queries, so this only has to undo the padding. */
+  .form_col { padding-right: 0; }
+}
 @media (max-width: 720px) {
-  .form_table { flex-direction: column; padding: 16px 14px 10px; }
-  .form_col { padding: 0; }
-  .form_col:first-child { border-right: none; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 14px; }
+  .form_table { padding: 12px 12px 8px; }
   .header-logo { height: 200px; margin: -24px 0 -54px; }
   .header-strip { gap: 12px; flex-wrap: wrap; }
   .header-title { font-size: 1.6rem; }
-  .page { padding: 0 14px 48px; }
-  .card { padding: 16px 15px; border-radius: 12px; }
-  .card.hero { padding: 18px 15px 16px; }
+  .page { padding: 0 14px 40px; }
+  .card { padding: 14px 13px; border-radius: 12px; }
+  .card.hero { padding: 15px 13px 12px; }
   .platform-input { min-width: 100%; }
-  /* Touch targets: the chips and small buttons are the only controls that fall
-     under a comfortable tap size at these sizes. */
+  /* Touch targets: the chips, pills, and small buttons are the only controls that
+     fall under a comfortable tap size at these sizes. Density is a desktop goal,
+     and a 24px-tall pill on a phone is not a usable one. */
   .classic-chip-label { padding: 8px 14px; font-size: 0.7rem; }
+  .classic-seg-label { padding: 9px 10px; }
   .classic-conn-btn, .classic-clear { padding: 8px 12px; }
-  .url-copy, .url-open { flex: 1 1 auto; padding: 12px 16px; }
-  .toggle-wrap { margin-bottom: 8px; }
+  .toggle-wrap { margin-bottom: 6px; }
+  .url-code { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -36,7 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
-import ClassicSetting from './ClassicSetting';
+import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
@@ -116,6 +116,27 @@ const VC_BG = toggleSetting(VC, 'bg');
 const VC_ALIGN = selectSetting(VC, 'align');
 const VC_TEXT_SHADOW = selectSetting(VC, 'textShadow');
 const VC_STROKE = selectSetting(VC, 'stroke');
+
+/* The two settings that are genuinely numeric, drawn as sliders.
+   Bounds are the ones the overlay's own parser accepts, not new limits: the fade
+   parser is parseInt on a seconds value, and emoteScale is documented in its own
+   label as 0–3. Both keep their blank state, which suppresses the parameter — a
+   slider alone cannot express that, hence the button. */
+const FADE_RANGE: SettingRange = {
+  min: 1,
+  max: 120,
+  step: 1,
+  unit: 's',
+  blankLabel: 'Never',
+};
+
+const EMOTE_SCALE_RANGE: SettingRange = {
+  min: 0.5,
+  max: 3,
+  step: 0.1,
+  unit: '×',
+  blankLabel: 'Default',
+};
 
 /* Platform chip classes, matching the Classic tag colours. */
 const PLATFORM_TAG: Record<string, string> = {
@@ -563,21 +584,25 @@ export default function ClassicGenerator({
           <div className="url-code" aria-label="Generated MultiChat overlay URL">
             {chatUrl}
           </div>
-          <button
-            type="button"
-            onClick={copyChat}
-            className={`url-copy${copiedChat ? ' ok' : ''}`}
-          >
-            {copiedChat ? '✓ Copied' : 'Copy'}
-          </button>
-          <a
-            className="url-open"
-            href={chatUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open
-          </a>
+          {/* Both actions in one group, so a URL that wraps to three lines makes
+              the field taller and leaves the buttons their own height. */}
+          <div className="url-actions">
+            <button
+              type="button"
+              onClick={copyChat}
+              className={`url-copy${copiedChat ? ' ok' : ''}`}
+            >
+              {copiedChat ? '✓ Copied' : 'Copy'}
+            </button>
+            <a
+              className="url-open"
+              href={chatUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open
+            </a>
+          </div>
           {/* Announced, not just shown: the URL gains a fragment while the page
               is open, and the fragment is a live credential. */}
           <p className="url-warn" role="status">
@@ -643,21 +668,24 @@ export default function ClassicGenerator({
           <div className="url-code" aria-label="Generated viewer counter URL">
             {counterUrl}
           </div>
-          <button
-            type="button"
-            onClick={copyCounter}
-            className={`url-copy${copiedCounter ? ' ok' : ''}`}
-          >
-            {copiedCounter ? '✓ Copied' : 'Copy'}
-          </button>
-          <a
-            className="url-open"
-            href={counterUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open
-          </a>
+          {/* The same output row as the chat panel, class for class. */}
+          <div className="url-actions">
+            <button
+              type="button"
+              onClick={copyCounter}
+              className={`url-copy${copiedCounter ? ' ok' : ''}`}
+            >
+              {copiedCounter ? '✓ Copied' : 'Copy'}
+            </button>
+            <a
+              className="url-open"
+              href={counterUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open
+            </a>
+          </div>
         </div>
         <p className="sr-only" role="status">
           {copiedCounter ? 'Viewer counter URL copied to the clipboard.' : ''}
@@ -666,13 +694,15 @@ export default function ClassicGenerator({
     );
   }
 
-  /** All 24 MultiChat settings, in the Classic two-column arrangement. */
+  /** All 24 MultiChat settings, in the Classic multi-column arrangement. */
   function chatSettingsPanel() {
     const chat = (
       setting: Parameters<typeof ClassicSetting<MultichatWorkspaceStyle>>[0]['setting'],
       extra?: {
         optionStyle?: (v: string) => React.CSSProperties | undefined;
         controlStyle?: React.CSSProperties;
+        segmented?: boolean;
+        range?: SettingRange;
       },
     ) => (
       <ClassicSetting
@@ -684,6 +714,8 @@ export default function ClassicGenerator({
         idPrefix="mc"
         optionStyle={extra?.optionStyle}
         controlStyle={extra?.controlStyle}
+        segmented={extra?.segmented}
+        range={extra?.range}
       />
     );
 
@@ -696,28 +728,42 @@ export default function ClassicGenerator({
           Chat settings
         </h2>
 
-        <div className="form_table">
-          {/* Left column: how it is drawn. */}
+        {/* Three columns at the widest breakpoint, two below it, one on a phone —
+            grid tracks over one unchanged tree, so reading and tab order follow
+            this DOM order at every width and no control exists twice. */}
+        <div className="form_table cols-3">
+          {/* How it is drawn. */}
           <div className="form_col">
-            <p className="col-heading">Appearance</p>
-            {chat(MC_TEXT_SIZE)}
+            <p className="col-heading">Text</p>
+            {chat(MC_TEXT_SIZE, { segmented: true })}
             {/* Each option in the face it names, and the closed control in the
-                selected one — the reason this page loads every overlay family. */}
+                selected one — the reason this page loads every overlay family.
+                Twelve faces, so this stays a dropdown: as pills it would be four
+                rows of unreadably small type. */}
             {chat(MC_FONT, {
               controlStyle: fontStack ? { fontFamily: fontStack } : undefined,
               optionStyle: (v) =>
                 FONT_FAMILIES[v] ? { fontFamily: FONT_FAMILIES[v] } : undefined,
             })}
-            {chat(MC_STROKE)}
-            {chat(MC_TEXT_SHADOW)}
-            {chat(MC_ANIMATION)}
-            {chat(MC_SOURCE_TAG)}
-            {chat(MC_EMOTE_SCALE)}
-            {chat(MC_BG_COLOR)}
+            {chat(MC_STROKE, { segmented: true })}
+            {chat(MC_TEXT_SHADOW, { segmented: true })}
             {chat(MC_FONT_COLOR)}
+            {chat(MC_BG_COLOR)}
           </div>
 
-          {/* Right column: what it shows. */}
+          {/* How it moves and marks. */}
+          <div className="form_col">
+            <p className="col-heading">Appearance</p>
+            {chat(MC_ANIMATION, { segmented: true })}
+            {chat(MC_SOURCE_TAG, { segmented: true })}
+            {chat(MC_EMOTE_SCALE, { range: EMOTE_SCALE_RANGE })}
+            {chat(MC_FADE_ENABLED)}
+            {/* Only meaningful while fading is on, so it is only rendered then —
+                the toggle's own description states that emission depends on it. */}
+            {chatStyle.fadeEnabled ? chat(MC_FADE, { range: FADE_RANGE }) : null}
+          </div>
+
+          {/* What it shows. */}
           <div className="form_col">
             <p className="col-heading">Behaviour</p>
             {chat(MC_SEVENTV_EMOTES)}
@@ -728,21 +774,27 @@ export default function ClassicGenerator({
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}
-            {chat(MC_FADE_ENABLED)}
-            {/* Only meaningful while fading is on, so it is only rendered then —
-                the toggle's own description states that emission depends on it. */}
-            {chatStyle.fadeEnabled ? chat(MC_FADE) : null}
             {chat(MC_SHOW_PIN)}
             {chatStyle.showPinEnabled ? chat(MC_PIN_PLATFORMS) : null}
           </div>
         </div>
 
-        {/* Filters, full width: three free-text lists that need the room. */}
-        <div className="form_table">
+        {/* Filters: three free-text lists, each needing the width of a line. */}
+        <div className="form_table cols-3">
           <div className="form_col">
             <p className="col-heading">Filters</p>
             {chat(MC_BOT_NAMES)}
+          </div>
+          <div className="form_col">
+            <p className="col-heading" aria-hidden="true">
+              &nbsp;
+            </p>
             {chat(MC_USER_BL)}
+          </div>
+          <div className="form_col">
+            <p className="col-heading" aria-hidden="true">
+              &nbsp;
+            </p>
             {chat(MC_PREFIX_BL)}
           </div>
         </div>
@@ -754,6 +806,7 @@ export default function ClassicGenerator({
   function counterSettingsPanel() {
     const vc = (
       setting: Parameters<typeof ClassicSetting<ViewerCounterStyle>>[0]['setting'],
+      extra?: { segmented?: boolean },
     ) => (
       <ClassicSetting
         key={setting.key}
@@ -761,6 +814,7 @@ export default function ClassicGenerator({
         value={counterStyle[setting.key] as SettingValue}
         onChange={changeCounter}
         idPrefix="vc"
+        segmented={extra?.segmented}
       />
     );
 
@@ -773,12 +827,12 @@ export default function ClassicGenerator({
           Counter settings
         </h2>
 
-        <div className="form_table">
+        <div className="form_table cols-2">
           <div className="form_col">
             <p className="col-heading">Layout</p>
-            {vc(VC_ALIGN)}
-            {vc(VC_TEXT_SHADOW)}
-            {vc(VC_STROKE)}
+            {vc(VC_ALIGN, { segmented: true })}
+            {vc(VC_TEXT_SHADOW, { segmented: true })}
+            {vc(VC_STROKE, { segmented: true })}
           </div>
           <div className="form_col">
             <p className="col-heading">Display</p>
@@ -863,6 +917,10 @@ export default function ClassicGenerator({
           only one at a time.
         </p>
 
+        {/* Two independent procedures, so they sit side by side on a wide screen
+            rather than stacking into twice the height. */}
+        <div className="setup-cols">
+        <div>
         <p className="setup-sub">Chat overlay</p>
         <ol className="steps">
           <li>
@@ -885,7 +943,9 @@ export default function ClassicGenerator({
             overlay reconnects on load, so toggling it drops recent messages.
           </li>
         </ol>
+        </div>
 
+        <div>
         <p className="setup-sub">Viewer counter</p>
         <ol className="steps">
           <li>
@@ -903,6 +963,8 @@ export default function ClassicGenerator({
             .
           </li>
         </ol>
+        </div>
+        </div>
 
         <p className="card-note">
           Both backgrounds are already transparent, so no custom CSS is needed.

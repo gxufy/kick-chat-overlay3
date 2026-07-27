@@ -38,24 +38,38 @@ Work from any connected platform's chat. Every command needs the same level — 
 | `!multichat tts [message]` | Text-to-speech via StreamElements | Mod+ |
 
 Every command needs the same level, so the table above has no per-command access
-distinction to make. The generator's Demo mode lists all nine and can genuinely
-run four of them — `ping`, `stop`, `show`, and `hide`. The other five
-(`reload`, `refresh emotes`, `img`, `yt`, `tts`) are listed without a button
-rather than faked: reloading a browser source, refetching emote sets, and playing
-media are not things a preview can reproduce honestly.
+distinction to make. The generator's **Commands & help** section is built from the
+parser's own command list, so it documents these nine and nothing else. The viewer
+counter has no commands of its own.
 
 ## OBS Setup
 
-1. Open **`/tools/multichat`**, fill in your channel name(s) — any one platform or all four — and configure options. The preview beside the settings has two modes. **Live** is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet. **Demo** renders the same overlay over sample messages, so you can judge fonts, colours, and badges before going live; you can also compose your own test message and try the `!multichat` commands there. Nothing you do in Demo changes the URL.
-2. Click **Copy overlay URL**
-3. In OBS: **Add Source → Browser Source**, paste the URL
-4. Recommended size: **830 × 230**
+The chat overlay and the viewer counter are **two independent browser sources with
+two different URLs**. Add either, both, or neither — neither needs the other.
 
-The Viewer Counter generator is at **`/tools/counter`**.
+Open **[`/multichat`](https://multichat-gxufy.com/multichat)** — with no channel
+parameters, that is the generator. Fill in your channel name(s) once (any one
+platform or all four); they feed both tools.
 
-Both generators are optional — the overlay URL is just query parameters, so a
-hand-written one works fine. The original single-page generator is still
-available at `/classic/multichat` if you prefer it.
+**Chat overlay**
+
+1. Configure the chat settings. The preview is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet.
+2. Click **Copy** under the chat overlay URL.
+3. In OBS: **Add Source → Browser**, paste the URL.
+4. Size it **680 × 280**. **830 × 230** is a wider, shorter alternative that shows fewer messages.
+5. Leave **Shutdown source when not visible** off — the overlay reconnects on load, so toggling it drops recent messages.
+
+**Viewer counter**
+
+1. The **Viewer counter** panel sits beside the chat panel, with its own settings, preview, and URL.
+2. Click its **Copy**, add a **second Browser source**, and paste it in.
+3. Size it **400 × 80**.
+
+The preview-background buttons on the generator change that page only. They are
+never part of either URL and never reach OBS.
+
+The generator is optional — the overlay URL is just query parameters, so a
+hand-written one works fine.
 
 > Connecting a Twitch account is optional and only enables Twitch's own **pinned
 > messages**, which anonymous IRC cannot read. Everything else works with no
@@ -64,15 +78,28 @@ available at `/classic/multichat` if you prefer it.
 > leaves the pin option disabled, with the reason shown next to the connection.
 > See [DEPLOY.md](DEPLOY.md) for the environment variables that feature needs.
 
-`/multichat` is the overlay itself, not the generator. Existing OBS URLs pointing
-at it keep working unchanged and always will; a visit with no channel forwards to
-`/tools/multichat`.
+### Routes
+
+`/multichat` is both, decided by whether the URL names a channel:
+
+| URL | What it serves |
+|---|---|
+| `/multichat?kick=…` (any channel parameter) | **The overlay.** Existing OBS URLs keep working unchanged and always will. |
+| `/multichat` (no channel) | **The generator** — chat overlay and embedded viewer counter. |
+| `/counter?twitch=…` | The viewer counter overlay, a separate browser source. |
+| `/classic/multichat` | Redirects to `/multichat`, carrying a Twitch OAuth return fragment across. |
+| `/tools/multichat` | Redirects to `/multichat`. No longer a generator page. |
+| `/tools/counter` | Redirects to `/multichat#viewer-counter`. No longer a generator page. |
+| `/?kick=…` | Legacy root overlay URLs still forward to `/multichat`. |
+
+The generator has no demo or test mode: every preview is the real overlay at the
+real URL, so it is empty when the configured channels are.
 
 ### Fonts
 
 The overlay only fetches the one Google font your `font=` value names
 (`lib/overlayFonts.ts`), not the whole set — so OBS never downloads faces it
-will not render. The homepage and `/classic/multichat` each load their own UI and
+will not render. The homepage and the generator each load their own UI and
 font-picker faces the same way, via a `@import` inside `next/head`'s `<style>`
 rather than a `<link rel="stylesheet">`, which is what Next.js's Pages Router
 warns against outside `pages/_document.tsx`. `segoe`, `impact`, and `default`

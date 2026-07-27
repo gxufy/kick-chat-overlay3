@@ -1,5 +1,17 @@
 # TODO.md
 
+> **Current shape of the product: section 10, "Original Classic generator revamp".**
+> The single generator is the revamped original Classic page, served at a
+> channel-less `/multichat`, with the Viewer Counter embedded in it. The `/tools`
+> generator pages and the Demo interface are gone.
+>
+> The "Generator workspace" and "MultiChat migration" batches below are kept as a
+> build log of how the underlying pieces — catalogs, descriptors, OAuth, pins,
+> fonts — were built and verified. Every one of those pieces is still in use. What
+> is superseded is only the *interface* they were built behind: the three-column
+> `/tools` workspace, its sidebar navigation, and its demo preview. Where a batch
+> calls a `/tools` route canonical, read section 10 instead.
+
 ## 1. Twitch native pin polling (shipped)
 
 - [x] Add `lib/twitchPinPoller.ts` — wraps `fetchTwitchChannelPin` in a poll interval with a single in-flight request, `AbortController` on stop, and backoff that backs off on `lookup-failed` and stops permanently on `invalid-request` / `channel-not-found`.
@@ -896,3 +908,124 @@ None of the following were touched, and none are shipped:
 - Applying the Supabase schema SQL — documented, but a manual human step (section 4).
 - MultiWidget Alerts — not started.
 - TikTok features beyond the dedup note (section 7), homepage/navigation redesign, and unrelated responsive-layout work. Not tracked as roadmap items anywhere in the repository; listed only to record that neither the Twitch nor the Viewer Counter work addressed them.
+
+## 10. Original Classic generator revamp (implemented)
+
+The `/tools` workspace direction was rejected. The generator is the **original
+Classic page**, revamped: the same centred branded header, wordmark, platform
+badges, dark gradient, polished cards, compact platform inputs, two-column control
+tables, and pill switches — with the modern engine underneath and the Viewer
+Counter embedded as a companion panel.
+
+### Routes (final)
+
+| URL | Serves |
+|---|---|
+| `/multichat?kick=…` (any channel parameter) | The overlay, permanently. Existing OBS URLs are untouched and never redirect. |
+| `/multichat` (no channel) | The revamped Classic generator. |
+| `/counter?twitch=…` | The Viewer Counter overlay — a separate browser source. |
+| `/classic/multichat` | `replace` to `/multichat`, carrying a valid OAuth return fragment across. |
+| `/tools/multichat` | `replace` to `/multichat`. No longer a generator. |
+| `/tools/counter` | `replace` to `/multichat#viewer-counter`. No longer a generator. |
+| `/tools/<anything else>` | Still a real 404 (`getStaticProps` → `notFound`). |
+| `/?kick=…` | Legacy root overlay forwarding, unchanged. |
+
+- [x] `components/classic/ClassicGenerator.tsx` — the canonical generator. Controls
+      are rendered from the two tool catalogs (24 MultiChat, 6 Counter) rather than
+      hand-written selects, so a catalog change cannot silently skip a control.
+- [x] `components/classic/ClassicSetting.tsx` — one Classic-styled control per
+      descriptor type, honouring `hidden`, `disabled`, and gated-option
+      availability. Ids are namespaced (`mc-` / `vc-`) because both catalogs
+      contain `stroke` and `textShadow`.
+- [x] The Viewer Counter panel uses the **same** `counterTool` descriptor —
+      defaults, normalizer, serializer, preview frame, OBS size. There is no second
+      Counter implementation, and no second serializer, parser, OAuth path, pin
+      path, connection matcher, or overlay renderer anywhere.
+- [x] `workspaceRoute` removed from the tool descriptors: it described a route
+      that is now a redirect stub and was read only by tests.
+
+### Layout
+
+DOM order is the mobile order; the desktop arrangement is CSS grid placement over
+the same tree, so nothing is duplicated or reordered per breakpoint.
+
+1. Classic header → 2. channels → 3. chat preview + URL → 4. **counter preview +
+URL** → 5. chat settings → 6. counter settings → 7. Commands & help → 8. OBS setup.
+
+- [x] 1920: chat left, counter right, both visible without scrolling past a
+      settings list. Commands and OBS setup full width underneath.
+- [x] 1024: the two columns collapse to one rather than becoming two unusably
+      narrow panels; the counter is still the second thing on the page.
+- [x] 375: the counter's preview and URL come **before** the 24 chat settings, so
+      it is reachable without scrolling through them.
+- [x] Commands & help is built from `MULTICHAT_COMMANDS`, the parser's own list, so
+      it documents the nine real commands and nothing else. OBS setup states
+      plainly that the two overlays are two independent browser sources with two
+      URLs, and gives each its own size.
+
+### Removed
+
+- [x] The `/tools` generator pages (workspace shell, sidebar navigation,
+      three-column layout) and the tool-switcher.
+- [x] The whole Demo interface: Live/Demo switch, demo preview, sample-message
+      groups, message creator, command simulator, Test Tools. Every preview is now
+      the real overlay at the real URL, empty when the channels are.
+- [x] The tests whose only subject was the rejected workspace or the Demo
+      interface. The production `ChatOverlay` renderer and the authoritative
+      command help were kept.
+
+### Retained from the modern engine
+
+Authoritative parser/serializer and typed settings; Twitch OAuth with the
+exact-match return allowlist (now bound to `/multichat`, with the two retired paths
+still allowlisted so in-flight authorizations land); per-tool session drafts, so an
+OAuth round trip initiated by the chat side restores **both** the chat and the
+counter state; connection status, mismatch handling, Use connected channel,
+disconnect/reconnect; native Twitch pins with platform gating and bounded stale
+behaviour; Kick pins and pin ownership; `sourceTag` icon/dot/label/none independent
+of badges; 7TV emotes, cosmetics, paints, paint shadows; BTTV/FFZ; native badges
+and emotes; filters; single-family overlay font loading with no `next/head`
+stylesheet warning.
+
+- [x] Counter URLs never contain `undefined`, and the Counter never starts Twitch
+      pin polling — both asserted at the request layer, not inferred from the
+      descriptor.
+- [x] Preview background is page-only state on both panels, independent of each
+      other, and absent from both URLs.
+
+### Tests
+
+- [x] `tests/unit/classicGenerator.test.tsx` — 51 tests: Classic header, badges,
+      cards, compact inputs, two-column tables, pill switches, footer; panel order
+      and the mobile counter-before-chat-settings rule; all 24 MultiChat and all 6
+      Counter settings reachable; conditional settings appearing with what they
+      depend on; both authoritative URLs and preview/URL/Copy/Open identity; OAuth
+      preserving both tools' state; independent backgrounds; commands from the
+      registry; OBS setup for two sources; the Demo interface absent; skip link,
+      single `h1`, section labelling, counter anchor.
+- [x] `homepageRoutes.test.tsx` covers all four redirects including OAuth-fragment
+      carry-through and the `/tools/unknown` 404; `oauthEndpoints.test.ts` covers
+      the canonical destination and the retired-path allowlist.
+- [x] No screenshot tests: jsdom computes no layout, and a screenshot would fail on
+      a font metric while proving nothing about order or coverage.
+
+### Future — MultiAlert announcement banner (not built, deliberately)
+
+- [ ] Once MultiAlert exists, place a single announcement banner **above** the
+      Classic header reading exactly:
+      `*NEW* Check out this Multi Alert Overlay powered by Streamer.bot`
+      No banner, route, placeholder, or dead link ships until the destination is
+      real.
+
+### Verification still outstanding (human eyes required)
+
+- [ ] Visual pass on `/multichat` at 1920 × 1080, 1024 × 768, and 375 × 812:
+      Classic look intact, chat left / counter right, no horizontal overflow,
+      touch-friendly targets, useful preview heights.
+- [ ] Keyboard and screen-reader pass. No automated accessibility tooling is
+      installed, so axe/CI checks remain outstanding here as in every earlier
+      batch.
+- [ ] OBS confirmation that a generated MultiChat URL and a generated Counter URL
+      work as two separate browser sources at their stated sizes.
+- [ ] OBS confirmation that a pre-existing scene-collection `/multichat?…` URL
+      still renders the overlay untouched.

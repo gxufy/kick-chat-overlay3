@@ -71,7 +71,6 @@ export const COUNTER_PLATFORMS: readonly ToolPlatform<ViewerPlatform>[] =
 export const counterTool: OverlayTool<ViewerCounterStyle, ViewerPlatform> = {
   id: 'counter',
   label: 'Viewer Counter',
-  workspaceRoute: '/tools/counter',
   overlayRoute: '/counter',
   platforms: COUNTER_PLATFORMS,
   catalog: COUNTER_CATALOG,

@@ -141,12 +141,16 @@ export type ToolRuntimeSupport<S, P extends string, R> = {
  * instantiated with anything but `undefined`.
  */
 export type OverlayTool<S, P extends string = string, R = undefined> = {
-  /** Stable id; also the `/tools/[tool]` route segment. */
+  /** Stable id. Also the segment the retired `/tools/[tool]` redirect answers. */
   id: string;
-  /** Name shown in workspace navigation. */
+  /** Name shown wherever this tool is titled. */
   label: string;
-  /** Workspace route for this tool. */
-  workspaceRoute: string;
+  /* There was a `workspaceRoute` here, naming this tool's page in the generic
+     workspace. Both tools now live in the one generator at /multichat — the chat
+     panel and the counter panel — so neither has a page of its own to name, and a
+     field still called "workspace route" could only describe a redirect stub. The
+     retired paths are mapped in pages/tools/[tool].tsx, which is where they
+     belong: that page is the only thing that still knows they existed. */
   /** Overlay route the generated URL points at. */
   overlayRoute: string;
   /** Channel inputs, in the order they are shown. */
@@ -190,46 +194,23 @@ export type OverlayTool<S, P extends string = string, R = undefined> = {
   context?: (style: S, runtime: R) => ToolContext | undefined;
   /** Optional tool-owned runtime state beyond appearance and channels. */
   runtime?: ToolRuntimeSupport<S, P, R>;
-  /**
-   * Optional second preview mode, rendering sample data instead of a live feed.
-   *
-   * A live preview of an offline channel is correctly empty, which shows nothing
-   * about styling. A tool that can render representative sample data supplies a
-   * component here and the shell offers a Live/Demo switch; a tool that cannot —
-   * the counter, whose numbers are only meaningful when real — supplies nothing
-   * and the switch does not appear.
-   *
-   * Declared as a component rather than as data because what makes a convincing
-   * demo is tool-specific: MultiChat's is a message list with its own filters and
-   * composer. The shell hands over the serialized query, the viewport height, and
-   * the chosen preview background, and knows nothing else about it. In
-   * particular it does not know the demo exists as a concept beyond this field,
-   * which is what keeps chat-specific vocabulary out of the shell.
-   */
-  demo?: {
-    /** Label for the mode switch. */
-    label: string;
-    /** One line describing what the demo shows. */
-    hint: string;
-    Panel: ToolDemoPanel;
-  };
 };
 
-/**
- * A tool's demo-mode panel.
+/*
+ * There was a `demo` field here, declaring an alternative preview mode that
+ * rendered sample messages instead of a live feed, plus a message creator and a
+ * command simulator behind it.
  *
- * Receives only what the shell can supply without knowing the tool: the exact
- * query string the URL bar shows, the OBS viewport height, the workspace's
- * preview background, and whether the source tag was set explicitly. Everything
- * else — which samples, which filters — is the panel's own state, which is why
- * no demo choice can reach the generated URL.
+ * It is gone, along with the Live/Demo switch and the Test Tools section. The
+ * generator's previews are real overlays at the exact generated URLs, and an
+ * empty preview for an offline channel is the honest answer rather than a gap to
+ * paper over with fabricated messages: a sample feed shows how the styling looks
+ * on messages the overlay did not produce, which is a different question from the
+ * one a user is asking when they look at their own preview.
+ *
+ * The production ChatOverlay renderer and the authoritative command help are
+ * unaffected — they were never part of the demo.
  */
-export type ToolDemoPanel = (props: {
-  query: string;
-  height: number;
-  background: PreviewBackgroundId;
-  sourceTagExplicit: boolean;
-}) => ReactElement | null;
 
 /**
  * A registered tool with its `S` and `P` hidden.
@@ -247,7 +228,6 @@ export type ToolDemoPanel = (props: {
 export type RegisteredTool = {
   id: string;
   label: string;
-  workspaceRoute: string;
   overlayRoute: string;
   /** Widened for display and validation; each key stays a plain string here. */
   platforms: readonly ToolPlatform[];
@@ -271,7 +251,6 @@ function register<S extends ToolStyle, P extends string, R>(
   return {
     id: tool.id,
     label: tool.label,
-    workspaceRoute: tool.workspaceRoute,
     overlayRoute: tool.overlayRoute,
     platforms: tool.platforms,
     obs: tool.obs,
@@ -282,14 +261,13 @@ function register<S extends ToolStyle, P extends string, R>(
 }
 
 /**
- * Registered tools, in navigation order.
+ * Registered tools, chat first.
  *
- * MultiChat comes first, matching the order the workspace nav already showed it
- * in while it was an unregistered direct link. Its overlay still lives at
- * `/multichat`, and the original generator stays reachable and unchanged at
- * `/classic/multichat` — navigation links to it separately as MultiChat
- * (Classic). It is no longer the only place a Twitch account can be connected;
- * the workspace does that through the descriptor's `runtime` panel.
+ * That order is the page order: the Classic generator's chat panel comes before
+ * its Viewer Counter panel, on a desktop to the left of it and on a phone above
+ * it. Both descriptors are consumed by that one page — neither has a page of its
+ * own any more — and their overlays still live at `/multichat` and `/counter`,
+ * which is what keeps existing OBS sources working.
  */
 export const TOOLS: readonly RegisteredTool[] = [
   register(multichatTool),

@@ -6,9 +6,9 @@
  * defines no values of its own — only labels, ordering, and control types.
  *
  * `sourceTag` is a four-option select here, not the legacy `platformIcons`
- * boolean: workspace state carries the full enum the overlay implements. The
- * legacy field stays on MultichatGeneratorStyle for LandingPage and appears in
- * no catalog entry.
+ * boolean: generator state carries the full enum the overlay implements. The
+ * legacy field stays on MultichatGeneratorStyle as a pinned compatibility shape
+ * and appears in no catalog entry.
  *
  * NOT EXPOSED, deliberately:
  *   - ttsEnabled, showAvatars, showSystemMsgs, showRedeems. The parser accepts

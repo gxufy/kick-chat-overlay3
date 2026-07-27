@@ -43,8 +43,6 @@ import {
   type MultichatWorkspaceStyle,
 } from '@/lib/multichatConfig';
 import type { OverlayTool, ToolChannels, ToolPlatform } from '../registry';
-import DemoPanel from '@/components/workspace/multichat/DemoPanel';
-import TwitchConnectionPanel from '@/components/workspace/multichat/TwitchConnectionPanel';
 import { MULTICHAT_HELP } from './help';
 import { MULTICHAT_OBS_SIZE } from './obs';
 import {
@@ -202,7 +200,7 @@ export function normalizeMultichatStyle(
     fadeEnabled: keepBoolean(style.fadeEnabled, d.fadeEnabled),
     showPinEnabled: keepBoolean(style.showPinEnabled, d.showPinEnabled),
     /* The full enum, not the legacy boolean. platformIcons never appears in
-       workspace state — it is the shape LandingPage keeps, not this one. */
+       generator state — it is the legacy compatibility shape, not this one. */
     sourceTag: keepEnum(style.sourceTag, MULTICHAT_SOURCE_TAGS, d.sourceTag),
     mentionColor: keepBoolean(style.mentionColor, d.mentionColor),
     bgColor: keepString(style.bgColor, d.bgColor),
@@ -260,7 +258,6 @@ export const multichatTool: OverlayTool<
 > = {
   id: 'multichat',
   label: 'MultiChat',
-  workspaceRoute: '/tools/multichat',
   overlayRoute: '/multichat',
   platforms: MULTICHAT_PLATFORM_DEFS,
   catalog: MULTICHAT_CATALOG,
@@ -290,7 +287,10 @@ export const multichatTool: OverlayTool<
   context: multichatContext,
   runtime: {
     initial: EMPTY_MULTICHAT_RUNTIME,
-    Panel: TwitchConnectionPanel,
+    /* No `Panel`. The generator renders the connection controls itself, inside
+       the Twitch channel field where they belong visually — the shared rules they
+       depend on live in ./runtime and ./useTwitchConnection, which is what keeps
+       this descriptor from needing to own a component. */
     sync: syncMultichatStyle,
     /* Mirrors the typed Twitch channel into runtime so the match rule can be
        evaluated. Returns the same object when nothing changed, which is what
@@ -300,15 +300,5 @@ export const multichatTool: OverlayTool<
       return next === runtime.twitchChannel ? runtime : { ...runtime, twitchChannel: next };
     },
     optionAvailability: multichatOptionAvailability,
-  },
-  /* Demo mode. Exists because a live preview of an offline channel is correctly
-     empty, which tells you nothing about how your styling looks — the single
-     biggest gap between this workspace and the classic generator, whose preview
-     always showed something. The panel renders the production ChatOverlay over
-     sample messages, so it is the real renderer, not a mock-up. */
-  demo: {
-    label: 'Demo',
-    hint: 'Sample messages in the real overlay renderer. Nothing here changes the URL.',
-    Panel: DemoPanel,
   },
 };

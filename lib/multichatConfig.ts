@@ -7,7 +7,7 @@
  *      coercion, and transform is byte-for-byte the same, so every overlay URL
  *      already pasted into OBS keeps rendering identically.
  *   2. Serialization — buildMultichatQuery, moved verbatim from the
- *      URLSearchParams assembly in components/LandingPage.tsx. Parameter
+ *      URLSearchParams assembly the original generator page held. Parameter
  *      order, inclusion rules, and encoding are preserved exactly, because the
  *      copied URL string is part of the compatibility surface.
  *
@@ -65,9 +65,10 @@ export const MULTICHAT_STROKES = ['none', 'thin', 'medium', 'thick', 'thicker'] 
 /**
  * `sourceTag=` values, in parser order.
  *
- * All four are implemented by the overlay. The generator can only produce
- * `icon` (by omitting the parameter) and `none` — see MULTICHAT_GENERATOR_DEFAULTS
- * and buildMultichatQuery, which hold a boolean, not this enum.
+ * All four are implemented by the overlay, and the generator reaches all four
+ * through MultichatWorkspaceStyle. MULTICHAT_GENERATOR_DEFAULTS still holds the
+ * legacy boolean, which can only express `icon` (by omitting the parameter) and
+ * `none`; it is kept so already-copied URLs keep serializing identically.
  */
 export const MULTICHAT_SOURCE_TAGS = ['none', 'dot', 'label', 'icon'] as const;
 
@@ -258,7 +259,7 @@ export const MULTICHAT_OVERLAY_DEFAULTS: MultichatConfig =
   MultichatQuerySchema.parse({});
 
 /* ------------------------------------------------------------------ */
-/* Serializer — moved verbatim from components/LandingPage.tsx         */
+/* Serializer — moved verbatim from the original generator page        */
 /* ------------------------------------------------------------------ */
 
 /** Raw channel inputs, exactly as typed into the generator. */
@@ -357,10 +358,11 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
  * state.
  *
  * Identical to MultichatGeneratorStyle except that `platformIcons: boolean` is
- * replaced by the full `sourceTag` enum. The legacy shape is untouched and still
- * what LandingPage uses; that boolean can only express 'icon' (by omitting the
- * parameter) and 'none', so the overlay's 'dot' and 'label' were unreachable
- * from the generator. This type reaches them without changing the old one.
+ * replaced by the full `sourceTag` enum. This is the shape the generator holds.
+ * The legacy shape is untouched and no longer held by any page: it remains as
+ * the pinned compatibility surface, because its boolean can only express 'icon'
+ * (by omitting the parameter) and 'none', and the byte-for-byte output of both
+ * branches is what keeps already-copied OBS URLs rendering identically.
  */
 export type MultichatWorkspaceStyle = Omit<MultichatGeneratorStyle, 'platformIcons'> & {
   /** 'icon' omits the parameter, matching the overlay's own default. */
@@ -410,7 +412,7 @@ export const MULTICHAT_GENERATOR_DEFAULT_CHANNELS: MultichatChannels = {
 /**
  * Build the MultiChat overlay query string the generator copies.
  *
- * Moved verbatim from LandingPage: the key insertion order, the
+ * Moved verbatim from the original generator page: the key insertion order, the
  * include-versus-omit rules, the boolean spellings, and the encoding are all
  * part of the compatibility surface and are reproduced exactly.
  *

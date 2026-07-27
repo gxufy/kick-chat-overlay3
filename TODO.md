@@ -378,8 +378,9 @@ was added, and the existing generator at `/multichat` is untouched.
       configured platform shows no marker. Explaining it was the fix; changing
       the serializer would restyle URLs already in OBS scenes.
 - [x] `pinPlatforms` copy states plainly that native Twitch pins need a
-      connected account this workspace cannot set up, and points at MultiChat
-      (Classic). Twitch is absent from the workspace pin defaults.
+      connected account. Twitch is absent from the workspace pin defaults.
+      *(Superseded by 5B/5C below: the copy no longer points at MultiChat
+      (Classic), because the workspace can now connect Twitch itself.)*
 
 **No OAuth in this batch, deliberately.** There is no connect button, no
 disconnect button, no connection status, no connection UUID, no OAuth-start
@@ -387,6 +388,8 @@ request, and no fragment parser. `multichatTool.context` remains `undefined`, so
 every URL this workspace generates is an ordinary `/multichat` URL with no
 fragment — verified by asserting no `#` survives anywhere, including when a user
 types `#` into a filter field (it is percent-encoded into the query).
+*(Batches 5B and 5C below add OAuth. The unconnected-workspace guarantee is kept
+and still tested: with no connection, the generated URL is byte-identical.)*
 
 **Deviation from the batch brief.** The brief called for all six control types to
 be exercised. The catalog uses five: `toggle`, `select`, `text`, `color`, and
@@ -403,19 +406,70 @@ implemented and tested at the control level from batch 2.
 - [ ] Manual OBS confirmation of a workspace-generated MultiChat URL at
       680 × 280 and 830 × 230.
 
+### MultiChat migration — batches 5B and 5C (implemented, browser testing outstanding)
+
+OAuth return flow, connection state, and contextual pin gating. Delivered
+together because they are one rule with three consequences: whether a connection
+is usable decides the option's availability, the pin list's contents, and the
+URL fragment. Splitting them would have shipped a connect button that gated
+nothing.
+
+- [x] `lib/oauthReturn.ts` — exact-match allowlist of OAuth return destinations.
+      The callback previously hardcoded `/multichat`; a destination that survives
+      an OAuth round trip is the classic open-redirect shape, so it is compared
+      against a fixed set of internal paths rather than parsed or normalized.
+      Absolute URLs, protocol-relative paths, encoded hosts, traversal, and
+      whitespace-padded variants all fail for the same reason: not in the set.
+- [x] The destination is bound at start time into an HttpOnly cookie, never read
+      from the callback's own query string, and revalidated on the way out. It
+      never travels through Twitch, so a crafted callback URL cannot choose it.
+- [x] `lib/server/oauthCookies.ts` — state and return cookies in one place,
+      cleared on every callback exit path including the refusals.
+- [x] `lib/twitchConnection.ts` — connection id and login validation lifted
+      verbatim from the classic generator, so two generators consuming one
+      callback cannot disagree. A repeated fragment key refuses the whole
+      fragment rather than taking the first value.
+- [x] `lib/tools/multichat/runtime.ts` — the gating rule, computed once:
+      pins need a connection *and* a Twitch channel naming that same account.
+      Polling account A while the overlay reads channel B would show pins that
+      never appear on screen.
+- [x] `components/workspace/multichat/TwitchConnectionPanel.tsx` — the only
+      component that names Twitch. Reaches the shell through the descriptor's
+      `runtime.Panel`, so `GeneratorWorkspace`, `LivePreviewPanel`, and the
+      settings list still mention no platform and no connection.
+- [x] Generic runtime support on the descriptor (`initial`, `Panel`, `sync`,
+      `fromChannels`, `optionAvailability`) — the shell stores runtime opaquely
+      and never inspects it. The counter declares none and is unchanged.
+- [x] The connection id reaches exactly one place: the URL fragment, and only
+      when pins are enabled, Twitch is selected, and the account matches. Never
+      rendered, never logged, never a query parameter, and stripped from the
+      address bar on adoption. Disconnect sends it in a POST body.
+- [x] `lib/workspaceStorage.ts` — session-scoped draft so channels and settings
+      survive the OAuth navigation, and connection persistence across reloads.
+      Both revalidate on read, since anything on the origin can rewrite
+      sessionStorage; storage being unavailable degrades the feature, not the page.
+- [x] Per-option gating in `MultiSelect`, so one unavailable choice does not
+      disable the group. The reason is real text linked by `aria-describedby`,
+      not a colour-only signal, and an already-checked unavailable option stays
+      operable so a user cannot be stuck with a selection they cannot clear.
+- [x] `/classic/multichat` — the original generator at its own stable address, so
+      it is not withdrawn in the same change that replaces it. Renders the same
+      `LandingPage` component, not a copy.
+- [x] 703 tests pass; `tsc --noEmit` clean; production build prerenders
+      `/classic/multichat`, `/tools/multichat`, and `/tools/counter`.
+
+- [ ] Manual browser verification of the connect → authorize → return round trip
+      against a real Twitch account, including the draft surviving it.
+- [ ] Manual confirmation that a workspace-generated URL with a fragment shows
+      native Twitch pins in OBS.
+- [ ] Manual check that the fragment is absent from server access logs.
+
 ### MultiChat migration — remaining batches (not started)
 
-- [ ] Batch 5B — OAuth return flow and connection state restoration for the
-      workspace: the descriptor's `context` function, the `#twitchConnectionId=…`
-      fragment the existing generator appends itself, and a connection panel.
-      Not started. Connecting Twitch remains exclusive to MultiChat (Classic).
-- [ ] Batch 5C — contextual gating of the Twitch pin option on a connected,
-      matching account. Not started; `disabled` on a setting descriptor is still
-      static, so it cannot express this, and batch 5A explains the requirement in
-      copy instead.
 - [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
-      repoint the OAuth return, update homepage and nav links, and retire the
-      legacy generator. `/multichat` stays a working overlay route permanently.
+      update homepage links, and retire the legacy generator. `/multichat` stays
+      a working overlay route permanently. The OAuth return is already
+      repointed; `/multichat` remains allowlisted for in-flight authorizations.
 
 ### Verification still outstanding
 

@@ -854,6 +854,9 @@ export default function Page() {
         fadingIds={fadingIds}
         pinnedMessage={pinnedMessage}
         showLoader={showLoader}
+        /* The parser defaults sourceTag to 'icon', so only the raw query can say
+           whether the user actually asked for a mode. */
+        sourceTagExplicit={router.query.sourceTag !== undefined}
       />
     </>
   );

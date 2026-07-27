@@ -16,6 +16,16 @@ interface Props {
   fadingIds: Set<string>;
   pinnedMessage: PinnedState | null;
   showLoader: boolean;
+  /**
+   * Whether `sourceTag=` was actually present in the URL.
+   *
+   * The parser defaults the field to 'icon', so the config alone cannot tell an
+   * explicit `sourceTag=icon` from an omitted parameter. Only the raw query can,
+   * and the distinction matters: an omitted parameter keeps the old
+   * single-platform behaviour of showing no marker, while an explicit value is
+   * always honoured. Defaults to false so existing callers are unaffected.
+   */
+  sourceTagExplicit?: boolean;
 }
 
 const FONT_FAMILIES: Record<string, string> = {
@@ -152,7 +162,7 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
 
-export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader }: Props) {
+export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
      read below, so no intersection or cast is needed. */
   const cfg = config;
@@ -165,8 +175,18 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const emoteScale = cfg.emoteScale ?? 1;
   const emoteMaxH  = `${parseFloat(sz.emoteMaxH) * emoteScale}px`;
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
-  // source tags only matter when 2+ platforms are configured
+  /* Source tag mode.
+     An explicit sourceTag= always wins, for one platform or four. With no
+     parameter, the old behaviour stands: a single-platform overlay shows no
+     marker (nothing to disambiguate), a multi-platform one shows icons.
+
+     The bug this replaces ignored cfg.sourceTag entirely whenever fewer than two
+     platforms were configured, so dot, label, and icon were all unreachable from
+     a one-platform URL and every value rendered identically. */
   const multiPlatform = [cfg.kick || cfg.channel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length > 1;
+  const tagMode: SourceTagMode = sourceTagExplicit
+    ? cfg.sourceTag
+    : (multiPlatform ? 'icon' : 'none');
 
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most
@@ -214,7 +234,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={cfg.hideNames??false}
-        tagMode={multiPlatform ? (cfg.sourceTag ?? 'icon') : 'none'}
+        tagMode={tagMode}
         showAvatar={cfg.showAvatars ?? false} />
     </div>
   );
@@ -334,7 +354,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
           fontFamily={fontFamily} filterVal={filterVal} strokeVal={strokeVal}
-          hideNames={cfg.hideNames??false}
+          hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
 
@@ -386,11 +406,14 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
   filterVal:string; strokeVal:string;
   hideNames:boolean;
+  /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
+     leaves no marker here either. */
+  tagMode:SourceTagMode;
 }) {
   const { msg, pinnedBy } = pinned;
   const [opacity, setOpacity] = useState(1);
@@ -444,7 +467,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       </div>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode="icon" showAvatar={false} />
+        tagMode={tagMode} showAvatar={false} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}

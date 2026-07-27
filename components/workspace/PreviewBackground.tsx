@@ -30,7 +30,20 @@ const CHECKER_STYLE = {
   backgroundSize: '16px 16px',
 } as const;
 
-/** Radio group choosing the preview backdrop. */
+/**
+ * Radio group choosing the preview backdrop.
+ *
+ * Native `input type="radio"` in a real fieldset, styled to look like the button
+ * row it replaces. This was previously three `role="radio"` buttons, which is the
+ * ARIA pattern without the behaviour it promises: a radiogroup is expected to be
+ * one tab stop with arrow keys moving between options, and separate buttons are
+ * three tab stops with no arrow handling. Native inputs get roving focus, arrow
+ * keys, and group semantics from the platform, so there is nothing to keep in
+ * sync — the same reason MultiSelect uses native checkboxes.
+ *
+ * The visible control is the label; the input itself is `sr-only` and remains the
+ * focus target, so `peer-focus-visible` draws the ring on the label.
+ */
 export function PreviewBackgroundPicker({
   value,
   onChange,
@@ -43,24 +56,31 @@ export function PreviewBackgroundPicker({
       <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ws-muted">
         Preview background
       </legend>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Preview background">
+      <div className="flex flex-wrap gap-1.5">
         {PREVIEW_BACKGROUNDS.map((id) => {
           const active = id === value;
           return (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => onChange(id)}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-ring focus-visible:ring-offset-2 focus-visible:ring-offset-ws-surface ${
-                active
-                  ? 'border-ws-accent bg-ws-accent/20 text-ws-text'
-                  : 'border-ws-border bg-ws-control text-ws-muted hover:bg-ws-control-hover'
-              }`}
-            >
-              {LABELS[id]}
-            </button>
+            <div key={id} className="flex">
+              <input
+                id={`preview-background-${id}`}
+                type="radio"
+                name="preview-background"
+                value={id}
+                checked={active}
+                onChange={() => onChange(id)}
+                className="peer sr-only"
+              />
+              <label
+                htmlFor={`preview-background-${id}`}
+                className={`cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ws-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-ws-surface motion-reduce:transition-none ${
+                  active
+                    ? 'border-ws-accent bg-ws-accent/20 text-ws-text'
+                    : 'border-ws-border bg-ws-control text-ws-muted hover:bg-ws-control-hover'
+                }`}
+              >
+                {LABELS[id]}
+              </label>
+            </div>
           );
         })}
       </div>

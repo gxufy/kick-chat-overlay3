@@ -27,10 +27,15 @@ export default function Toggle({
         onChange={(event) => onChange(event.target.checked)}
         className="peer h-6 w-11 cursor-pointer appearance-none rounded-full bg-ws-control transition-colors checked:bg-ws-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-ring focus-visible:ring-offset-2 focus-visible:ring-offset-ws-surface"
       />
-      {/* Purely decorative knob; the checkbox above owns all interaction. */}
+      {/* Purely decorative knob; the checkbox above owns all interaction.
+          `motion-reduce:transition-none` because this is the only element in the
+          workspace that actually moves — it still jumps to the checked position,
+          so the state stays legible without the slide. The colour transitions
+          elsewhere are deliberately left alone: a fade is not motion, and
+          removing them would lose feedback without helping anyone. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"
+        className="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white transition-transform motion-reduce:transition-none peer-checked:translate-x-5"
       />
     </span>
   );

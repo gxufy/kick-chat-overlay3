@@ -160,15 +160,29 @@ export default function GeneratorWorkspace<
 
   return (
     <div className="min-h-screen bg-ws-bg text-ws-text">
+      {/* Skip link. The nav lists every tool before the settings begin, so a
+          keyboard or screen-reader user otherwise tabs through all of it on
+          every visit. Hidden until focused, then pinned over the nav. */}
+      <a
+        href="#workspace-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-ws-surface focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-ws-text focus:outline-none focus:ring-2 focus:ring-ws-ring"
+      >
+        Skip to settings
+      </a>
+
       <div className="lg:flex lg:h-screen lg:overflow-hidden">
         <div className="shrink-0 lg:w-56 lg:overflow-y-auto">
           <WorkspaceNav currentPath={tool.workspaceRoute} />
         </div>
 
         {/* A main landmark, so the two panels are reachable by landmark
-            navigation rather than only by scrolling past the nav. */}
+            navigation rather than only by scrolling past the nav.
+            `tabIndex={-1}` makes it a valid skip-link target: without it, focus
+            moves in some browsers but not others. */}
         <main
-          className="min-w-0 flex-1 lg:grid lg:h-full lg:grid-cols-2 lg:overflow-hidden"
+          id="workspace-main"
+          tabIndex={-1}
+          className="min-w-0 flex-1 focus:outline-none lg:grid lg:h-full lg:grid-cols-2 lg:overflow-hidden"
         >
           {/* The page's only h1. Visually hidden because the layout has no
               header bar to put it in, but the document must still have a

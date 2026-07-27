@@ -34,6 +34,84 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/* The nav lists every tool before the settings start, so without a bypass a
+   keyboard user re-tabs the whole list on every visit. */
+describe('skip link', () => {
+  /* Written as two tests rather than it.each: the two tool descriptors have
+     different style and runtime type parameters, and a shared array widens them
+     to a union the shell's props cannot accept. */
+  it('offers a bypass to the main landmark on multichat', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    expect(
+      screen.getByRole('link', { name: /skip to settings/i }).getAttribute('href'),
+    ).toBe('#workspace-main');
+  });
+
+  it('offers a bypass to the main landmark on the counter', () => {
+    render(<GeneratorWorkspace tool={counterTool} baseUrl="https://example.com" />);
+    expect(
+      screen.getByRole('link', { name: /skip to settings/i }).getAttribute('href'),
+    ).toBe('#workspace-main');
+  });
+
+  it('is the first focusable element in the document', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const focusable = Array.from(
+      document.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea'),
+    ).filter((el) => el.tabIndex >= 0);
+    expect(focusable[0]).toBe(screen.getByRole('link', { name: /skip to settings/i }));
+  });
+
+  /* An in-page anchor moves focus reliably only if the target can hold it. */
+  it('targets an element that can actually receive focus', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const target = document.getElementById('workspace-main');
+    expect(target).not.toBeNull();
+    expect(target?.tagName.toLowerCase()).toBe('main');
+    expect(target?.tabIndex).toBe(-1);
+  });
+});
+
+/* Previously three role="radio" buttons: the ARIA pattern without the keyboard
+   behaviour it promises. Native inputs get one tab stop and arrow keys from the
+   platform, so this asserts they really are native. */
+describe('preview background picker', () => {
+  it('is a native radio group, not ARIA-role buttons', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const radios = screen.getAllByRole('radio');
+    expect(radios.length).toBeGreaterThanOrEqual(3);
+    for (const radio of radios) {
+      expect(radio.tagName.toLowerCase()).toBe('input');
+      expect(radio.getAttribute('type')).toBe('radio');
+    }
+  });
+
+  it('shares one name, so the platform treats them as one group', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const names = new Set(
+      screen.getAllByRole('radio').map((r) => r.getAttribute('name')),
+    );
+    expect(names.size).toBe(1);
+  });
+
+  it('has exactly one checked option and every option labelled', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.filter((r) => r.checked)).toHaveLength(1);
+    for (const label of ['Transparent', 'Dark', 'Light']) {
+      expect(screen.getByLabelText(label)).toBeTruthy();
+    }
+  });
+
+  it('changes the selection when another option is chosen', () => {
+    render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);
+    const light = screen.getByLabelText('Light') as HTMLInputElement;
+    fireEvent.click(light);
+    expect(light.checked).toBe(true);
+    expect((screen.getByLabelText('Transparent') as HTMLInputElement).checked).toBe(false);
+  });
+});
+
 describe('document structure', () => {
   it('exposes exactly one h1 naming the active tool', () => {
     render(<GeneratorWorkspace tool={multichatTool} baseUrl="https://example.com" />);

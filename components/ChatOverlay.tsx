@@ -4,7 +4,7 @@ import type { MultichatConfig } from '../lib/multichatConfig';
 import type { ParsedMessage } from '../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../lib/render';
 import type { Platform } from '../lib/types';
-import { overlayFontUrl } from '../lib/overlayFonts';
+import { overlayFontCss } from '../lib/overlayFonts';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -175,7 +175,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'default'] ?? 'inherit';
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
-  const fontHref   = overlayFontUrl(cfg.font);
+  const fontCss    = overlayFontCss(cfg.font);
   const emoteScale = cfg.emoteScale ?? 1;
   const emoteMaxH  = `${parseFloat(sz.emoteMaxH) * emoteScale}px`;
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
@@ -251,11 +251,15 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             default, Open Sans — fell back to generic sans-serif in OBS while the
             generator preview, which loads them for its own UI, showed the real
             face. `display=swap` keeps text visible while it loads. */}
-        {fontHref && (
+        {fontCss && (
           <>
             <link rel="preconnect" href="https://fonts.googleapis.com" />
             <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-            <link rel="stylesheet" href={fontHref} />
+            {/* dangerouslySetInnerHTML, not a text child: React escapes the
+                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
+                inside a <style> raw-text element, so the @import would be an
+                invalid URL token and load nothing. */}
+            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
           </>
         )}
         <style>{`

@@ -10,6 +10,7 @@
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { UI_FONT_SPECS, googleFontsImportCss } from '@/lib/overlayFonts';
 
 const SOCIALS = [
   { label: 'X / Twitter', href: 'https://x.com/Gxufy_', icon: '𝕏' },
@@ -38,7 +39,13 @@ export default function Hub() {
         <meta name="description" content="I build tools that make streams smoother — multi-platform chat overlays and stream widgets that just work." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+        {/* An @import rather than a stylesheet link: next/head does not support
+            the latter. Only the one UI face this page sets type in.
+            dangerouslySetInnerHTML because React would escape `&` and `'`, and
+            a <style> element does not decode entities. */}
+        <style dangerouslySetInnerHTML={{
+          __html: googleFontsImportCss([UI_FONT_SPECS.montserrat]),
+        }} />
       </Head>
       <style dangerouslySetInnerHTML={{ __html: `
         *, *::before, *::after { box-sizing: border-box; }

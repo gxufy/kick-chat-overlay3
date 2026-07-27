@@ -7,6 +7,11 @@ import type { Platform } from '../lib/types';
 import { buildMultichatQuery } from '../lib/multichatConfig';
 import { MULTICHAT_COMMANDS } from '../lib/multichatCommands';
 import { OAUTH_RETURN_CLASSIC } from '../lib/oauthReturn';
+import {
+  OVERLAY_FONT_SPECS,
+  UI_FONT_SPECS,
+  googleFontsImportCss,
+} from '../lib/overlayFonts';
 import CounterPreview from './CounterPreview';
 import {
   ALIGNMENTS,
@@ -21,6 +26,15 @@ import {
   type ViewerCounterChannels,
   type ViewerCounterStyle,
 } from '../lib/viewerCounterConfig';
+
+/* Every face this page needs: its own UI typography plus all nine overlay
+   families, because the font picker renders each option in the face it names and
+   the inline preview draws the selected one. The overlay routes deliberately
+   request only the single family their URL selected. */
+const GENERATOR_FONT_CSS = googleFontsImportCss([
+  ...Object.values(UI_FONT_SPECS),
+  ...Object.values(OVERLAY_FONT_SPECS),
+]);
 
 const FONTS: [string, string, string][] = [
   ['baloo',       'Baloo Tammudu',          "'Baloo Tammudu 2', cursive"],
@@ -358,8 +372,15 @@ export default function LandingPage() {
         <meta name="description" content="Free multi-platform chat overlay for OBS by gxufy — Kick, Twitch, YouTube & TikTok in one browser source. 7TV/BTTV/FFZ emotes, real badges, name-paints, pins. No login required." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Baloo+Tammudu+2:wght@400;500;600;700;800&family=Comfortaa:wght@300;400;500;600;700&family=Dancing+Script:wght@400;500;600;700&family=Indie+Flower&family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,400&family=Noto+Sans+JP:wght@100;300;400;500;700;900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,400&family=Source+Code+Pro:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,900;1,400&display=swap" rel="stylesheet" />
+        {/* An @import rather than a stylesheet link: next/head does not support
+            the latter. This generator is the one route that legitimately wants
+            every overlay face — the font picker previews each option in itself
+            and the inline preview draws whichever is selected — so the specs
+            come from lib/overlayFonts rather than being restated here.
+            dangerouslySetInnerHTML because React would escape `&` and `'`, and
+            a <style> element does not decode entities — escaped, the sheet's
+            `&family=` separators would collapse to a single family. */}
+        <style dangerouslySetInnerHTML={{ __html: GENERATOR_FONT_CSS }} />
         <style>{`@font-face{font-family:Alsina;src:url(https://chatis.is2511.com/v2/styles/Alsina_Ultrajada.ttf);}`}</style>
       </Head>
 

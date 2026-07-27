@@ -12,12 +12,13 @@
  * exemptions are asserted individually below so "needs no stylesheet" always has
  * a stated reason rather than being a silent omission.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   OVERLAY_FONT_SPECS,
   googleFontsUrl,
+  overlayFontCss,
   overlayFontUrl,
 } from '@/lib/overlayFonts';
 import { MULTICHAT_FONTS } from '@/lib/multichatConfig';
@@ -105,13 +106,64 @@ describe('overlayFontUrl', () => {
   });
 });
 
-describe('the overlay actually renders the link', () => {
-  it('emits a stylesheet link from the resolved href', () => {
-    // Pins the wiring, not just the helper: a correct URL that reaches no <link>
+describe('overlayFontCss', () => {
+  it('wraps the same URL overlayFontUrl resolves', () => {
+    // One source of truth for the request; only the mechanism differs.
+    expect(overlayFontCss('opensans')).toBe(
+      `@import url('${overlayFontUrl('opensans')}');`,
+    );
+  });
+
+  it('returns null wherever overlayFontUrl does', () => {
+    for (const key of [...Object.keys(EXEMPT), 'not-a-font']) {
+      expect(overlayFontCss(key), key).toBeNull();
+    }
+    expect(overlayFontCss(undefined)).toBeNull();
+  });
+});
+
+describe('no route asks next/head for a stylesheet', () => {
+  /* Next warns "Do not add stylesheets using next/head" once per href, on every
+     render in development. Three routes did: the homepage, the Classic
+     generator, and the overlay. A grep guard is coarse but it is the only thing
+     that catches a fourth being added later. */
+
+  /** Every .tsx under a directory, recursively. */
+  const tsxFiles = (dir: string): string[] =>
+    readdirSync(join(process.cwd(), dir), { withFileTypes: true }).flatMap((entry) => {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return tsxFiles(rel);
+      return entry.name.endsWith('.tsx') ? [rel] : [];
+    });
+
+  const SOURCES = ['components', 'pages', 'app']
+    .flatMap(tsxFiles)
+    .map((rel) => [rel, readFileSync(join(process.cwd(), rel), 'utf8')] as const);
+
+  it('reads the component and page sources', () => {
+    // Guards the walk: an empty list must not pass the assertion below.
+    expect(SOURCES.length).toBeGreaterThan(5);
+    expect(SOURCES.map(([rel]) => rel)).toContain('components/ChatOverlay.tsx');
+  });
+
+  it('has no rel="stylesheet" in any page or component', () => {
+    const offenders = SOURCES.filter(([, src]) => /rel="stylesheet"/.test(src))
+      .map(([rel]) => rel);
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('the overlay actually renders the request', () => {
+  it('emits a style rule from the resolved CSS', () => {
+    // Pins the wiring, not just the helper: correct CSS that reaches no element
     // leaves the original bug in place. Asserted in the DOM by the companion
     // test in overlayFontLink.test.tsx; this guards the source coupling.
-    expect(OVERLAY_SOURCE).toContain('overlayFontUrl(cfg.font)');
-    expect(OVERLAY_SOURCE).toMatch(/rel="stylesheet"\s+href=\{fontHref\}/);
+    expect(OVERLAY_SOURCE).toContain('overlayFontCss(cfg.font)');
+    expect(OVERLAY_SOURCE).toContain('__html: fontCss');
+  });
+
+  it('hands next/head no stylesheet link, which it warns about', () => {
+    expect(OVERLAY_SOURCE).not.toMatch(/rel="stylesheet"/);
   });
 
   it('keeps the self-hosted Alsina face the exemption relies on', () => {

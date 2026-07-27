@@ -83,11 +83,15 @@ export default function CommandSimulator({
 
   /* Describes the current simulated state in words, for the live region and for
      anyone who cannot see the preview change. */
-  const stateLabel = effect.hidden
-    ? 'Chat container is hidden.'
-    : effect.pinging
-      ? 'Pong confirmation is showing.'
-      : 'Chat container is visible.';
+  /* Composed, not a ternary chain: hiding the container and then pinging shows
+     the Pong marker while the container stays hidden, and a chain that returned
+     early on `hidden` would announce only half of what is on screen. */
+  const stateLabel = [
+    effect.hidden ? 'Chat container is hidden.' : 'Chat container is visible.',
+    effect.pinging ? 'Pong confirmation is showing.' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className="space-y-4">

@@ -747,11 +747,43 @@ audit of the finished work turned up.
 - [x] `PreviewBackgroundId` moved to `lib/tools/previewBackground` so the registry
       can type a demo panel's `background` as that union instead of `string`,
       without `lib` importing a type from `components`.
-- [x] 83 new tests (977 total, all passing). Typecheck and production build clean.
+- [x] 88 new tests (982 total, all passing). Typecheck and production build clean.
 
 **Setting parity with the classic generator is exact:** MultiChat 24/24, Viewer
 Counter 6/6. The classic's `pinOpacity` is not a missing setting — it is a local
 preview animation that never reaches the URL.
+
+#### Accessibility pass over the new surfaces (implemented)
+
+- [x] **Sample-group toggles were focusable with no visible focus.** The `sr-only`
+      checkbox was nested inside its label, and Tailwind's `peer` only matches a
+      *following sibling*, so `peer-focus-visible` never applied — a keyboard user
+      tabbing through the chips could not see which one they were on. Restructured
+      to input-then-label, matching `PreviewBackgroundPicker`.
+- [x] A test asserts this structurally for every `sr-only` input in the demo, since
+      the bug is structural rather than a wrong class name. Scoped to `sr-only`
+      inputs: a visible styled input such as the settings `Toggle` carries
+      `focus-visible:ring` itself and needs nothing from its label — requiring the
+      sibling structure of it would be wrong. Mutation-checked by swapping the
+      order, which fails the test with the reason named.
+- [x] **The live region announced half the state.** Hiding the container and then
+      pinging shows the Pong marker over a hidden container, but the label was a
+      ternary chain that returned on `hidden` and never mentioned the ping.
+      Composed from both conditions instead.
+- [x] The in-preview "Pong!" and "Chat container hidden" markers are `aria-hidden`:
+      they explain the view to someone looking at it, and the live region already
+      states both in words.
+- [x] The demo region is named "Sample chat messages — not a live stream", as the
+      Live iframe is named by its `title`. Without it a screen reader reads nine
+      lines of invented chat with nothing marking them as samples. A `group`, not a
+      `region` — a labelled grouping inside the preview, not a landmark deserving
+      its own entry in the landmark list.
+- [x] The platform chip beside the composer's select is `aria-hidden`: it restates
+      the select's own value, which is already announced. This is the opposite call
+      from the channel fields, where the chip *is* the label and so must be read.
+- [x] No custom key handling anywhere in the new surfaces — every control is a
+      native input, select, or button, so focus order, arrow keys, and group
+      semantics come from the platform.
 
 #### Verification still outstanding
 

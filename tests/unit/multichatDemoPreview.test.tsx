@@ -165,6 +165,57 @@ describe('the demo is the production renderer', () => {
 /* The load-bearing guarantee: demo state is a viewing aid, not configuration.
    Anything here changing the URL would mean a preview choice silently altering
    what the user pastes into OBS. */
+describe('the demo announces itself as a demo', () => {
+  it('names the sample region, as the Live iframe is named by its title', () => {
+    mount();
+    toDemo();
+    const group = screen.getByRole('group', {
+      name: /Sample chat messages — not a live stream/,
+    });
+    /* Without a name, a screen reader reads nine lines of invented chat with
+       nothing saying they are samples rather than a real stream. */
+    expect(group).toBeTruthy();
+  });
+
+  /* An sr-only input whose label cannot show a focus ring is focusable with
+     nothing drawn anywhere — a keyboard user cannot see where they are. Tailwind's
+     `peer` only matches following siblings, so a nested input silently breaks it.
+     This asserts the structure rather than the class string, since the bug is
+     structural. */
+  it('lets every visually-hidden control show a focus ring on its label', () => {
+    mount();
+    toDemo();
+    /* Only sr-only inputs. A visible styled input — the settings Toggle, for
+       instance — carries focus-visible:ring itself and needs nothing from its
+       label, so requiring the sibling structure of it would be wrong. */
+    const hidden = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input.sr-only'),
+    );
+    expect(hidden.length).toBeGreaterThan(0);
+    for (const input of hidden) {
+      const label = input.id
+        ? document.querySelector(`label[for="${input.id}"]`)
+        : input.closest('label');
+      expect(label, `no label for ${input.id || input.type}`).not.toBeNull();
+      /* peer-* only applies to a following sibling of the peer element. */
+      expect(
+        label!.previousElementSibling === input,
+        `label for "${input.id}" is not a following sibling of its input, so its focus ring cannot render`,
+      ).toBe(true);
+      expect(input.className).toContain('peer');
+    }
+  });
+
+  it('does not announce the platform chip beside the composer select', () => {
+    mount();
+    toDemo();
+    /* The chip restates the select's own value; the select already announces it.
+       Unlike the channel fields, where the chip *is* the label. */
+    const chip = screen.getByText('kick');
+    expect(chip.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
 describe('no demo state reaches the overlay URL', () => {
   it('is unchanged by entering Demo mode', () => {
     mount();

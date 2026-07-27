@@ -129,8 +129,14 @@ export default function MessageCreator({
               options={PLATFORM_OPTIONS}
               onChange={(next) => setPlatform(next as Platform)}
             />
-            {/* Reinforces which service the composed line will be tagged as. */}
-            <span className={chipClass(platform)}>{platform}</span>
+            {/* Reinforces which service the composed line will be tagged as.
+                aria-hidden because it only restates the select's own value,
+                which a screen reader already announces — unlike the channel
+                fields, where the chip *is* the label, there is a real label
+                here and this would be a second reading of the same word. */}
+            <span aria-hidden="true" className={chipClass(platform)}>
+              {platform}
+            </span>
           </div>
         </div>
 

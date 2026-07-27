@@ -71,7 +71,17 @@ export default function DemoPreview({
   }
 
   return (
-    <div style={{ minHeight: height }} data-testid="demo-preview">
+    /* Named, as the Live iframe is named by its title. Without this a screen
+       reader reads nine lines of invented chat with nothing saying they are
+       samples rather than a real stream. A group rather than a region: it is a
+       labelled grouping inside the preview, not a landmark worth its own entry in
+       the landmark list. */
+    <div
+      role="group"
+      aria-label="Sample chat messages — not a live stream"
+      style={{ minHeight: height }}
+      data-testid="demo-preview"
+    >
       <ChatOverlay
         config={config}
         messages={messages as ParsedMessage[]}

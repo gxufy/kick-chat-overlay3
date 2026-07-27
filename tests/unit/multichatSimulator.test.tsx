@@ -183,6 +183,27 @@ describe('rendered simulator', () => {
     expect(status.getAttribute('role')).toBe('status');
   });
 
+  it('announces both hidden and pinging when both are true', () => {
+    mount();
+    fireEvent.click(button('!multichat hide'));
+    fireEvent.click(button('!multichat ping'));
+    /* Both are on screen, so both must be in the live region — a ternary chain
+       that returned early on `hidden` would announce only half of it. */
+    const status = screen.getByText(/Chat container is hidden\./);
+    expect(status.textContent).toContain('Pong confirmation is showing.');
+  });
+
+  it('does not announce the visual markers twice', () => {
+    mount();
+    fireEvent.click(button('!multichat hide'));
+    fireEvent.click(button('!multichat ping'));
+    /* The in-preview markers restate what the live region already says. */
+    expect(screen.getByText('Pong!').getAttribute('aria-hidden')).toBe('true');
+    expect(
+      screen.getByText(/Chat container hidden/).getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
   it('hides the pin along with the rest of the container', () => {
     mount();
     fireEvent.click(button('!multichat hide'));

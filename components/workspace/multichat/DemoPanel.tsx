@@ -103,13 +103,25 @@ export default function DemoPanel({
 
           {/* The ping confirmation, matching what the handler shows for 3s. */}
           {effect.pinging ? (
-            <p className="pointer-events-none absolute right-2 top-2 rounded-md bg-black/70 px-2 py-1 text-sm font-semibold text-white">
+            /* aria-hidden: the simulator's live region already states that the
+               Pong confirmation is showing, so announcing this too would say the
+               same thing twice. */
+            <p
+              aria-hidden="true"
+              className="pointer-events-none absolute right-2 top-2 rounded-md bg-black/70 px-2 py-1 text-sm font-semibold text-white"
+            >
               Pong!
             </p>
           ) : null}
 
           {effect.hidden ? (
-            <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-ws-muted">
+            /* aria-hidden for the same reason as the Pong marker: this explains
+               the blank area to someone looking at it, and the simulator's live
+               region already announces the hidden state in words. */
+            <p
+              aria-hidden="true"
+              className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-ws-muted"
+            >
               Chat container hidden. Run <span className="mx-1 font-mono">show</span>{' '}
               to bring it back.
             </p>
@@ -131,23 +143,35 @@ export default function DemoPanel({
           {SAMPLE_GROUPS.map((group) => {
             const on = groups.has(group);
             return (
-              <label
-                key={group}
-                className={[
-                  'cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-                  on
-                    ? 'border-ws-accent bg-ws-accent/15 text-ws-accent'
-                    : 'border-ws-border bg-ws-control text-ws-muted hover:text-ws-text',
-                ].join(' ')}
-              >
+              /* Input as a preceding sibling, not nested in the label, so
+                 `peer-focus-visible` can reach the label — Tailwind's peer only
+                 matches following siblings. Nested, the sr-only input would take
+                 focus with nothing drawn anywhere, leaving a keyboard user unable
+                 to see which chip they are on. Same structure as
+                 PreviewBackgroundPicker. */
+              <div key={group} className="flex">
                 <input
+                  id={`demo-group-${group}`}
                   type="checkbox"
                   checked={on}
                   onChange={() => toggleGroup(group)}
-                  className="sr-only"
+                  className="peer sr-only"
                 />
-                {GROUP_LABEL[group]}
-              </label>
+                <label
+                  htmlFor={`demo-group-${group}`}
+                  className={[
+                    'cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+                    'peer-focus-visible:ring-2 peer-focus-visible:ring-ws-ring',
+                    'peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-ws-surface',
+                    'motion-reduce:transition-none',
+                    on
+                      ? 'border-ws-accent bg-ws-accent/15 text-ws-accent'
+                      : 'border-ws-border bg-ws-control text-ws-muted hover:text-ws-text',
+                  ].join(' ')}
+                >
+                  {GROUP_LABEL[group]}
+                </label>
+              </div>
             );
           })}
         </fieldset>

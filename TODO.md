@@ -274,16 +274,88 @@ route change, and no `enabledWhen` or dynamic catalog predicate.
 
 - [ ] Manual browser confirmation of `/tools/counter` at 1920 / 1024 / 375 px.
 
+### MultiChat migration — batch 4: descriptor and catalog (implemented, unregistered)
+
+The MultiChat tool is now modelled, but nothing renders it. It is absent from
+`TOOLS`, so `/tools/multichat` still does not exist and still returns 404. The
+workspace is **not** complete.
+
+- [x] `lib/tools/multichat/config.ts` — a `multichatTool` descriptor matching the
+      generalized `OverlayTool<MultichatWorkspaceStyle, MultichatPlatform>`.
+      Importable directly for tests; deliberately not registered.
+- [x] Defaults are `MULTICHAT_WORKSPACE_DEFAULTS` itself, by reference — no
+      second defaults object, and the generator's `textShadow: 'small'` is
+      preserved against the overlay's omission default of `'large'`.
+- [x] `serialize` delegates to `buildMultichatQuery`. It builds no
+      `URLSearchParams` of its own, so parameter order, inclusion rules, and
+      encoding stay byte-identical to the URL `/multichat` copies today.
+- [x] Platform definitions in generator order — **kick, twitch, youtube,
+      tiktok** — with the existing placeholders and the existing `@` asymmetry
+      intact: kick is trimmed only and keeps a leading `@`, the other three strip
+      theirs. The counter's `normalizeChannel` is deliberately not reused; it
+      would add character and length validation MultiChat has never had.
+- [x] `lib/tools/multichat/settings.ts` — a 24-entry catalog covering every
+      `MultichatWorkspaceStyle` field, with no `platformIcons` entry. Option lists
+      come from tuples `lib/multichatConfig` now exports; no enum array is copied.
+- [x] `lib/multichatConfig.ts` gained exported enum tuples
+      (`MULTICHAT_TEXT_SHADOWS`, `MULTICHAT_TEXT_SIZES`, `MULTICHAT_ANIMATIONS`,
+      `MULTICHAT_STROKES`, `MULTICHAT_SOURCE_TAGS`, `MULTICHAT_SOURCE_TAG_ORDER`,
+      `MULTICHAT_FONTS`) and now
+      derives its legacy numeric aliases from them by index. Parsing and
+      serialization behaviour is unchanged — all 105 compatibility tests pass.
+- [x] The fade pair stays two fields, `fadeEnabled` (toggle) and `fade` (text),
+      because emptiness in `fade` independently suppresses the parameter. They
+      share `param: 'fade'` since they describe one parameter.
+- [x] `pinPlatforms` is a multiselect over the platform tuple, empty selection
+      allowed, CSV encoding left entirely to the serializer. No OAuth gating —
+      the Twitch chip's connected-account requirement is Batch 5.
+- [x] The four unread compatibility-only parameters — `ttsEnabled`,
+      `showAvatars`, `showSystemMsgs`, `showRedeems` — receive no controls. They
+      remain parse-compatible and listed in `MULTICHAT_UNREAD_PARAMS`.
+
+- [x] `sourceTag` is a four-option select over `icon, dot, label, none`, backed
+      by an explicit `MultichatWorkspaceStyle` adapter — `MultichatGeneratorStyle`
+      with `platformIcons: boolean` replaced by the full enum. The legacy shape is
+      untouched and still what LandingPage holds.
+- [x] `MULTICHAT_WORKSPACE_DEFAULTS` is derived from
+      `MULTICHAT_GENERATOR_DEFAULTS` by spread, swapping only `platformIcons: true`
+      for its meaning, `sourceTag: 'icon'`. No second defaults object, no mutation
+      of the generator defaults, and `textShadow` stays `small`.
+- [x] `buildMultichatQuery` accepts either shape and remains the only MultiChat
+      serializer. `icon` omits the parameter (what `platformIcons: true` always
+      did), `none` emits `sourceTag=none` (what `false` always did), and `dot` and
+      `label` emit in the same slot. Legacy output is byte-identical; nothing
+      post-processes the query string.
+- [x] OBS dimensions are `680 × 280`, from the generator's own OBS setup step in
+      `components/LandingPage.tsx`.
+
+- [x] Runtime fix — `ChatOverlay` discarded `cfg.sourceTag` whenever fewer than
+      two platforms were configured, forcing `'none'`, so `icon`, `dot`, `label`,
+      and `none` all rendered identically on a single-platform URL. An explicit
+      `sourceTag=` is now always honoured; with the parameter omitted the old
+      default stands (one platform → no marker, several → icons). The parser
+      defaults the field to `'icon'`, so `pages/multichat.tsx` passes a
+      `sourceTagExplicit` flag read from the raw query — without it, every
+      existing single-platform overlay would have gained an icon it never had.
+- [x] The pin banner followed a hardcoded `tagMode="icon"`; it now follows the
+      overlay's mode, so `sourceTag=none` leaves no marker there either.
+- [x] Markers carry `data-source-tag` and `data-platform`, and the decorative
+      icon and dot are `aria-hidden`. The label's platform name stays readable
+      with no duplicating `aria-label`.
+
+- [ ] Batch 4 follow-up — `README.md` recommends `830 × 230` for the same browser
+      source while the in-app setup step says `680 × 280`. The descriptor follows
+      the in-app value. Decide which is right and make them agree.
+
 ### MultiChat migration — remaining batches (not started)
 
-Nothing below is implemented, and `/tools/multichat` does not exist.
-- [ ] Batch 4 — register the MultiChat tool descriptor and control catalog,
-      including its platform definitions and its own setting catalog. Still
-      pending: nothing about MultiChat is modelled yet.
-- [ ] Batch 5 — ship the `/tools/multichat` workspace, including the
-      real-overlay iframe preview, the Twitch connect/disconnect panel, and
-      whatever OAuth-derived value it supplies through the tool context. Still
-      pending: the context added in batch 3 is generic and carries nothing.
+`/tools/multichat` does not exist, and no navigation links to it.
+- [ ] Batch 5 — register `multichatTool`, ship the `/tools/multichat` workspace,
+      the real-overlay iframe preview, and the Twitch connect/disconnect panel.
+      OAuth belongs here: the descriptor's `context` function, the
+      `#twitchConnectionId=…` fragment the existing generator appends itself, and
+      contextual enabling of the Twitch pin option. Still pending — the batch 3
+      context remains generic and MultiChat supplies nothing through it.
 - [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
       repoint the OAuth return, update homepage and nav links, and retire the
       legacy generator. `/multichat` stays a working overlay route permanently.

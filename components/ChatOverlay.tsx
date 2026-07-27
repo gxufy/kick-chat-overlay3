@@ -29,7 +29,15 @@ interface Props {
   sourceTagExplicit?: boolean;
 }
 
-const FONT_FAMILIES: Record<string, string> = {
+/**
+ * `font=` value → CSS `font-family`, the overlay's own resolution.
+ *
+ * Exported because the generator's font picker previews each option in the face
+ * it names, and it must name the same faces the overlay will actually draw. It
+ * previously kept a third copy of this table, so a family could be renamed here
+ * and the picker would go on previewing the old one.
+ */
+export const FONT_FAMILIES: Record<string, string> = {
   default:     'inherit',
   baloo:       "'Baloo Tammudu 2', cursive",
   segoe:       "'Segoe UI', sans-serif",

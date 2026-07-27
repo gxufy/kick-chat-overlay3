@@ -28,6 +28,15 @@ import {
 } from '@/lib/workspaceStorage';
 import { readConnectionFromFragment } from '@/lib/twitchConnection';
 
+/**
+ * How long a disconnect request may hang before it is abandoned.
+ *
+ * Without a ceiling, a request that never settles leaves the button disabled
+ * reading "Disconnecting…" for the life of the page, and the one action the user
+ * asked for becomes unreachable. Ten seconds is well past a normal round trip.
+ */
+const DISCONNECT_TIMEOUT_MS = 10_000;
+
 /** Remove the OAuth fragment from the address bar without a navigation. */
 function stripFragment(): void {
   window.history.replaceState(
@@ -47,6 +56,19 @@ export default function TwitchConnectionPanel({
   /* Guards the adoption effect against a second run (Strict Mode double-invokes
      effects in development), which would re-read an already-stripped fragment. */
   const adopted = useRef(false);
+  /* Aborts an in-flight disconnect when the workspace unmounts, so the request
+     does not outlive the component and resolve into state that no longer
+     exists. Held in a ref because the cleanup effect and the handler are
+     separate. */
+  const disconnectAbort = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      disconnectAbort.current?.abort();
+      disconnectAbort.current = null;
+    },
+    [],
+  );
 
   /* Adopt a connection on mount: from the OAuth fragment if we just came back
      from it, otherwise from session storage.
@@ -94,9 +116,18 @@ export default function TwitchConnectionPanel({
    * server access logs. Local state is cleared even when the request fails: the
    * user asked to disconnect, and leaving a connection that appears active but
    * may already be revoked is worse than a stale server record. The error is
-   * surfaced so they know the server side may not have completed. */
+   * surfaced so they know the server side may not have completed.
+   *
+   * Bounded by a timeout: with no cap, a hung network request left the button
+   * disabled at "Disconnecting…" forever, with no way to retry. The abort
+   * controller is also what the unmount effect above fires, so leaving the
+   * workspace mid-request cancels it the same way a timeout would. */
   async function disconnect(): Promise<void> {
     if (!runtime.connectionId || disconnecting) return;
+
+    const controller = new AbortController();
+    disconnectAbort.current = controller;
+    const timeout = setTimeout(() => controller.abort(), DISCONNECT_TIMEOUT_MS);
 
     setDisconnecting(true);
     setError('');
@@ -106,11 +137,18 @@ export default function TwitchConnectionPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId: runtime.connectionId }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('failed');
     } catch {
+      /* Unmount aborts through the same controller, so this also runs on an
+         unmount-triggered abort — harmless, since every branch below is either
+         a no-op (clearStoredConnection, onChange on unmounted state) or a
+         setState React discards silently on an unmounted component. */
       setError('Could not fully disconnect on the server. Try again.');
     } finally {
+      clearTimeout(timeout);
+      disconnectAbort.current = null;
       clearStoredConnection();
       /* Clearing the id drops the fragment from the overlay URL, and the tool's
          `sync` hook removes twitch from the pin selection — neither is done here,

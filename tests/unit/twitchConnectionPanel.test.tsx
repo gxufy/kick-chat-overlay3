@@ -333,6 +333,61 @@ describe('disconnecting', () => {
     expect(pinBox('twitch').disabled).toBe(true);
   });
 
+  it('aborts an in-flight request when the workspace unmounts', async () => {
+    /* Captures the signal the panel passed, so the assertion is about the
+       request actually being cancelled rather than about React staying quiet. */
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url, init) => {
+      signal = (init as RequestInit | undefined)?.signal ?? undefined;
+      return new Promise(() => {});
+    }));
+
+    mountConnected();
+    fireEvent.click(screen.getByText('Disconnect'));
+    await act(async () => {});
+
+    expect(signal).toBeDefined();
+    expect(signal!.aborted).toBe(false);
+
+    cleanup();
+    expect(signal!.aborted).toBe(true);
+  });
+
+  it('recovers from a hung request instead of staying stuck on Disconnecting…', async () => {
+    // Never resolves on its own — only the panel's own abort-on-timeout can
+    // move this along, exactly as real fetch rejects once its signal aborts.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      const signal = (init as RequestInit | undefined)?.signal;
+      signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    })));
+    mountConnected();
+    fireEvent.click(screen.getByText('Disconnect'));
+    await act(async () => {});
+    expect(screen.getByText('Disconnecting…')).toBeTruthy();
+
+    // Advance past the request timeout without ever resolving the fetch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(screen.getByText('Connect Twitch')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent ?? '').toMatch(/could not fully disconnect/i);
+  });
+
+  it('sends the connection id in the body, never the query string', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    mountConnected();
+    fireEvent.click(screen.getByText('Disconnect'));
+    await act(async () => {});
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/twitch/oauth/disconnect');
+    expect(url).not.toContain(ID);
+    expect(init.method).toBe('POST');
+    expect(String(init.body)).toContain(ID);
+  });
+
   it('does not re-adopt the connection it just cleared', async () => {
     mountConnected();
     fireEvent.click(screen.getByText('Disconnect'));

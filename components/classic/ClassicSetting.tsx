@@ -15,6 +15,16 @@
  *     prefix, because MultiChat and the Viewer Counter both have `stroke` and
  *     `textShadow`, and they are now on the same page. Unprefixed ids would give
  *     two inputs the same id and point one label at the wrong control.
+ *
+ * PRESENTATION IS THE CALLER'S, VALUES ARE THE CATALOG'S
+ *
+ * A `select` can be drawn as a dropdown or as a segmented pill row, and a numeric
+ * `text` setting as a field or as a slider. Which one is a layout decision, so it
+ * is a prop here rather than a catalog field: the catalogs stay a description of
+ * what the overlay can be configured to do, not of how this page looks. Either
+ * presentation emits the identical value — a segmented row's radios carry the
+ * declared option values, and a slider stringifies its number the same way the
+ * field did — so no URL changes when one is swapped for the other.
  */
 import type { ReactElement } from 'react';
 import {
@@ -23,6 +33,23 @@ import {
   type SettingAvailability,
   type SettingValue,
 } from '@/lib/tools/settingTypes';
+
+/** How a numeric text setting is drawn when the caller asks for a slider. */
+export type SettingRange = {
+  min: number;
+  max: number;
+  step: number;
+  /** Suffix shown beside the current value. Never part of the value. */
+  unit?: string;
+  /**
+   * Label for the button that restores `''`.
+   *
+   * Blank is a real value on these settings — it suppresses the parameter — and
+   * a slider cannot express it, so the button is the only way back. Without it,
+   * moving the slider once would permanently commit the parameter.
+   */
+  blankLabel: string;
+};
 
 /** Read a value as a string list, falling back when state disagrees. */
 function asStringList(
@@ -60,6 +87,10 @@ export default function ClassicSetting<C>({
   optionStyle,
   /** Applied to the control itself, e.g. the font picker's own preview face. */
   controlStyle,
+  /** Draw a `select` as a segmented pill row instead of a dropdown. */
+  segmented = false,
+  /** Draw a numeric `text` setting as a slider instead of a field. */
+  range,
 }: {
   setting: Setting<C>;
   value: SettingValue;
@@ -69,6 +100,8 @@ export default function ClassicSetting<C>({
   idPrefix: string;
   optionStyle?: (optionValue: string) => React.CSSProperties | undefined;
   controlStyle?: React.CSSProperties;
+  segmented?: boolean;
+  range?: SettingRange;
 }) {
   const inputId = `${idPrefix}-${setting.key}`;
   const descriptionId = setting.description ? `${inputId}-desc` : undefined;
@@ -117,6 +150,60 @@ export default function ClassicSetting<C>({
   switch (setting.type) {
     /* Control first, then label — the Classic select row's own order. */
     case 'select':
+      /* Segmented pills: a real radio group, not buttons with aria-pressed.
+         Radios give arrow-key navigation, a single tab stop, and "2 of 5"
+         announcements for free, all of which a button row would have to fake and
+         would get wrong. Each radio's value is the declared option value, so the
+         emitted string is identical to what the dropdown emitted. */
+      if (segmented) {
+        const current = typeof value === 'string' ? value : setting.default;
+        return (
+          <div className="classic-field">
+            {/* The group carries the setting's own id — the same id the dropdown
+                had. Nothing points a `for` at it (each radio has its own label),
+                but it keeps one addressable element per setting whichever
+                presentation is chosen. */}
+            <fieldset
+              id={inputId}
+              className="classic-seg"
+              aria-describedby={describedBy}
+            >
+              <legend>{setting.label}</legend>
+              <div className="classic-seg-row">
+                {setting.options.map((option) => {
+                  const state = optionAvailable(availability, option.value);
+                  const optionId = `${inputId}-${option.value}`;
+                  const on = current === option.value;
+                  return (
+                    <span key={option.value} className="classic-seg-item">
+                      <input
+                        id={optionId}
+                        type="radio"
+                        /* One group per setting *and* per prefix: MultiChat and
+                           the Counter both have `stroke`, and a shared name
+                           would make selecting one clear the other. */
+                        name={inputId}
+                        value={option.value}
+                        checked={on}
+                        disabled={disabled || !state.available}
+                        onChange={() => onChange(setting.key, option.value)}
+                      />
+                      <label
+                        htmlFor={optionId}
+                        className={`classic-seg-label${on ? ' on' : ''}`}
+                        style={optionStyle?.(option.value)}
+                      >
+                        {option.label}
+                      </label>
+                    </span>
+                  );
+                })}
+              </div>
+            </fieldset>
+            {help}
+          </div>
+        );
+      }
       return (
         <div className="classic-field">
           <div className="form_row left">
@@ -170,6 +257,61 @@ export default function ClassicSetting<C>({
 
     case 'text': {
       const { maxLength } = setting;
+      /* Slider, for the two settings whose value genuinely is a number on a
+         range — fade seconds and emote scale. The state stays the raw string the
+         serializer expects, and the number is stringified with String() so a
+         slider at 30 emits '30' exactly as the field did. */
+      if (range) {
+        const raw = typeof value === 'string' ? value : setting.default;
+        const blank = raw === '';
+        const numeric = Number(raw);
+        /* A blank or unparseable value still needs a thumb position. The
+           midpoint would imply a value that is not set; the declared default is
+           the honest choice, and the readout says "Default" rather than the
+           number so the two states are never confused. */
+        const fallback = Number(setting.default) || range.min;
+        const shown = blank || !Number.isFinite(numeric) ? fallback : numeric;
+        return (
+          <div className="classic-field stacked">
+            <label htmlFor={inputId}>{setting.label}</label>
+            <div className="classic-range">
+              <input
+                id={inputId}
+                type="range"
+                min={range.min}
+                max={range.max}
+                step={range.step}
+                value={shown}
+                aria-describedby={describedBy}
+                disabled={disabled}
+                /* aria-valuetext, because the number alone does not convey the
+                   blank state a screen-reader user would otherwise miss. */
+                aria-valuetext={
+                  blank
+                    ? `${range.blankLabel}`
+                    : range.unit
+                      ? `${shown} ${range.unit}`
+                      : String(shown)
+                }
+                onChange={(e) => onChange(setting.key, String(Number(e.target.value)))}
+              />
+              <output htmlFor={inputId} className="classic-range-out">
+                {blank ? range.blankLabel : range.unit ? `${shown}${range.unit}` : shown}
+              </output>
+              <button
+                type="button"
+                className={`classic-clear${blank ? ' on' : ''}`}
+                aria-pressed={blank}
+                disabled={disabled}
+                onClick={() => onChange(setting.key, '')}
+              >
+                {range.blankLabel}
+              </button>
+            </div>
+            {help}
+          </div>
+        );
+      }
       return (
         <div className="classic-field stacked">
           <label htmlFor={inputId}>{setting.label}</label>

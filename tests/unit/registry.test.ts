@@ -30,16 +30,15 @@ describe('registry', () => {
     expect(new Set(TOOL_IDS).size).toBe(TOOL_IDS.length);
   });
 
-  it('finds the counter by its route segment', () => {
+  it('finds the counter by its id', () => {
     expect(findTool('counter')?.id).toBe('counter');
     expect(findTool('counter')?.label).toBe('Viewer Counter');
-    expect(findTool('counter')?.workspaceRoute).toBe('/tools/counter');
+    expect(findTool('counter')?.overlayRoute).toBe('/counter');
   });
 
-  it('finds MultiChat by its route segment', () => {
+  it('finds MultiChat by its id', () => {
     expect(findTool('multichat')?.id).toBe('multichat');
     expect(findTool('multichat')?.label).toBe('MultiChat');
-    expect(findTool('multichat')?.workspaceRoute).toBe('/tools/multichat');
     expect(findTool('multichat')?.overlayRoute).toBe('/multichat');
   });
 
@@ -62,11 +61,14 @@ describe('registry', () => {
     expect(registered?.use((tool) => tool.catalog)).toBe(COUNTER_CATALOG);
   });
 
-  it('registers exactly the two known workspace routes', () => {
-    expect(TOOLS.map((tool) => tool.workspaceRoute)).toEqual([
-      '/tools/multichat',
-      '/tools/counter',
-    ]);
+  it('registers exactly the two overlay routes already in OBS scenes', () => {
+    /* These are the addresses in scene collections nobody will edit, so they are
+       permanent. Neither tool declares a generator route of its own — both are
+       panels in the one generator at /multichat. */
+    expect(TOOLS.map((tool) => tool.overlayRoute)).toEqual(['/multichat', '/counter']);
+    for (const tool of TOOLS) {
+      expect(tool).not.toHaveProperty('workspaceRoute');
+    }
   });
 
   it('carries previewNote through registration without losing it', () => {

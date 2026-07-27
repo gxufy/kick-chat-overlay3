@@ -81,6 +81,12 @@ const cookies = (res: ReturnType<typeof makeRes>) => {
 const cookieNamed = (res: ReturnType<typeof makeRes>, name: string) =>
   cookies(res).find((c) => c.startsWith(`${name}=`));
 
+/* The bound destination, decoded. Asserted by equality rather than substring
+   because `%2Fmultichat` is a substring of `%2Ftools%2Fmultichat` — a containment
+   check would pass for the retired path when the canonical one was expected. */
+const boundReturn = (res: ReturnType<typeof makeRes>) =>
+  decodeURIComponent(cookieNamed(res, 'twitch_oauth_return')!.split(';')[0].split('=')[1]);
+
 /** The state value the start route just issued. */
 const issuedState = (res: ReturnType<typeof makeRes>) =>
   cookieNamed(res, 'twitch_oauth_state')!.split(';')[0].split('=')[1];
@@ -110,39 +116,38 @@ describe('start — destination binding', () => {
     }
   });
 
-  it('stores the requested workspace destination', () => {
-    const res = run(startHandler, req({ query: { returnTo: '/tools/multichat' } }));
-    expect(cookieNamed(res, 'twitch_oauth_return')).toContain(
-      encodeURIComponent('/tools/multichat'),
-    );
+  it('stores the canonical generator destination', () => {
+    const res = run(startHandler, req({ query: { returnTo: '/multichat' } }));
+    expect(boundReturn(res)).toBe('/multichat');
   });
 
-  it('stores the classic destination when the classic page asks for it', () => {
-    const res = run(startHandler, req({ query: { returnTo: '/classic/multichat' } }));
-    expect(cookieNamed(res, 'twitch_oauth_return')).toContain(
-      encodeURIComponent('/classic/multichat'),
-    );
-  });
+  /* The two retired paths stay allowlisted so an authorization begun against the
+     old code still completes; each of those pages forwards the fragment on. */
+  it.each(['/classic/multichat', '/tools/multichat'])(
+    'stores the retired destination %s when it is the one asked for',
+    (retired) => {
+      const res = run(startHandler, req({ query: { returnTo: retired } }));
+      expect(boundReturn(res)).toBe(retired);
+    },
+  );
 
-  it('falls back to the workspace when no destination is requested', () => {
+  it('falls back to the canonical generator when no destination is requested', () => {
     const res = run(startHandler, req());
-    expect(cookieNamed(res, 'twitch_oauth_return')).toContain(
-      encodeURIComponent('/tools/multichat'),
-    );
+    expect(boundReturn(res)).toBe('/multichat');
   });
 
   it.each([
     'https://evil.example.com',
     '//evil.example.com',
     '%2F%2Fevil.example.com',
-    '/tools/multichat?x=1',
+    '/multichat?x=1',
+    '/multichat#viewer-counter',
     '/api/twitch/oauth/start',
     'javascript:alert(1)',
   ])('refuses %s and stores the default instead', (candidate) => {
     const res = run(startHandler, req({ query: { returnTo: candidate } }));
-    const cookie = cookieNamed(res, 'twitch_oauth_return')!;
-    expect(cookie).toContain(encodeURIComponent('/tools/multichat'));
-    expect(cookie).not.toContain('evil.example.com');
+    expect(boundReturn(res)).toBe('/multichat');
+    expect(cookieNamed(res, 'twitch_oauth_return')).not.toContain('evil.example.com');
   });
 
   it('refuses a repeated returnTo parameter', () => {
@@ -150,9 +155,7 @@ describe('start — destination binding', () => {
       startHandler,
       req({ query: { returnTo: ['/classic/multichat', '/multichat'] } }),
     );
-    expect(cookieNamed(res, 'twitch_oauth_return')).toContain(
-      encodeURIComponent('/tools/multichat'),
-    );
+    expect(boundReturn(res)).toBe('/multichat');
   });
 
   it('never reflects the requested destination into the Twitch redirect', () => {
@@ -220,42 +223,45 @@ const runCb = async (r: NextApiRequest) => {
 };
 
 describe('callback — redirect destination', () => {
-  it('returns to the workspace when that was bound at start', async () => {
-    const res = await runCb(cbReq('/tools/multichat'));
-    expect(res.statusCode).toBe(302);
-    expect(res.redirectedTo!.startsWith('/tools/multichat#')).toBe(true);
-  });
-
-  it('returns to the classic route when that was bound at start', async () => {
-    const res = await runCb(cbReq('/classic/multichat'));
-    expect(res.redirectedTo!.startsWith('/classic/multichat#')).toBe(true);
-  });
-
-  it('returns to the legacy route when that was bound at start', async () => {
+  it('returns to the canonical generator when that was bound at start', async () => {
     const res = await runCb(cbReq('/multichat'));
+    expect(res.statusCode).toBe(302);
     expect(res.redirectedTo!.startsWith('/multichat#')).toBe(true);
   });
 
-  it('falls back to the workspace when the return cookie is absent', async () => {
+  it.each(['/classic/multichat', '/tools/multichat'])(
+    'returns to the retired route %s when that was bound at start',
+    async (retired) => {
+      const res = await runCb(cbReq(retired));
+      expect(res.redirectedTo!.startsWith(`${retired}#`)).toBe(true);
+    },
+  );
+
+  it('falls back to the canonical generator when the return cookie is absent', async () => {
     const res = await runCb(cbReq(undefined));
-    expect(res.redirectedTo!.startsWith('/tools/multichat#')).toBe(true);
+    expect(res.redirectedTo!.startsWith('/multichat#')).toBe(true);
   });
 
   it.each([
     'https://evil.example.com',
     '//evil.example.com',
-    '/tools/multichat?x=1',
+    '/multichat?x=1',
+    '/multichat#viewer-counter',
     'javascript:alert(1)',
     '',
   ])('revalidates a tampered return cookie (%s) to the default', async (tampered) => {
     const res = await runCb(cbReq(tampered));
-    expect(res.redirectedTo!.startsWith('/tools/multichat#')).toBe(true);
+    expect(res.redirectedTo!.startsWith('/multichat#')).toBe(true);
+    /* The default is a bare path plus one fragment, so a tampered destination
+       cannot have survived as a second `#` or a query. */
+    expect(res.redirectedTo!.split('#')).toHaveLength(2);
+    expect(res.redirectedTo).not.toContain('?');
     expect(res.redirectedTo).not.toContain('evil.example.com');
   });
 
   it('ignores a returnTo in the callback query string entirely', async () => {
     const res = await runCb(
-      cbReq('/tools/multichat', {
+      cbReq('/multichat', {
         query: {
           code: 'auth-code',
           state: STATE,
@@ -263,7 +269,7 @@ describe('callback — redirect destination', () => {
         },
       }),
     );
-    expect(res.redirectedTo!.startsWith('/tools/multichat#')).toBe(true);
+    expect(res.redirectedTo!.startsWith('/multichat#')).toBe(true);
     expect(res.redirectedTo).not.toContain('evil.example.com');
   });
 
@@ -276,11 +282,11 @@ describe('callback — redirect destination', () => {
         },
       }),
     );
-    expect(res.redirectedTo!.startsWith('/tools/multichat#')).toBe(true);
+    expect(res.redirectedTo!.startsWith('/multichat#')).toBe(true);
   });
 
   it('puts the connection id in the fragment, never the query', async () => {
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     const [path, fragment] = res.redirectedTo!.split('#');
     expect(path).not.toContain('twitchConnectionId');
     expect(path).not.toContain('?');
@@ -292,7 +298,7 @@ describe('callback — redirect destination', () => {
 
 describe('callback — state and cookie hygiene', () => {
   it('clears both cookies on success', async () => {
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(cookies(res)).toHaveLength(2);
     for (const c of cookies(res)) expect(c).toContain('Max-Age=0');
   });
@@ -373,7 +379,7 @@ describe('callback — state and cookie hygiene', () => {
 
   it('never exposes the code, state, or connection id in an error body', async () => {
     exchange.mockRejectedValue(new Error('boom'));
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(res.statusCode).toBe(500);
     const body = JSON.stringify(res.body);
     expect(body).not.toContain('auth-code');
@@ -382,7 +388,7 @@ describe('callback — state and cookie hygiene', () => {
   });
 
   it('marks every response uncacheable', async () => {
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(res.getHeader('Cache-Control')).toBe('no-store');
   });
 
@@ -394,7 +400,7 @@ describe('callback — state and cookie hygiene', () => {
 
 describe('callback — existing Twitch verification is untouched', () => {
   it('still exchanges, validates, fetches the profile, and stores', async () => {
-    await runCb(cbReq('/tools/multichat'));
+    await runCb(cbReq('/multichat'));
     expect(exchange).toHaveBeenCalledWith('auth-code');
     expect(validate).toHaveBeenCalledWith('a');
     expect(profile).toHaveBeenCalledWith('a', '1');
@@ -403,21 +409,21 @@ describe('callback — existing Twitch verification is untouched', () => {
 
   it('still refuses when the profile user id disagrees with validation', async () => {
     profile.mockResolvedValue({ userId: '2', login: 'streamer', displayName: 'S' });
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(res.statusCode).toBe(500);
     expect(save).not.toHaveBeenCalled();
   });
 
   it('still refuses when the profile login disagrees with validation', async () => {
     profile.mockResolvedValue({ userId: '1', login: 'someone-else', displayName: 'S' });
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(res.statusCode).toBe(500);
     expect(save).not.toHaveBeenCalled();
   });
 
   it('does not redirect when storage fails', async () => {
     save.mockRejectedValue(new Error('db down'));
-    const res = await runCb(cbReq('/tools/multichat'));
+    const res = await runCb(cbReq('/multichat'));
     expect(res.statusCode).toBe(500);
     expect(res.redirectedTo).toBeUndefined();
   });

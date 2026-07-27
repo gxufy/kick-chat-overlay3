@@ -40,7 +40,7 @@ import { TOOLS, TOOL_IDS, findTool } from '@/lib/tools/registry';
 /** Workspace defaults — what the catalog and descriptor are built on. */
 const D = MULTICHAT_WORKSPACE_DEFAULTS;
 
-/** Legacy generator defaults — what LandingPage still holds. */
+/** Legacy generator defaults — the pinned compatibility shape. */
 const LEGACY = MULTICHAT_GENERATOR_DEFAULTS;
 
 /** Both sides of every identity check get the same complete channel shape. */
@@ -102,9 +102,9 @@ describe('legacy generator compatibility', () => {
     expect(multichatSourceTagOf({ ...LEGACY, platformIcons: false })).toBe('none');
   });
 
-  /* A spread of LandingPage states, each byte-pinned against the same serializer
+  /* A spread of legacy generator states, each byte-pinned against the same serializer
      call, so any drift in order, encoding, or inclusion shows up here. */
-  it('stays byte-identical across representative LandingPage states', () => {
+  it('stays byte-identical across representative legacy generator states', () => {
     const fixtures: Partial<MultichatGeneratorStyle>[] = [
       {},
       { platformIcons: false },
@@ -144,16 +144,15 @@ describe('legacy generator compatibility', () => {
 });
 
 describe('descriptor identity', () => {
-  it('declares the stable id and routes', () => {
+  it('declares the stable id and its overlay route', () => {
     expect(multichatTool.id).toBe('multichat');
     expect(multichatTool.label).toBe('MultiChat');
-    expect(multichatTool.workspaceRoute).toBe('/tools/multichat');
     expect(multichatTool.overlayRoute).toBe('/multichat');
   });
 
   it('declares the intended OBS browser-source size', () => {
-    /* 680 × 280 — the size the generator's own OBS setup step recommends in
-       components/LandingPage.tsx. */
+    /* 680 × 280 — the size the generator's own OBS setup step recommends, from
+       lib/tools/multichat/obs.ts. */
     expect(multichatTool.obs).toEqual({ width: 680, height: 280 });
   });
 
@@ -205,18 +204,16 @@ describe('registration boundary', () => {
     expect(TOOL_IDS).toEqual(['multichat', 'counter']);
   });
 
-  it('is findable by id, so /tools/multichat is a real route', () => {
+  it('is findable by id, which is what the retired /tools redirect resolves', () => {
     expect(findTool('multichat')).toBeDefined();
-    expect(findTool('multichat')?.workspaceRoute).toBe('/tools/multichat');
+    expect(findTool('multichat')?.id).toBe('multichat');
   });
 
-  it('registers the workspace route while keeping the legacy overlay route', () => {
-    const registered = findTool('multichat');
-    expect(registered?.workspaceRoute).toBe('/tools/multichat');
-    /* The generated URL still points at the existing overlay, not at the
-     * workspace — that is what keeps copied URLs valid if this route is ever
-     * withdrawn. */
-    expect(registered?.overlayRoute).toBe('/multichat');
+  it('keeps the overlay route the generated URL has always pointed at', () => {
+    /* The generated URL points at the overlay, never at a generator page — that
+       is what keeps every URL already pasted into OBS valid regardless of which
+       address the generator itself is served from. */
+    expect(findTool('multichat')?.overlayRoute).toBe('/multichat');
   });
 
   it('hands back the same descriptor object through use', () => {

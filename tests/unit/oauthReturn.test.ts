@@ -11,24 +11,28 @@ import {
   OAUTH_RETURN_ALLOWLIST,
   OAUTH_RETURN_CLASSIC,
   OAUTH_RETURN_DEFAULT,
-  OAUTH_RETURN_LEGACY,
+  OAUTH_RETURN_GENERATOR,
   OAUTH_RETURN_WORKSPACE,
   resolveReturnDestination,
   validateReturnDestination,
 } from '@/lib/oauthReturn';
 
 describe('allowlist contents', () => {
-  it('contains exactly the three internal generator paths', () => {
+  /* The canonical destination first, then the two retired paths kept only for
+     authorizations already in flight across the deploy that retired them. Both
+     redirect to the canonical route and carry a connection fragment across, so
+     allowing them loses nothing. */
+  it('contains the canonical generator and the two retired paths', () => {
     expect(OAUTH_RETURN_ALLOWLIST).toEqual([
-      '/tools/multichat',
-      '/classic/multichat',
       '/multichat',
+      '/classic/multichat',
+      '/tools/multichat',
     ]);
   });
 
-  it('defaults to the workspace', () => {
-    expect(OAUTH_RETURN_DEFAULT).toBe(OAUTH_RETURN_WORKSPACE);
-    expect(OAUTH_RETURN_DEFAULT).toBe('/tools/multichat');
+  it('defaults to the canonical generator', () => {
+    expect(OAUTH_RETURN_DEFAULT).toBe(OAUTH_RETURN_GENERATOR);
+    expect(OAUTH_RETURN_DEFAULT).toBe('/multichat');
   });
 
   it('holds only root-relative single-slash paths', () => {
@@ -50,9 +54,10 @@ describe('accepted destinations', () => {
     }
   });
 
-  it('accepts the classic and legacy paths specifically', () => {
+  it('accepts the canonical and both retired paths specifically', () => {
+    expect(validateReturnDestination(OAUTH_RETURN_GENERATOR)).toBe('/multichat');
     expect(validateReturnDestination(OAUTH_RETURN_CLASSIC)).toBe('/classic/multichat');
-    expect(validateReturnDestination(OAUTH_RETURN_LEGACY)).toBe('/multichat');
+    expect(validateReturnDestination(OAUTH_RETURN_WORKSPACE)).toBe('/tools/multichat');
   });
 });
 
@@ -85,6 +90,8 @@ describe('refused destinations', () => {
     ['relative no slash', 'tools/multichat'],
     ['empty string', ''],
     ['unknown internal path', '/tools/counter'],
+    ['the canonical route with the counter anchor', '/multichat#viewer-counter'],
+    ['the canonical route with a channel', '/multichat?kick=a'],
     ['api path', '/api/twitch/oauth/start'],
     ['repeated parameter array', ['/tools/multichat', '/multichat']],
     ['array single', ['/tools/multichat']],
@@ -99,8 +106,8 @@ describe('refused destinations', () => {
     expect(validateReturnDestination(candidate)).toBeNull();
   });
 
-  it.each(REFUSED)('falls back to the workspace for %s', (_label, candidate) => {
-    expect(resolveReturnDestination(candidate)).toBe('/tools/multichat');
+  it.each(REFUSED)('falls back to the canonical generator for %s', (_label, candidate) => {
+    expect(resolveReturnDestination(candidate)).toBe('/multichat');
   });
 
   it('never returns a value outside the allowlist', () => {

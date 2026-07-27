@@ -17,23 +17,35 @@
  * TRUE. Someone who switched Combined off and copied the URL got one that reads
  * as on, with nothing to indicate the setting had been dropped.
  *
- * WHAT THIS FILE COVERS. Page-level, through the real workspace shell and the
+ * WHAT THIS FILE COVERS. Page-level, through the real Classic generator and the
  * real counter descriptor — not the serializer in isolation, which the sibling
- * viewerCounterConfig tests already cover. The point is that no state the shell
+ * viewerCounterConfig tests already cover. The point is that no state the page
  * can reach, at any point in its lifecycle, produces such a URL: not the first
- * unconfigured render, not mid-typing, not after a tool switch, not from a
- * restored draft, and not in the debounced iframe, Copy, or Open values.
+ * unconfigured render, not mid-typing, not after a remount, not from a restored
+ * draft, and not in the debounced iframe, Copy, or Open values.
+ *
+ * The counter now lives inside the generator rather than in a workspace of its
+ * own, so every case is exercised where a user actually meets it: on the same
+ * page as 24 chat settings that write a different style object.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import GeneratorWorkspace from '@/components/workspace/GeneratorWorkspace';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
+import { workspaceDraftKey } from '@/lib/workspaceStorage';
 import { counterTool } from '@/lib/tools/counter/config';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import type { OverlayTool } from '@/lib/tools/registry';
 import { buildViewerCounterQuery } from '@/lib/viewerCounterConfig';
 
-const BASE = 'https://example.com';
+/* next/head renders nothing in jsdom and next/link wants a router context; the
+   generator is being asked about its URLs, not its chrome. */
+vi.mock('next/head', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
 
 /** The exact shape observed in the wild, as a reproduction fixture. */
 const EVIDENCE =
@@ -53,19 +65,29 @@ function expectNoUndefined(url: string, label: string) {
   expect(url, `${label}: bare word`).not.toContain('undefined');
 }
 
-/* Generic over the tool so the MultiChat→Counter route-switch case can mount the
-   other descriptor. A default parameter would pin the type to the counter's. */
-const mount = <S extends Record<string, unknown>, P extends string, R>(
-  tool: OverlayTool<S, P, R> = counterTool as never,
-) => render(<GeneratorWorkspace tool={tool} baseUrl={BASE} />);
+const mount = () => render(<ClassicGenerator />);
 
-const urlField = () => screen.getByLabelText('Overlay URL') as HTMLInputElement;
-const iframeSrc = () => document.querySelector('iframe')?.getAttribute('src') ?? '';
+/** The Counter panel, so its Copy button and URL are addressed unambiguously —
+ *  the chat panel beside it has a Copy button and a URL of its own. */
+const counterPanel = () => {
+  const panel = document.querySelector('.panel-counter-output');
+  expect(panel, 'counter output panel is missing').not.toBeNull();
+  return within(panel as HTMLElement);
+};
+
+const counterUrl = () =>
+  counterPanel().getByLabelText('Generated viewer counter URL').textContent ?? '';
+
+const counterIframeSrc = () =>
+  document
+    .querySelector('iframe[title="Live viewer counter preview"]')
+    ?.getAttribute('src') ?? '';
+
 const settle = () => act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
 
-/* Channel fields are addressed by id, not by label. MultiChat's catalog also
-   contains settings labelled per platform, so getByLabelText('Kick') is
-   ambiguous there — and this helper is used against both tools. */
+/* Channel fields are addressed by id, not by label: both catalogs on this page
+   contain settings labelled per platform, so getByLabelText('Kick') is
+   ambiguous. */
 const channelInput = (platform: string): HTMLInputElement => {
   const el = document.getElementById(`channel-${platform}`);
   expect(el, `channel-${platform} field is missing`).not.toBeNull();
@@ -117,31 +139,31 @@ describe('the reproduction fixture is genuinely what the bug looked like', () =>
   });
 });
 
-describe('the counter workspace lifecycle, end to end', () => {
+describe('the counter panel lifecycle, end to end', () => {
   it('1. initial unconfigured render', () => {
     mount();
-    expectNoUndefined(urlField().value, 'initial');
+    expectNoUndefined(counterUrl(), 'initial');
   });
 
   it('2. entering only a Kick channel', () => {
     mount();
     typeChannel('kick', 'iceposeidon');
-    expectNoUndefined(urlField().value, 'kick only');
-    expect(urlField().value).toContain('kick=iceposeidon');
+    expectNoUndefined(counterUrl(), 'kick only');
+    expect(counterUrl()).toContain('kick=iceposeidon');
   });
 
   it('3. the immediately displayed URL, before any debounce', () => {
     mount();
     typeChannel('kick', 'iceposeidon');
     // No settle() — this is the value Copy would read on the very next tick.
-    expectNoUndefined(urlField().value, 'undebounced');
+    expectNoUndefined(counterUrl(), 'undebounced');
   });
 
   it('4. the debounced iframe URL', () => {
     mount();
     typeChannel('kick', 'iceposeidon');
     settle();
-    const src = iframeSrc();
+    const src = counterIframeSrc();
     expect(src).not.toBe('');
     expectNoUndefined(src, 'iframe src');
   });
@@ -154,57 +176,59 @@ describe('the counter workspace lifecycle, end to end', () => {
     const name = 'iceposeidon';
     for (let i = 1; i <= name.length; i++) {
       typeChannel('kick', name.slice(0, i));
-      expectNoUndefined(urlField().value, `keystroke ${i}`);
+      expectNoUndefined(counterUrl(), `keystroke ${i}`);
     }
     settle();
-    expectNoUndefined(iframeSrc(), 'iframe after typing');
+    expectNoUndefined(counterIframeSrc(), 'iframe after typing');
   });
 
-  it('5. routing from the MultiChat workspace to the Counter workspace', () => {
-    /* A remount with a different descriptor is what the route change does:
-       /tools/[tool] renders one GeneratorWorkspace keyed by the resolved tool.
-       If any state survived that, a MultiChat style object would reach the
-       counter serializer and every counter field would be missing — which is
-       precisely the observed shape. */
-    const { unmount } = mount(multichatTool);
+  it('5. stays clean across a remount, carrying nothing over', () => {
+    /* The counter used to be its own route, and a route change remounted the
+       shell with a different descriptor. It is now a panel, so the remount that
+       matters is a plain reload of the generator — and if any counter state
+       survived it as a partial object, every counter field would be missing,
+       which is precisely the observed shape. */
+    const { unmount } = mount();
     typeChannel('kick', 'iceposeidon');
     unmount();
 
     mount();
-    expectNoUndefined(urlField().value, 'after tool switch');
+    expectNoUndefined(counterUrl(), 'after remount');
     typeChannel('kick', 'iceposeidon');
-    expectNoUndefined(urlField().value, 'after tool switch, configured');
+    expectNoUndefined(counterUrl(), 'after remount, configured');
     settle();
-    expectNoUndefined(iframeSrc(), 'iframe after tool switch');
+    expectNoUndefined(counterIframeSrc(), 'iframe after remount');
   });
 
-  it('survives a MultiChat draft left in sessionStorage', () => {
+  it('survives a foreign draft left in sessionStorage', () => {
     /* Draft restore is the one path that feeds stored, untyped data into style
-       state. A draft written under the counter's own id but carrying MultiChat
-       fields is the realistic stale-state case, and it must normalize rather
-       than serialize undefined. */
+       state. A draft written under the counter's own key but carrying MultiChat
+       fields is the realistic stale-state case — and it is more likely now that
+       both tools write a draft on the same OAuth navigation. It must normalize
+       rather than serialize undefined. */
     window.sessionStorage.setItem(
-      'workspace-draft:counter',
+      workspaceDraftKey(counterTool.id),
       JSON.stringify({
+        version: 1,
         style: { textShadow: 'small', stroke: 'none', font: 'roboto', msgBold: true },
         channels: { kick: 'iceposeidon' },
         background: 'checker',
       }),
     );
     mount();
-    expectNoUndefined(urlField().value, 'restored foreign draft');
+    expectNoUndefined(counterUrl(), 'restored foreign draft');
     settle();
-    expectNoUndefined(iframeSrc(), 'iframe from restored draft');
+    expectNoUndefined(counterIframeSrc(), 'iframe from restored draft');
   });
 
   it('6. defaults before and after hydration settle to the same clean URL', () => {
     /* First paint and post-effect state are separate opportunities to serialize
        incomplete state. Both are asserted, and they must agree. */
     mount();
-    const first = urlField().value;
+    const first = counterUrl();
     expectNoUndefined(first, 'first paint');
     settle();
-    const after = urlField().value;
+    const after = counterUrl();
     expectNoUndefined(after, 'after effects');
     expect(after).toBe(first);
   });
@@ -220,26 +244,21 @@ describe('7. the values Copy and Open actually hand over', () => {
 
     mount();
     typeChannel('kick', 'iceposeidon');
-    fireEvent.click(screen.getByRole('button', { name: /copy overlay url/i }));
+    fireEvent.click(counterPanel().getByRole('button', { name: 'Copy' }));
     await act(async () => void (await Promise.resolve()));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expectNoUndefined(writeText.mock.calls[0][0] as string, 'clipboard');
   });
 
-  it('opens a URL with no undefined in it', () => {
-    const open = vi.fn();
-    vi.spyOn(window, 'open').mockImplementation(open as never);
-
+  it('offers Open at a URL with no undefined in it', () => {
     mount();
     typeChannel('kick', 'iceposeidon');
-    fireEvent.click(screen.getByRole('button', { name: /open in new tab/i }));
-
-    expect(open).toHaveBeenCalledTimes(1);
-    expectNoUndefined(open.mock.calls[0][0] as string, 'window.open');
+    const open = counterPanel().getByRole('link', { name: 'Open' });
+    expectNoUndefined(open.getAttribute('href') ?? '', 'Open href');
   });
 
-  it('copies, displays, and previews the identical string', () => {
+  it('copies, displays, opens, and previews the identical string', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
@@ -249,15 +268,27 @@ describe('7. the values Copy and Open actually hand over', () => {
     mount();
     typeChannel('kick', 'iceposeidon');
     settle();
-    fireEvent.click(screen.getByRole('button', { name: /copy overlay url/i }));
+    fireEvent.click(counterPanel().getByRole('button', { name: 'Copy' }));
 
-    // One derived URL feeds all three, so a defect cannot hide in just one.
-    expect(writeText.mock.calls[0][0]).toBe(urlField().value);
-    expect(iframeSrc()).toBe(urlField().value);
+    // One derived URL feeds all four, so a defect cannot hide in just one.
+    expect(writeText.mock.calls[0][0]).toBe(counterUrl());
+    expect(counterIframeSrc()).toBe(counterUrl());
+    expect(counterPanel().getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(
+      counterUrl(),
+    );
   });
 });
 
-describe('every reachable style combination stays clean', () => {
+describe('every reachable counter style combination stays clean', () => {
+  /* Scoped to the counter's own controls. The chat settings on this page write a
+     different style object, and sweeping them here would prove nothing about the
+     counter while making a failure hard to attribute. */
+  const counterSettings = () => {
+    const panel = document.querySelector('.panel-counter-settings');
+    expect(panel, 'counter settings panel is missing').not.toBeNull();
+    return panel as HTMLElement;
+  };
+
   it('holds while toggling and re-selecting each counter control', () => {
     /* Exhaustive over the controls a user can actually operate, because the
        observed URL had four fields wrong at once — a state no single toggle
@@ -266,20 +297,47 @@ describe('every reachable style combination stays clean', () => {
     typeChannel('kick', 'iceposeidon');
 
     for (const el of Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+      counterSettings().querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
     )) {
       fireEvent.click(el);
-      expectNoUndefined(urlField().value, `after toggling ${el.id}`);
+      expectNoUndefined(counterUrl(), `after toggling ${el.id}`);
     }
 
-    for (const select of Array.from(document.querySelectorAll('select'))) {
+    for (const select of Array.from(counterSettings().querySelectorAll('select'))) {
       for (const option of Array.from(select.options)) {
         fireEvent.change(select, { target: { value: option.value } });
-        expectNoUndefined(urlField().value, `${select.id}=${option.value}`);
+        expectNoUndefined(counterUrl(), `${select.id}=${option.value}`);
       }
     }
 
     settle();
-    expectNoUndefined(iframeSrc(), 'iframe after full sweep');
+    expectNoUndefined(counterIframeSrc(), 'iframe after full sweep');
+  });
+
+  it('stays clean while the chat side is restyled around it', () => {
+    /* The two panels share a page and a channel map. Sweeping every chat control
+       is what proves the counter's style object is genuinely separate: a shared
+       or partially-spread style is exactly how fields go missing. */
+    mount();
+    typeChannel('kick', 'iceposeidon');
+    const before = counterUrl();
+
+    const chatSettings = document.querySelector('.panel-chat-settings') as HTMLElement;
+    for (const el of Array.from(
+      chatSettings.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    )) {
+      fireEvent.click(el);
+      expectNoUndefined(counterUrl(), `chat toggle ${el.id}`);
+    }
+    for (const select of Array.from(chatSettings.querySelectorAll('select'))) {
+      for (const option of Array.from(select.options)) {
+        if (option.disabled) continue;
+        fireEvent.change(select, { target: { value: option.value } });
+        expectNoUndefined(counterUrl(), `chat ${select.id}=${option.value}`);
+      }
+    }
+
+    // And unchanged: no chat setting is a counter parameter.
+    expect(counterUrl()).toBe(before);
   });
 });

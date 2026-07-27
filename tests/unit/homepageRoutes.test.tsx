@@ -1,20 +1,33 @@
-/* Homepage and classic-route wiring.
+/* Homepage links and the three retired routes that forward to the generator.
  *
- * These are the links a new user actually follows, and they are the kind of thing
- * that rots silently: nothing fails to build when a card points at a path that
- * has moved, and nobody notices until someone lands on a redirect or a 404. The
- * canonical hrefs are asserted directly rather than through a helper, because
- * hardcoded strings in JSX are exactly what could drift.
+ * These are the paths a visitor actually arrives on, and they are the kind of
+ * thing that rots silently: nothing fails to build when a card points at a path
+ * that has moved, and nobody notices until someone lands on a 404. The canonical
+ * hrefs are asserted directly rather than through a helper, because hardcoded
+ * strings in JSX are exactly what could drift.
+ *
+ * The retired routes carry a security property as well as a convenience one.
+ * `/classic/multichat` and `/tools/multichat` are still in the OAuth return
+ * allowlist — an authorization begun before the deploy that retired them comes
+ * back to whichever destination it recorded — and the callback delivers the
+ * connection id in the URL fragment. A fragment is not in `router.query`, so a
+ * forward that ignored `window.location.hash` would silently discard the
+ * connection the user just authorized. That is asserted here, in both pages.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import HomePage from '@/pages/index';
 import ClassicMultichatPage from '@/pages/classic/multichat';
+import RetiredToolPage, { getStaticProps } from '@/pages/tools/[tool]';
 import {
   CANONICAL_COUNTER_ROUTE,
   CANONICAL_MULTICHAT_ROUTE,
 } from '@/lib/multichatRouting';
-import { OAUTH_RETURN_CLASSIC } from '@/lib/oauthReturn';
+import {
+  OAUTH_RETURN_CLASSIC,
+  OAUTH_RETURN_WORKSPACE,
+  OAUTH_RETURN_ALLOWLIST,
+} from '@/lib/oauthReturn';
 
 const replace = vi.fn();
 let query: Record<string, string> = {};
@@ -29,9 +42,15 @@ vi.mock('next/head', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+/** Set the fragment the retired pages will read on mount. */
+const setHash = (hash: string) => {
+  window.history.replaceState(null, '', `/${hash}`);
+};
+
 beforeEach(() => {
   replace.mockClear();
   query = {};
+  setHash('');
 });
 
 afterEach(cleanup);
@@ -40,18 +59,20 @@ const hrefs = () =>
   Array.from(document.querySelectorAll('a[href]')).map((a) => a.getAttribute('href'));
 
 describe('homepage product cards', () => {
-  it('links both generators at their canonical routes', () => {
+  it('links the generator and the counter panel at their canonical addresses', () => {
     render(<HomePage />);
     expect(hrefs()).toContain(CANONICAL_MULTICHAT_ROUTE);
     expect(hrefs()).toContain(CANONICAL_COUNTER_ROUTE);
   });
 
-  /* /multichat still serves the overlay and forwards a channel-less visit to
-     the workspace, so linking it here would only add a redirect hop. */
-  it('never links the legacy generator path', () => {
+  /* The /tools pages are redirect stubs now. Linking one would send every new
+     visitor through a hop for nothing. */
+  it('never links a retired generator path', () => {
     render(<HomePage />);
-    expect(hrefs()).not.toContain('/multichat');
-    expect(hrefs()).not.toContain('/multichat?tab=counter');
+    for (const href of hrefs()) {
+      expect(href).not.toMatch(/^\/tools\//);
+      expect(href).not.toBe('/classic/multichat');
+    }
   });
 
   it('gives each card a reachable call to action', () => {
@@ -59,12 +80,23 @@ describe('homepage product cards', () => {
     const cards = Array.from(document.querySelectorAll('a.card'));
     expect(cards).toHaveLength(2);
     for (const card of cards) {
-      expect(card.getAttribute('href')).toMatch(/^\/tools\//);
+      expect(card.getAttribute('href')).toMatch(/^\/multichat/);
       expect(card.textContent?.trim().length ?? 0).toBeGreaterThan(0);
     }
   });
 
-  it('points the footer at the canonical workspace', () => {
+  it('sends the counter card to the panel anchor, not a route of its own', () => {
+    render(<HomePage />);
+    /* Matched on the heading, not the body copy: the chat card's description
+       mentions the viewer counter too, so a whole-card text match finds it. */
+    const counterCard = Array.from(document.querySelectorAll('a.card')).find((card) =>
+      /counter/i.test(card.querySelector('h2')?.textContent ?? ''),
+    );
+    expect(counterCard?.getAttribute('href')).toBe(CANONICAL_COUNTER_ROUTE);
+    expect(CANONICAL_COUNTER_ROUTE).toContain('#');
+  });
+
+  it('points the footer at the canonical generator', () => {
     render(<HomePage />);
     const footer = document.querySelector('footer');
     const link = footer?.querySelector('a[href]');
@@ -74,10 +106,10 @@ describe('homepage product cards', () => {
 
 /* The homepage keeps its own overlay forward: a /?kick=name link is an overlay
    request that predates the generator split, and it must still reach the
-   overlay rather than the workspace. */
+   overlay. */
 describe('homepage overlay forward', () => {
   it.each(['channel', 'kick', 'twitch', 'youtube', 'tiktok'])(
-    'forwards ?%s= to the overlay, not the workspace',
+    'forwards ?%s= to the overlay',
     (param) => {
       query = { [param]: 'somechannel' };
       render(<HomePage />);
@@ -110,20 +142,108 @@ describe('homepage overlay forward', () => {
   });
 });
 
-describe('classic compatibility route', () => {
+describe('/classic/multichat forwards to the canonical generator', () => {
   it('is excluded from search indexing', () => {
     render(<ClassicMultichatPage />);
     const robots = document.querySelector('meta[name="robots"]');
     expect(robots?.getAttribute('content')).toBe('noindex');
   });
 
-  it('renders the classic generator rather than redirecting', () => {
+  it('replaces with the canonical generator route', () => {
     render(<ClassicMultichatPage />);
-    expect(replace).not.toHaveBeenCalled();
-    expect(document.body.textContent?.length ?? 0).toBeGreaterThan(0);
+    expect(replace).toHaveBeenCalledWith(CANONICAL_MULTICHAT_ROUTE);
+  });
+
+  it('carries an OAuth connection fragment across the forward', () => {
+    /* The reason this page still exists. The fragment is the only place the
+       connection id ever appears, and it never reaches the server. */
+    setHash('#twitchConnectionId=11111111-2222-4333-8444-555555555555&twitch=streamer');
+    render(<ClassicMultichatPage />);
+    expect(replace).toHaveBeenCalledWith(
+      `${CANONICAL_MULTICHAT_ROUTE}#twitchConnectionId=11111111-2222-4333-8444-555555555555&twitch=streamer`,
+    );
+  });
+
+  it('replaces only once, even under a doubled effect run', () => {
+    const { unmount } = render(<ClassicMultichatPage />);
+    act(() => void 0);
+    unmount();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a working link for a visitor whose JavaScript has not run', () => {
+    render(<ClassicMultichatPage />);
+    expect(
+      screen.getByRole('link', { name: 'Continue' }).getAttribute('href'),
+    ).toBe(CANONICAL_MULTICHAT_ROUTE);
   });
 
   it('is the path the OAuth allowlist names', () => {
     expect(OAUTH_RETURN_CLASSIC).toBe('/classic/multichat');
+    expect(OAUTH_RETURN_ALLOWLIST).toContain(OAUTH_RETURN_CLASSIC);
+  });
+});
+
+describe('/tools/* forwards to where each tool now lives', () => {
+  /** The props the route would build for one id at build time. */
+  const props = async (tool: string) =>
+    (await getStaticProps({ params: { tool } } as never)) as {
+      props?: { destination: string };
+      notFound?: true;
+    };
+
+  it('sends /tools/multichat to the generator', async () => {
+    const built = await props('multichat');
+    expect(built.props?.destination).toBe(CANONICAL_MULTICHAT_ROUTE);
+    render(<RetiredToolPage destination={built.props!.destination} />);
+    expect(replace).toHaveBeenCalledWith(CANONICAL_MULTICHAT_ROUTE);
+  });
+
+  it('sends /tools/counter to the counter panel, focused', async () => {
+    const built = await props('counter');
+    expect(built.props?.destination).toBe(CANONICAL_COUNTER_ROUTE);
+    render(<RetiredToolPage destination={built.props!.destination} />);
+    expect(replace).toHaveBeenCalledWith(CANONICAL_COUNTER_ROUTE);
+    // The counter is a panel anchor, not a route.
+    expect(CANONICAL_COUNTER_ROUTE).toBe(`${CANONICAL_MULTICHAT_ROUTE}#viewer-counter`);
+  });
+
+  it.each(['unknown', '', 'multichat/../admin'])(
+    'refuses to redirect the unregistered id %s',
+    async (tool) => {
+      expect((await props(tool)).notFound).toBe(true);
+    },
+  );
+
+  it('carries an OAuth connection fragment to the generator, not the anchor', async () => {
+    /* An authorization in flight against /tools/counter still returns a usable
+       connection: the payload fragment replaces the destination's own anchor
+       rather than being dropped beside it. */
+    setHash('#twitchConnectionId=11111111-2222-4333-8444-555555555555&twitch=streamer');
+    const built = await props('counter');
+    render(<RetiredToolPage destination={built.props!.destination} />);
+    expect(replace).toHaveBeenCalledWith(
+      `${CANONICAL_MULTICHAT_ROUTE}#twitchConnectionId=11111111-2222-4333-8444-555555555555&twitch=streamer`,
+    );
+  });
+
+  it('does not carry a plain anchor into the destination', () => {
+    /* A bare `#faq` is not a connection, and the destination already names the
+       section it wants — appending one would produce two fragments. */
+    setHash('#faq');
+    render(<RetiredToolPage destination={CANONICAL_COUNTER_ROUTE} />);
+    expect(replace).toHaveBeenCalledWith(CANONICAL_COUNTER_ROUTE);
+  });
+
+  it('is excluded from search indexing', () => {
+    render(<RetiredToolPage destination={CANONICAL_MULTICHAT_ROUTE} />);
+    expect(
+      document.querySelector('meta[name="robots"]')?.getAttribute('content'),
+    ).toBe('noindex');
+  });
+
+  it('is the path the OAuth allowlist names', () => {
+    expect(OAUTH_RETURN_WORKSPACE).toBe('/tools/multichat');
+    expect(OAUTH_RETURN_ALLOWLIST).toContain(OAUTH_RETURN_WORKSPACE);
   });
 });

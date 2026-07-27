@@ -1,25 +1,34 @@
-/* Legacy /multichat routing — the overlay-compatibility boundary.
+/* /multichat routing — the overlay-compatibility boundary.
  *
  * The property under test is one-directional and permanent: any query naming a
  * channel must resolve to the overlay, whatever else it carries. Every OBS scene
- * in existence points at this path, so a redirect that captured one of those
- * URLs would black out a live stream. The redirect cases matter too, but they
- * are recoverable; the overlay cases are not.
+ * in existence points at this path, so serving anything else for one of those
+ * URLs would black out a live stream. The generator cases matter too, but they are
+ * recoverable; the overlay cases are not.
+ *
+ * Nothing here redirects any more. A channel-less visit renders the generator on
+ * this same path, so the previous forwarding rule — and the fragment-preservation
+ * machinery that went with it — is gone. What remains is a single pure decision.
  */
 import { describe, expect, it } from 'vitest';
 import {
   CANONICAL_COUNTER_ROUTE,
   CANONICAL_MULTICHAT_ROUTE,
+  COUNTER_SECTION_ID,
   MULTICHAT_CHANNEL_PARAMS,
   hasChannelParam,
-  legacyRedirectTarget,
-  resolveLegacyMultichatRoute,
+  resolveMultichatRoute,
+  wantsCounterSection,
 } from '@/lib/multichatRouting';
 
 describe('canonical routes', () => {
-  it('names the workspace routes', () => {
-    expect(CANONICAL_MULTICHAT_ROUTE).toBe('/tools/multichat');
-    expect(CANONICAL_COUNTER_ROUTE).toBe('/tools/counter');
+  it('serves the generator from the overlay path', () => {
+    expect(CANONICAL_MULTICHAT_ROUTE).toBe('/multichat');
+  });
+
+  it('reaches the counter as a section of that page, not a route', () => {
+    expect(COUNTER_SECTION_ID).toBe('viewer-counter');
+    expect(CANONICAL_COUNTER_ROUTE).toBe('/multichat#viewer-counter');
   });
 
   it('covers every channel parameter the overlay parser accepts', () => {
@@ -35,14 +44,14 @@ describe('canonical routes', () => {
 
 describe('overlay requests', () => {
   it.each(MULTICHAT_CHANNEL_PARAMS)('serves the overlay for ?%s=', (param) => {
-    expect(resolveLegacyMultichatRoute({ [param]: 'somechannel' })).toEqual({
+    expect(resolveMultichatRoute({ [param]: 'somechannel' })).toEqual({
       kind: 'overlay',
     });
   });
 
   it('serves the overlay for a full multi-platform URL', () => {
     expect(
-      resolveLegacyMultichatRoute({
+      resolveMultichatRoute({
         kick: 'a',
         twitch: 'b',
         youtube: 'c',
@@ -52,20 +61,19 @@ describe('overlay requests', () => {
     ).toBe('overlay');
   });
 
-  /* The case that makes the ordering load-bearing. */
+  /* The case that makes the ordering load-bearing: a scene collection could
+     carry any extra parameter, and none of them may cost the overlay. */
   it('serves the overlay even when tab=counter is also present', () => {
-    expect(resolveLegacyMultichatRoute({ kick: 'a', tab: 'counter' }).kind).toBe(
-      'overlay',
-    );
+    expect(resolveMultichatRoute({ kick: 'a', tab: 'counter' }).kind).toBe('overlay');
   });
 
   it('serves the overlay for a repeated parameter with one real value', () => {
-    expect(resolveLegacyMultichatRoute({ kick: ['', 'real'] }).kind).toBe('overlay');
+    expect(resolveMultichatRoute({ kick: ['', 'real'] }).kind).toBe('overlay');
   });
 
   it('keeps serving the overlay regardless of unrelated settings', () => {
     expect(
-      resolveLegacyMultichatRoute({
+      resolveMultichatRoute({
         twitch: 'a',
         sourceTag: 'text',
         pinPlatforms: 'twitch',
@@ -76,213 +84,81 @@ describe('overlay requests', () => {
 });
 
 describe('generator requests', () => {
-  it('forwards a bare visit to the MultiChat workspace', () => {
-    expect(resolveLegacyMultichatRoute({})).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/multichat',
-      hash: '',
-    });
+  it('serves the generator for a bare visit', () => {
+    expect(resolveMultichatRoute({})).toEqual({ kind: 'generator' });
   });
 
-  it('forwards tab=counter to the counter workspace', () => {
-    expect(resolveLegacyMultichatRoute({ tab: 'counter' })).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/counter',
-      hash: '',
-    });
-  });
-
-  it('forwards an unrecognized tab to the MultiChat workspace', () => {
-    for (const tab of ['chat', 'COUNTER', 'counter ', '', 'other']) {
-      expect(resolveLegacyMultichatRoute({ tab })).toEqual({
-        kind: 'redirect',
-        pathname: '/tools/multichat',
-        hash: '',
-      });
-    }
-  });
-
-  it('forwards an ambiguous repeated tab to the MultiChat workspace', () => {
-    expect(resolveLegacyMultichatRoute({ tab: ['counter', 'chat'] })).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/multichat',
-      hash: '',
-    });
+  it('serves the generator for tab=counter with no channel', () => {
+    expect(resolveMultichatRoute({ tab: 'counter' })).toEqual({ kind: 'generator' });
   });
 
   /* An unfilled generator field submits `?kick=`. That is not a channel, so it
-     must not be mistaken for an overlay request and left on a dead page. */
-  it.each(MULTICHAT_CHANNEL_PARAMS)('treats an empty ?%s= as a generator visit', (param) => {
-    expect(resolveLegacyMultichatRoute({ [param]: '' }).kind).toBe('redirect');
-    expect(resolveLegacyMultichatRoute({ [param]: '   ' }).kind).toBe('redirect');
-  });
+     must not be mistaken for an overlay request and leave the visitor on a page
+     with nothing on it. */
+  it.each(MULTICHAT_CHANNEL_PARAMS)(
+    'treats an empty ?%s= as a generator visit',
+    (param) => {
+      expect(resolveMultichatRoute({ [param]: '' }).kind).toBe('generator');
+      expect(resolveMultichatRoute({ [param]: '   ' }).kind).toBe('generator');
+    },
+  );
 
   it('treats a repeated all-empty parameter as a generator visit', () => {
-    expect(resolveLegacyMultichatRoute({ kick: ['', ''] }).kind).toBe('redirect');
+    expect(resolveMultichatRoute({ kick: ['', ''] }).kind).toBe('generator');
   });
 
-  it('never returns a destination outside the canonical routes', () => {
+  it('only ever resolves to one of the two kinds', () => {
     const queries = [
       {},
       { tab: 'counter' },
       { tab: 'nonsense' },
       { kick: '' },
+      { kick: 'a' },
       { sourceTag: 'icon' },
     ];
     for (const query of queries) {
-      const route = resolveLegacyMultichatRoute(query);
-      if (route.kind !== 'redirect') continue;
-      expect([CANONICAL_MULTICHAT_ROUTE, CANONICAL_COUNTER_ROUTE]).toContain(
-        route.pathname,
-      );
+      expect(['overlay', 'generator']).toContain(resolveMultichatRoute(query).kind);
     }
   });
 });
 
-/* The compatibility path for an authorization that began before the callback
-   destination moved. Dropping the fragment here forces the user to authorize
-   again, so these are about not losing something they already earned. */
-describe('OAuth fragment preservation', () => {
-  const ID = '123e4567-e89b-12d3-a456-426614174000';
-  const VALID = `#twitchConnectionId=${ID}&twitch=someone`;
-
-  it('forwards a valid fragment to the MultiChat workspace', () => {
-    expect(resolveLegacyMultichatRoute({}, VALID)).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/multichat',
-      hash: `#twitchConnectionId=${ID}&twitch=someone`,
-    });
+/* Two spellings reach the counter: the anchor the retired /tools/counter route
+   redirects to, and the ?tab=counter query old bookmarks still carry. */
+describe('wantsCounterSection', () => {
+  it('honours the counter anchor', () => {
+    expect(wantsCounterSection({}, '#viewer-counter')).toBe(true);
+    expect(wantsCounterSection({}, 'viewer-counter')).toBe(true);
   });
 
-  it('outranks tab=counter, because a pending connection is stronger intent', () => {
-    expect(resolveLegacyMultichatRoute({ tab: 'counter' }, VALID)).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/multichat',
-      hash: `#twitchConnectionId=${ID}&twitch=someone`,
-    });
+  it('honours the legacy tab query', () => {
+    expect(wantsCounterSection({ tab: 'counter' }, '')).toBe(true);
   });
 
-  it('never outranks a configured channel', () => {
-    for (const param of MULTICHAT_CHANNEL_PARAMS) {
-      expect(resolveLegacyMultichatRoute({ [param]: 'somechannel' }, VALID).kind).toBe(
-        'overlay',
-      );
-    }
+  it('is false for anything else', () => {
+    expect(wantsCounterSection({}, '')).toBe(false);
+    expect(wantsCounterSection({}, '#')).toBe(false);
+    expect(wantsCounterSection({}, '#faq')).toBe(false);
+    expect(wantsCounterSection({ tab: 'chat' }, '')).toBe(false);
+    expect(wantsCounterSection({ tab: 'COUNTER' }, '')).toBe(false);
+    expect(wantsCounterSection({ tab: 'counter ' }, '')).toBe(false);
   });
 
-  it('normalizes the login it forwards', () => {
-    const route = resolveLegacyMultichatRoute(
-      {},
-      `#twitchConnectionId=${ID}&twitch=%40SomeOne`,
-    );
-    expect(route.kind === 'redirect' && route.hash).toBe(
-      `#twitchConnectionId=${ID}&twitch=someone`,
-    );
+  it('is false for an ambiguous repeated tab', () => {
+    expect(wantsCounterSection({ tab: ['counter', 'chat'] }, '')).toBe(false);
   });
 
-  /* Each of these is dropped rather than forwarded. A fragment that cannot be
-     adopted is worse than none: it would sit in the workspace address bar
-     looking like a connection while gating pins on an account that never
-     matched. */
-  it.each([
-    ['a malformed uuid', '#twitchConnectionId=not-a-uuid&twitch=someone'],
-    ['a uuid missing a block', '#twitchConnectionId=123e4567-e89b-12d3&twitch=someone'],
-    ['an invalid login', `#twitchConnectionId=${ID}&twitch=has spaces`],
-    ['an empty login', `#twitchConnectionId=${ID}&twitch=`],
-    ['a missing login', `#twitchConnectionId=${ID}`],
-    ['a missing id', '#twitch=someone'],
-    ['a duplicated id', `#twitchConnectionId=${ID}&twitchConnectionId=${ID}&twitch=someone`],
-    ['a duplicated login', `#twitchConnectionId=${ID}&twitch=someone&twitch=other`],
-    ['an unrelated fragment', '#section=faq'],
-    ['an empty fragment', '#'],
-    ['no fragment', ''],
-  ])('drops %s', (_label, hash) => {
-    expect(resolveLegacyMultichatRoute({}, hash)).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/multichat',
-      hash: '',
-    });
-  });
-
-  it('still honours tab=counter once a bad fragment is dropped', () => {
-    expect(resolveLegacyMultichatRoute({ tab: 'counter' }, '#section=faq')).toEqual({
-      kind: 'redirect',
-      pathname: '/tools/counter',
-      hash: '',
-    });
-  });
-
-  /* Rebuilt from the two validated fields, so anything else in the incoming
-     fragment is gone by construction rather than by a filter. */
-  it('carries only the two recognized fields', () => {
-    const route = resolveLegacyMultichatRoute(
-      {},
-      `#twitchConnectionId=${ID}&twitch=someone&returnTo=%2Fevil&admin=1`,
-    );
-    expect(route.kind === 'redirect' && route.hash).toBe(
-      `#twitchConnectionId=${ID}&twitch=someone`,
-    );
-  });
-
-  it('never turns the fragment into a query string', () => {
-    const route = resolveLegacyMultichatRoute({}, VALID);
-    expect(route.kind === 'redirect' && route.pathname).toBe('/tools/multichat');
-    expect(route.kind === 'redirect' && route.pathname).not.toContain('?');
-    expect(route.kind === 'redirect' && route.pathname).not.toContain(ID);
-  });
-});
-
-/* The helper must stay usable during server rendering, where there is no window.
-   It takes the hash as an argument for exactly this reason — a version that read
-   window.location itself would throw on the server pass. */
-describe('server-side safety', () => {
-  const ID = '123e4567-e89b-12d3-a456-426614174000';
-
-  it('resolves every route with window removed', () => {
-    const original = globalThis.window;
-    // @ts-expect-error deleting the global is the whole point of the test
-    delete globalThis.window;
-    try {
-      expect(resolveLegacyMultichatRoute({ kick: 'a' }).kind).toBe('overlay');
-      expect(legacyRedirectTarget(resolveLegacyMultichatRoute({}))).toBe(
-        '/tools/multichat',
-      );
-      expect(
-        legacyRedirectTarget(resolveLegacyMultichatRoute({ tab: 'counter' })),
-      ).toBe('/tools/counter');
-      expect(
-        legacyRedirectTarget(
-          resolveLegacyMultichatRoute({}, `#twitchConnectionId=${ID}&twitch=someone`),
-        ),
-      ).toBe(`/tools/multichat#twitchConnectionId=${ID}&twitch=someone`);
-    } finally {
-      globalThis.window = original;
-    }
-  });
-});
-
-describe('legacyRedirectTarget', () => {
-  const ID = '123e4567-e89b-12d3-a456-426614174000';
-
-  it('is empty for an overlay route', () => {
-    expect(legacyRedirectTarget({ kind: 'overlay' })).toBe('');
-  });
-
-  it('joins the pathname and fragment', () => {
+  /* An OAuth fragment is not an anchor. It must not be read as a request to jump
+     to the counter, and the connection-adoption path handles it instead. */
+  it('ignores an OAuth connection fragment', () => {
+    const ID = '123e4567-e89b-12d3-a456-426614174000';
     expect(
-      legacyRedirectTarget(
-        resolveLegacyMultichatRoute({}, `#twitchConnectionId=${ID}&twitch=someone`),
-      ),
-    ).toBe(`/tools/multichat#twitchConnectionId=${ID}&twitch=someone`);
+      wantsCounterSection({}, `#twitchConnectionId=${ID}&twitch=someone`),
+    ).toBe(false);
   });
 
-  it('is the bare pathname when there is nothing to preserve', () => {
-    expect(legacyRedirectTarget(resolveLegacyMultichatRoute({}))).toBe(
-      '/tools/multichat',
-    );
-    expect(legacyRedirectTarget(resolveLegacyMultichatRoute({ tab: 'counter' }))).toBe(
-      '/tools/counter',
-    );
+  it('defaults the hash, so a caller with none can omit it', () => {
+    expect(wantsCounterSection({})).toBe(false);
+    expect(wantsCounterSection({ tab: 'counter' })).toBe(true);
   });
 });
 
@@ -296,5 +172,24 @@ describe('hasChannelParam', () => {
 
   it('ignores parameters that do not name a channel', () => {
     expect(hasChannelParam({ fade: '30', theme: 'dark', chan: 'x' })).toBe(false);
+  });
+});
+
+/* These helpers must stay usable during server rendering, where there is no
+   window. They take everything they need as arguments for exactly that reason —
+   a version that read window.location itself would throw on the server pass. */
+describe('server-side safety', () => {
+  it('resolves every route with window removed', () => {
+    const original = globalThis.window;
+    // @ts-expect-error deleting the global is the whole point of the test
+    delete globalThis.window;
+    try {
+      expect(resolveMultichatRoute({ kick: 'a' }).kind).toBe('overlay');
+      expect(resolveMultichatRoute({}).kind).toBe('generator');
+      expect(wantsCounterSection({}, '#viewer-counter')).toBe(true);
+      expect(hasChannelParam({ twitch: 'a' })).toBe(true);
+    } finally {
+      globalThis.window = original;
+    }
   });
 });

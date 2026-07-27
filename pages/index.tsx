@@ -1,7 +1,11 @@
 /* / — personal hub (slaiqe.com structure: hero → skill tags → product
- * cards → CTA → socials footer). The overlay generator lives at
- * /multichat; old bookmarked /?kick=... overlay URLs still work because
- * this page forwards any channel-param URL straight to /multichat.
+ * cards → CTA → socials footer).
+ *
+ * The generators live at /tools/multichat and /tools/counter, which is where the
+ * two cards point. Old bookmarked /?kick=... overlay URLs still work: this page
+ * forwards any channel-param URL straight to /multichat, which serves the
+ * overlay permanently. That forward is deliberately unchanged — the canonical
+ * route move applies to generator links, never to overlay URLs.
  */
 import Head from 'next/head';
 import { useEffect } from 'react';
@@ -111,7 +115,10 @@ export default function Hub() {
         </div>
 
         <div className="cards">
-          <a className="card" href="/multichat">
+          {/* Canonical generator routes, not /multichat. That path still serves
+              the overlay and forwards a channel-less visit here anyway, so
+              linking it would only add a redirect hop. */}
+          <a className="card" href="/tools/multichat">
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
               <span className="cb cb-kick">Kick</span>
@@ -127,7 +134,7 @@ export default function Hub() {
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
-          <a className="card" href="/multichat?tab=counter">
+          <a className="card" href="/tools/counter">
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
               <span className="cb cb-kick">Kick</span>
@@ -161,7 +168,7 @@ export default function Hub() {
         </div>
 
         <footer>
-          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href="/multichat">/multichat</a></p>
+          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href="/tools/multichat">/tools/multichat</a></p>
         </footer>
       </div>
     </>

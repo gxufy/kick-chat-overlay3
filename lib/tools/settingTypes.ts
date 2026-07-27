@@ -169,9 +169,85 @@ export type SettingValueFor<T extends { default: SettingValue }> = T['default'];
 /** A tool's full control catalog, in display order. */
 export type SettingCatalog<C> = readonly Setting<C>[];
 
-/** Descriptors the workspace shows without an explicit reveal. */
+/** Descriptors the generator shows without an explicit reveal. */
 export function visibleSettings<C>(catalog: SettingCatalog<C>): Setting<C>[] {
   return catalog.filter((setting) => !setting.hidden);
+}
+
+/* ------------------------------------------------------------------ */
+/* Catalog lookup                                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Classic generator lays its controls out by hand — the two-column
+ * arrangement is part of its visual identity, so the markup is written rather
+ * than generated from the catalog's order. But the *content* of a control still
+ * comes from the catalog: its label, its options, its description, its default.
+ *
+ * These accessors are what make that true rather than aspirational. A control
+ * asks the catalog for its descriptor by key and gets the declared variant back;
+ * a key that does not exist, or exists with a different control type, throws at
+ * module scope rather than rendering a mislabelled control. So the catalog stays
+ * the single description of what MultiChat and the Counter can be configured to
+ * do, and a hand-written layout cannot silently drift from it.
+ */
+
+/** One descriptor by key. Throws when the catalog has no such setting. */
+export function findSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): Setting<C> {
+  const found = catalog.find((setting) => setting.key === key);
+  if (!found) throw new Error(`No catalog setting named ${key}`);
+  return found;
+}
+
+/** Narrow a lookup to one control type, or throw naming both types. */
+function ofType<C, T extends Setting<C>['type']>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+  type: T,
+): Extract<Setting<C>, { type: T }> {
+  const setting = findSetting(catalog, key);
+  if (setting.type !== type) {
+    throw new Error(`Catalog setting ${key} is a ${setting.type}, not a ${type}`);
+  }
+  return setting as Extract<Setting<C>, { type: T }>;
+}
+
+export function toggleSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): ToggleSetting<C> {
+  return ofType(catalog, key, 'toggle');
+}
+
+export function selectSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): SelectSetting<C> {
+  return ofType(catalog, key, 'select');
+}
+
+export function textSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): TextSetting<C> {
+  return ofType(catalog, key, 'text');
+}
+
+export function colorSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): ColorSetting<C> {
+  return ofType(catalog, key, 'color');
+}
+
+export function multiSelectSetting<C>(
+  catalog: SettingCatalog<C>,
+  key: keyof C & string,
+): MultiSelectSetting<C> {
+  return ofType(catalog, key, 'multiselect');
 }
 
 /** Build option lists from a readonly enum tuple, labelled by a formatter. */

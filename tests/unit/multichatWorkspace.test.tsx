@@ -6,8 +6,9 @@
  * lands in an OBS browser source. Parsed-parameter comparisons would not catch
  * order or encoding drift, so every URL assertion compares complete strings.
  *
- * The second claim is that Batch 5A ships no OAuth surface: no connect control,
- * no connection id anywhere, and no fragment in any generated URL.
+ * The second claim is that an unconnected workspace behaves exactly as it did
+ * before OAuth existed: no connection id anywhere, and no fragment in any
+ * generated URL. Connected behaviour is covered in twitchConnectionPanel.test.tsx.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -103,7 +104,10 @@ describe('navigation', () => {
     render(<WorkspaceNav currentPath="/tools/multichat" />);
     expect(links()).toEqual([
       { label: 'MultiChat', href: '/tools/multichat' },
-      { label: 'MultiChat (Classic)', href: '/multichat' },
+      /* The classic generator's own route, not the legacy /multichat path —
+         that one also serves the overlay, so it is the wrong link to label as a
+         generator. It is the same constant the OAuth allowlist uses. */
+      { label: 'MultiChat (Classic)', href: '/classic/multichat' },
       { label: 'Viewer Counter', href: '/tools/counter' },
     ]);
   });
@@ -121,9 +125,11 @@ describe('navigation', () => {
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
-  it('retains the classic generator link, the only Twitch-connect path', () => {
+  /* Kept reachable so the original UI is one click away if the workspace is
+     wrong for someone — no longer because it is the only way to connect. */
+  it('retains a link to the classic generator', () => {
     render(<WorkspaceNav currentPath="/tools/multichat" />);
-    expect(links().some((l) => l.href === '/multichat')).toBe(true);
+    expect(links().some((l) => l.href === '/classic/multichat')).toBe(true);
   });
 
   it('marks only the active route as current', () => {
@@ -190,14 +196,27 @@ describe('catalog rendering', () => {
     );
   });
 
-  it('links the Twitch-pin copy to its control without claiming a connection', () => {
+  /* The static description states only what is always true. Anything conditional
+     — whether a connection exists, whether it matches — is the runtime's to say,
+     and is linked separately so it can change while the page is open. */
+  it('links the Twitch-pin copy to its control, stating only the invariant', () => {
     mount();
     const desc = byId('setting-pinPlatforms-desc');
     expect(desc.textContent).toContain('require a connected Twitch account');
-    expect(desc.textContent).toContain('MultiChat (Classic)');
+    /* No longer redirects the user elsewhere: the workspace can do this now. */
+    expect(desc.textContent).not.toContain('MultiChat (Classic)');
     expect(setting('pinPlatforms').getAttribute('aria-describedby')).toContain(
       'setting-pinPlatforms-desc',
     );
+  });
+
+  /* Colour alone is not an accessible signal, so the reason a gated option cannot
+     be chosen has to be in the accessibility tree, not just visible. */
+  it('links the runtime gating reason to the control as well', () => {
+    mount();
+    const describedBy = setting('pinPlatforms').getAttribute('aria-describedby') ?? '';
+    expect(describedBy).toContain('setting-pinPlatforms-gated');
+    expect(byId('setting-pinPlatforms-gated').textContent).toMatch(/connect a twitch account/i);
   });
 
   it('leaves Twitch unselected in the pin defaults', () => {
@@ -612,34 +631,46 @@ describe('preview lifecycle', () => {
   });
 });
 
-describe('OAuth boundary — Batch 5A ships none of it', () => {
+/* The invariants that hold with no connection present.
+ *
+ * The workspace now ships a connection panel, so these no longer assert that
+ * OAuth is absent — they assert that an unconnected workspace behaves exactly
+ * as it did before OAuth existed. That is the property that matters: someone who
+ * never connects must get the same URLs they always did. */
+describe('OAuth boundary — nothing leaks without a connection', () => {
   const text = () => document.body.textContent ?? '';
 
-  it('declares no context, so it contributes no fragment', () => {
-    expect(multichatTool.context).toBeUndefined();
+  it('contributes no fragment while unconnected', () => {
+    expect(multichatTool.context).toBeDefined();
+    expect(
+      multichatTool.context?.(multichatTool.defaults, {
+        connectionId: '',
+        connectedLogin: '',
+        twitchChannel: '',
+      }),
+    ).toBeUndefined();
   });
 
-  it('renders no connect, disconnect, or connection-status control', () => {
+  it('offers a connect affordance but claims no connection', () => {
     mount();
-    /* Asserted against interactive controls, not body text: the pinPlatforms
-     * description legitimately mentions connecting Twitch, and must, since
-     * explaining the requirement is how this batch handles it. What must not
-     * exist is anything clickable that claims to do it. */
-    const controls = [
-      ...Array.from(document.querySelectorAll('button')),
-      ...Array.from(document.querySelectorAll('a')),
-    ].map((el) => el.textContent ?? '');
-    for (const label of controls) {
-      expect(label).not.toMatch(/connect|disconnect|sign in|log in|authorize/i);
-    }
+    /* Connect is offered; "connected as" is not claimed, and Disconnect — which
+       only makes sense for a live connection — is absent. */
+    expect(screen.getByText('Connect Twitch')).toBeTruthy();
     expect(screen.queryByText('Disconnect')).toBeNull();
-    expect(text()).not.toMatch(/connected as|not connected|connection id/i);
+    expect(text()).not.toMatch(/connected as/i);
   });
 
-  it('links to no OAuth endpoint from the workspace', () => {
+  it('points the connect link at the start endpoint with an allowlisted return', () => {
     mount();
-    const hrefs = Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href'));
-    for (const href of hrefs) expect(href ?? '').not.toContain('/api/twitch');
+    const href = screen
+      .getByText('Connect Twitch')
+      .getAttribute('href');
+    expect(href).toBe(
+      `/api/twitch/oauth/start?returnTo=${encodeURIComponent('/tools/multichat')}`,
+    );
+    /* The destination is a path, never an absolute URL — an absolute value here
+       is the open-redirect shape the allowlist exists to prevent. */
+    expect(href).not.toMatch(/https?:|\/\//);
   });
 
   it('puts no connection id in the DOM', () => {

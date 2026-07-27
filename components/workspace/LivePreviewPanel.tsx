@@ -4,6 +4,7 @@
  * preview background selector is workspace-only state and is passed straight
  * through to the container that wraps the iframe.
  */
+import type { ReactNode } from 'react';
 import ChannelPanel from './ChannelPanel';
 import OverlayUrlBar from './OverlayUrlBar';
 import PreviewViewport from './PreviewViewport';
@@ -21,6 +22,7 @@ export default function LivePreviewPanel<P extends string>({
   previewTitle,
   previewHeight,
   previewNote,
+  runtimePanel,
 }: {
   url: string;
   configured: boolean;
@@ -34,6 +36,13 @@ export default function LivePreviewPanel<P extends string>({
   previewHeight: number;
   /** The active tool's own description of its preview. Plain text. */
   previewNote: string;
+  /**
+   * The active tool's own runtime panel, already constructed by the shell.
+   *
+   * Taken as an element rather than a component so this file needs no knowledge
+   * of what runtime state is — it renders whatever it is handed, or nothing.
+   */
+  runtimePanel?: ReactNode;
 }) {
   return (
     <section
@@ -69,6 +78,10 @@ export default function LivePreviewPanel<P extends string>({
           channels={channels}
           onChange={onChannelChange}
         />
+
+        {/* After the channels it depends on: a connection is only meaningful
+            once a channel names the account it has to match. */}
+        {runtimePanel}
 
         <OverlayUrlBar url={url} configured={configured} />
       </div>

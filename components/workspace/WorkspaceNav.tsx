@@ -2,25 +2,37 @@
  *
  * Branding is the existing product's own: the same wordmark and logo asset the
  * homepage already uses. Nothing is renamed. There is no version line, no
- * support link, no build timestamp, and no auth block — Twitch connect and
- * disconnect stay where they already are, in the existing generator, which this
- * nav links to as MultiChat (Classic).
+ * support link, and no build timestamp.
+ *
+ * There is also no auth block here, and deliberately so now that the workspace
+ * can connect Twitch: a connection belongs to the tool that uses it, next to the
+ * channel it has to match, not to global chrome that every tool shares. The
+ * counter has no use for one and shows nothing.
  *
  * Active state is derived from the current route rather than held in state.
  */
 import Link from 'next/link';
+import { OAUTH_RETURN_CLASSIC } from '@/lib/oauthReturn';
 import { TOOLS } from '@/lib/tools/registry';
 
-/** The existing generator, kept reachable and clearly distinguished by label. */
-const CLASSIC = { href: '/multichat', label: 'MultiChat (Classic)' };
+/**
+ * The original generator, at its own stable address.
+ *
+ * Points at /classic/multichat rather than /multichat: the legacy path serves
+ * the overlay as well as the generator, so it is the wrong thing to label as a
+ * generator link. Same constant the OAuth allowlist uses, so a connection
+ * started from that page returns to the page it started on.
+ */
+const CLASSIC = { href: OAUTH_RETURN_CLASSIC, label: 'MultiChat (Classic)' };
 
 /**
- * Nav targets: every registered workspace tool, plus the existing generator.
+ * Nav targets: every registered workspace tool, plus the original generator.
  *
  * The classic entry sits immediately after the registered MultiChat tool rather
  * than at the top, and carries a distinct label, so the two are never two items
- * both reading "MultiChat". It stays in the list because it is still the only
- * place a Twitch account can be connected for native pins.
+ * both reading "MultiChat". It is no longer the only place a Twitch account can
+ * be connected — the workspace does that now — but it stays listed so the
+ * original UI is one click away if the workspace is wrong for someone.
  */
 const ENTRIES: { href: string; label: string }[] = TOOLS.flatMap((tool) =>
   tool.id === 'multichat'

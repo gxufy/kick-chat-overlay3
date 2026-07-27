@@ -174,8 +174,18 @@ describe('descriptor identity', () => {
     expect(LEGACY.textShadow).toBe('small');
   });
 
-  it('declares no context function', () => {
-    expect(multichatTool.context).toBeUndefined();
+  /* The descriptor now declares a context, but it must stay silent unless a
+     connection is genuinely usable — that is what keeps every URL built without
+     one byte-identical to what this tool produced before the connection existed. */
+  it('contributes no fragment without a connection', () => {
+    expect(multichatTool.context).toBeDefined();
+    expect(
+      multichatTool.context?.(D, {
+        connectionId: '',
+        connectedLogin: '',
+        twitchChannel: '',
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -429,7 +439,11 @@ describe('catalog integrity', () => {
     }
   });
 
-  it('declares no disabled predicate for pins yet', () => {
+  /* The catalog stays static. Pin gating is genuinely dynamic — it changes as the
+     user connects and retypes the channel — so it lives in the descriptor's
+     `optionAvailability`, not in a `disabled` flag that could only be a constant.
+     A static flag here would be permanently wrong in one direction or the other. */
+  it('declares no disabled or hidden flags, leaving gating to the runtime', () => {
     for (const setting of MULTICHAT_CATALOG) {
       expect(setting.disabled).toBeUndefined();
       expect(setting.hidden).toBeUndefined();

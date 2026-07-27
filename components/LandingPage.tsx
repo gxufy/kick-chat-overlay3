@@ -6,6 +6,7 @@ import { sourceTag } from '../lib/render';
 import type { Platform } from '../lib/types';
 import { buildMultichatQuery } from '../lib/multichatConfig';
 import { MULTICHAT_COMMANDS } from '../lib/multichatCommands';
+import { OAUTH_RETURN_CLASSIC } from '../lib/oauthReturn';
 import CounterPreview from './CounterPreview';
 import {
   ALIGNMENTS,
@@ -549,7 +550,11 @@ export default function LandingPage() {
                 <input type="text" name="twitch" placeholder="Channel name"
                   value={twitch} onChange={e => setTwitch(e.target.value)}
                   style={{ flex:1 }} />
-                <a href="/api/twitch/oauth/start"
+                {/* Explicit return route: the callback's destination now comes
+                    from an allowlist, and this page asks for its own entry so a
+                    connection started here comes back here rather than to the
+                    workspace. */}
+                <a href={`/api/twitch/oauth/start?returnTo=${encodeURIComponent(OAUTH_RETURN_CLASSIC)}`}
                   style={{
                     fontSize:'0.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
                     padding:'6px 10px', borderRadius:8, cursor:'pointer', whiteSpace:'nowrap',

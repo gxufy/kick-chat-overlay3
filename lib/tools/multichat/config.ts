@@ -13,11 +13,13 @@
  * authoritative serializer itself, in the slot the boolean already used.
  *
  * Registered in lib/tools/registry's TOOLS, so /tools/multichat is a real
- * prerendered workspace route. The Twitch connection panel and anything
- * OAuth-shaped are still later work: this tool contributes no fragment, so
- * native Twitch pins are still only reachable through the existing generator.
+ * prerendered workspace route. It now also declares `runtime` and `context`, so
+ * native Twitch pins are reachable from the workspace: the connection panel
+ * lives in ./runtime and components/workspace/multichat, and the connection id
+ * reaches the URL only as a fragment, only when it is actually usable.
  *
- * Browser-safe — no server-only imports, no secrets.
+ * Browser-safe — no server-only imports, no secrets. The connection id is an
+ * opaque handle, not a token; tokens stay server-side, encrypted.
  */
 import {
   MULTICHAT_ANIMATIONS,
@@ -41,8 +43,16 @@ import {
   type MultichatWorkspaceStyle,
 } from '@/lib/multichatConfig';
 import type { OverlayTool, ToolChannels, ToolPlatform } from '../registry';
+import TwitchConnectionPanel from '@/components/workspace/multichat/TwitchConnectionPanel';
 import { MULTICHAT_HELP } from './help';
 import { MULTICHAT_OBS_SIZE } from './obs';
+import {
+  EMPTY_MULTICHAT_RUNTIME,
+  multichatContext,
+  multichatOptionAvailability,
+  syncMultichatStyle,
+  type MultichatRuntime,
+} from './runtime';
 import { MULTICHAT_CATALOG } from './settings';
 
 export type { MultichatPlatform, MultichatWorkspaceStyle };
@@ -232,14 +242,21 @@ export function normalizePinPlatforms(
 /**
  * The MultiChat tool, registered in TOOLS.
  *
- * Still no `context` function: MultiChat contributes nothing to its URL beyond
- * the query string. The existing generator does append `#twitchConnectionId=…`
- * itself, but that value only exists once a connection panel does, and this
- * batch ships none. Declaring an empty context would model nothing, and its
- * absence is what guarantees every URL this workspace produces is an ordinary
- * `/multichat` URL that keeps working if the route is withdrawn.
+ * Now declares `runtime` and `context`. The runtime is the Twitch connection —
+ * capability rather than appearance, so it lives outside `MultichatWorkspaceStyle`
+ * and outside channel state. `context` contributes the connection id as a URL
+ * fragment, and only when it is genuinely usable, so a URL built without a
+ * connection is byte-identical to what this tool produced before.
+ *
+ * Every rule about when a connection counts lives in ./runtime, not here and not
+ * in the panel: one function decides availability, and the option gating, the
+ * pin-list reconciliation, and the fragment all read from it.
  */
-export const multichatTool: OverlayTool<MultichatWorkspaceStyle, MultichatPlatform> = {
+export const multichatTool: OverlayTool<
+  MultichatWorkspaceStyle,
+  MultichatPlatform,
+  MultichatRuntime
+> = {
   id: 'multichat',
   label: 'MultiChat',
   workspaceRoute: '/tools/multichat',
@@ -267,4 +284,20 @@ export const multichatTool: OverlayTool<MultichatWorkspaceStyle, MultichatPlatfo
   /* Commands are derived from the parser's own metadata, so this cannot document
      a command the overlay does not implement. */
   help: MULTICHAT_HELP,
+  /* The connection id reaches the URL only through here, and only as a fragment
+     — never as a query parameter, so it is not sent to the server on load. */
+  context: multichatContext,
+  runtime: {
+    initial: EMPTY_MULTICHAT_RUNTIME,
+    Panel: TwitchConnectionPanel,
+    sync: syncMultichatStyle,
+    /* Mirrors the typed Twitch channel into runtime so the match rule can be
+       evaluated. Returns the same object when nothing changed, which is what
+       lets the shell's effect skip a needless state update. */
+    fromChannels: (runtime, channels) => {
+      const next = normalizeAtChannel(channels.twitch);
+      return next === runtime.twitchChannel ? runtime : { ...runtime, twitchChannel: next };
+    },
+    optionAvailability: multichatOptionAvailability,
+  },
 };

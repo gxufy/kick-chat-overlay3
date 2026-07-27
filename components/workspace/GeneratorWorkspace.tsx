@@ -1,38 +1,50 @@
 /* Three-column generator workspace shell.
  *
- * Owns the active tool's config, channel input, and the workspace-only preview
- * background. One derived URL string is produced here and handed to the
- * preview, the readonly URL field, Copy, and Open — so those four can never
- * disagree.
+ * Owns the active tool's config, channel input, opaque runtime state, and the
+ * workspace-only preview background. One derived URL string is produced here and
+ * handed to the preview, the readonly URL field, Copy, and Open — so those four
+ * can never disagree.
  *
  * Per-tool state lives in this component's own `style` object, typed by the
  * tool descriptor. It cannot read another tool's fields, so the cross-tool
  * state leakage that previously affected the counter is a type error rather
  * than a convention.
+ *
+ * `R` is runtime state the shell never inspects. It stores it, hands it to the
+ * tool's own panel, and passes it back to the tool's `sync`, `context`, and
+ * `optionAvailability` hooks. That is what keeps the Twitch connection out of
+ * this file: nothing here mentions Twitch, OAuth, or pins.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LivePreviewPanel from './LivePreviewPanel';
 import ToolConfigPanel from './ToolConfigPanel';
 import WorkspaceNav from './WorkspaceNav';
-import type { PreviewBackgroundId } from './PreviewBackground';
+import { isPreviewBackgroundId, type PreviewBackgroundId } from './PreviewBackground';
 import type { OverlayTool, ToolChannels } from '@/lib/tools/registry';
-import type { SettingValue } from '@/lib/tools/settingTypes';
+import type { CatalogAvailability, SettingValue } from '@/lib/tools/settingTypes';
 import { buildOverlayUrl } from '@/lib/tools/toolContext';
+import { consumeWorkspaceDraft, writeWorkspaceDraft } from '@/lib/workspaceStorage';
 
 export default function GeneratorWorkspace<
   S extends Record<string, unknown>,
   P extends string,
+  R,
 >({
   tool,
   baseUrl,
 }: {
-  tool: OverlayTool<S, P>;
+  tool: OverlayTool<S, P, R>;
   /** Origin the generated URL is built against. */
   baseUrl: string;
 }) {
   const [style, setStyle] = useState<S>(tool.defaults);
   const [channels, setChannels] = useState<ToolChannels<P>>({});
   const [background, setBackground] = useState<PreviewBackgroundId>('checker');
+  /* `as R` is sound: when a tool declares no runtime, `R` is inferred as
+     `undefined` and this is the only inhabitant of that type. */
+  const [runtime, setRuntime] = useState<R>(
+    (tool.runtime?.initial ?? undefined) as R,
+  );
 
   /* Carries every generic setting value shape. What a value means, and how it
      reaches a URL, stays the tool's business — `normalize` decides. */
@@ -44,21 +56,94 @@ export default function GeneratorWorkspace<
     setChannels((current) => ({ ...current, [platform]: raw }));
   };
 
+  /* Runtime can depend on channel state — the tool decides how. Kept as an
+     effect keyed on `channels` so every path that changes them (typing, draft
+     restore) folds through the same rule, rather than only the typing path. */
+  useEffect(() => {
+    const fromChannels = tool.runtime?.fromChannels;
+    if (!fromChannels) return;
+    setRuntime((current) => {
+      const next = fromChannels(current, channels);
+      /* Bail out when nothing changed, so this cannot loop. */
+      return next === current ? current : next;
+    });
+  }, [tool, channels]);
+
+  /* A runtime change can invalidate a style choice — a selected option whose
+     capability just disappeared. The tool reconciles that itself in `sync`.
+
+     Done as an effect on `runtime` rather than inside a change handler, so every
+     path that alters runtime is covered by one rule: the panel connecting or
+     disconnecting, and the channel edit that makes a connection stop matching.
+     No ordering of those can leave a stale selection behind. */
+  useEffect(() => {
+    const sync = tool.runtime?.sync;
+    if (!sync) return;
+    setStyle((current) => {
+      const next = sync(current, runtime);
+      return next === current ? current : tool.normalize(next);
+    });
+  }, [tool, runtime]);
+
+  /* Live state, for the draft write. A ref rather than a dependency so
+     `persistDraft` has a stable identity: it is handed to the tool's panel, and a
+     new function on every keystroke would re-render that panel for no reason. */
+  const live = useRef({ style, channels, background });
+  live.current = { style, channels, background };
+
+  /* Write the draft. Called by a panel immediately before it navigates away. */
+  const persistDraft = useCallback(() => {
+    const { style: s, channels: c, background: b } = live.current;
+    writeWorkspaceDraft(tool.id, { style: s, channels: c, background: b });
+  }, [tool]);
+
+  /* Restore on mount, and only on mount. The draft is consumed as it is read, so
+     a second effect run — Strict Mode double-invokes in development — finds
+     nothing and leaves whatever the user has since typed alone.
+
+     Everything restored goes through the tool's own normalizer or validator: a
+     stored style is normalized, a stored background must be a known id, and
+     channel text is only accepted as a string. So a hand-edited sessionStorage
+     entry can produce defaults, but not invalid state. */
+  useEffect(() => {
+    const draft = consumeWorkspaceDraft(tool.id);
+    if (!draft) return;
+
+    setStyle(tool.normalize(draft.style as Partial<S>));
+    /* Keys are filtered to the tool's own platforms, so a draft written by a
+       different version cannot introduce a channel key this tool has no field
+       for — which would otherwise be serialized into the overlay URL. */
+    const allowed = new Set<string>(tool.platforms.map((p) => p.key));
+    const restored: ToolChannels<P> = {};
+    for (const [key, value] of Object.entries(draft.channels)) {
+      if (allowed.has(key)) restored[key as P] = value;
+    }
+    setChannels(restored);
+    if (isPreviewBackgroundId(draft.background)) setBackground(draft.background);
+  }, [tool]);
+
+  /* Which options the tool currently considers unavailable. Recomputed from
+     runtime on every change, so an option can become available while the page is
+     open. Shape is generic: setting key → option value → availability. */
+  const availability: CatalogAvailability = useMemo(
+    () => (tool.runtime?.optionAvailability?.(runtime) ?? {}) as CatalogAvailability,
+    [tool, runtime],
+  );
+
   /* The single source of truth for every consumer below: the preview, the
      readonly field, Copy, and Open all receive this exact string, so they
      cannot disagree. Built from parts by one helper — the tool's own serializer
      for the query, and the tool's optional context for anything after it. A
-     tool that declares no context, which is every tool today, yields precisely
-     `base + route + '?' + query`. */
+     tool that declares no context yields precisely `base + route + '?' + query`. */
   const url = useMemo(
     () =>
       buildOverlayUrl({
         baseUrl,
         route: tool.overlayRoute,
         query: tool.serialize(channels, style),
-        context: tool.context?.(style),
+        context: tool.context?.(style, runtime),
       }),
-    [baseUrl, tool, channels, style],
+    [baseUrl, tool, channels, style, runtime],
   );
 
   const configured = tool.configuredPlatforms(channels).length > 0;
@@ -70,6 +155,8 @@ export default function GeneratorWorkspace<
   const previewNote =
     tool.previewNote ??
     `A real ${tool.overlayRoute} overlay at this exact URL.`;
+
+  const RuntimePanel = tool.runtime?.Panel;
 
   return (
     <div className="min-h-screen bg-ws-bg text-ws-text">
@@ -85,6 +172,7 @@ export default function GeneratorWorkspace<
             config={style}
             onChange={changeSetting}
             help={tool.help}
+            availability={availability}
           />
 
           <LivePreviewPanel
@@ -98,6 +186,15 @@ export default function GeneratorWorkspace<
             previewTitle={`Live ${tool.label.toLowerCase()} preview`}
             previewHeight={tool.obs.height}
             previewNote={previewNote}
+            runtimePanel={
+              RuntimePanel ? (
+                <RuntimePanel
+                  runtime={runtime}
+                  onChange={setRuntime}
+                  onBeforeLeave={persistDraft}
+                />
+              ) : null
+            }
           />
         </div>
       </div>

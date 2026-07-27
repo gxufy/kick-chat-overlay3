@@ -165,7 +165,17 @@ export default function GeneratorWorkspace<
           <WorkspaceNav currentPath={tool.workspaceRoute} />
         </div>
 
-        <div className="min-w-0 flex-1 lg:grid lg:h-full lg:grid-cols-2 lg:overflow-hidden">
+        {/* A main landmark, so the two panels are reachable by landmark
+            navigation rather than only by scrolling past the nav. */}
+        <main
+          className="min-w-0 flex-1 lg:grid lg:h-full lg:grid-cols-2 lg:overflow-hidden"
+        >
+          {/* The page's only h1. Visually hidden because the layout has no
+              header bar to put it in, but the document must still have a
+              top-level heading: without it the panel headings below are h2s
+              under nothing, and heading navigation starts mid-hierarchy. */}
+          <h1 className="sr-only">{tool.label} overlay generator</h1>
+
           <ToolConfigPanel
             toolLabel={tool.label}
             catalog={tool.catalog}
@@ -196,7 +206,7 @@ export default function GeneratorWorkspace<
               ) : null
             }
           />
-        </div>
+        </main>
       </div>
     </div>
   );

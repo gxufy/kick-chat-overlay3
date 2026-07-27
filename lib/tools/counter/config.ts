@@ -9,16 +9,11 @@
  * Browser-safe — no server-only imports, no secrets.
  */
 import {
-  ALIGNMENTS,
   DEFAULT_STYLE,
   PLATFORM_ORDER,
-  STROKES,
-  TEXT_SHADOWS,
   buildViewerCounterQuery,
   normalizeChannel,
-  type CounterAlign,
-  type CounterStroke,
-  type CounterTextShadow,
+  normalizeCounterStyle,
   type ViewerCounterStyle,
   type ViewerPlatform,
 } from '@/lib/viewerCounterConfig';
@@ -29,39 +24,16 @@ import { COUNTER_CATALOG } from './settings';
 export type { ViewerCounterStyle, ViewerPlatform };
 export { DEFAULT_STYLE, PLATFORM_ORDER, normalizeChannel };
 
-/** Keep an enum value if allowed, else fall back to the authoritative default. */
-function keepEnum<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  fallback: T,
-): T {
-  return (allowed as readonly unknown[]).includes(value) ? (value as T) : fallback;
-}
-
 /**
- * Coerce a partial style into a complete valid one.
+ * The style normalizer, re-exported from the authoritative module.
  *
- * Used for workspace state, which is always well-typed in practice; this is the
- * belt-and-braces boundary so a future preset or stored config cannot inject an
- * out-of-range enum. Overlay-side parsing stays in parseViewerCounterConfig.
+ * It used to be defined here. It moved because `buildViewerCounterQuery` now
+ * applies it itself — a partial style previously serialized as the literal
+ * string 'undefined' — and the serializer cannot import from this file without a
+ * cycle. Re-exported rather than replaced so existing import sites and tests are
+ * unchanged, and so there is still exactly one set of fallbacks.
  */
-export function normalizeCounterStyle(
-  style: Partial<ViewerCounterStyle>,
-): ViewerCounterStyle {
-  return {
-    combined:
-      typeof style.combined === 'boolean' ? style.combined : DEFAULT_STYLE.combined,
-    icons: typeof style.icons === 'boolean' ? style.icons : DEFAULT_STYLE.icons,
-    bg: typeof style.bg === 'boolean' ? style.bg : DEFAULT_STYLE.bg,
-    textShadow: keepEnum<CounterTextShadow>(
-      style.textShadow,
-      TEXT_SHADOWS,
-      DEFAULT_STYLE.textShadow,
-    ),
-    stroke: keepEnum<CounterStroke>(style.stroke, STROKES, DEFAULT_STYLE.stroke),
-    align: keepEnum<CounterAlign>(style.align, ALIGNMENTS, DEFAULT_STYLE.align),
-  };
-}
+export { normalizeCounterStyle };
 
 /** Platforms whose typed channel normalizes to a usable name, in display order. */
 export function configuredCounterPlatforms(

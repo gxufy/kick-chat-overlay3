@@ -146,6 +146,41 @@ function boolTrueDefault(raw: unknown): boolean {
   return one(raw) !== 'false';
 }
 
+/** Keep an enum value if allowed, else fall back to the authoritative default. */
+function keepEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return (allowed as readonly unknown[]).includes(value) ? (value as T) : fallback;
+}
+
+/**
+ * Coerce a partial or malformed style into a complete valid one.
+ *
+ * Lives here, in the authoritative module, rather than beside the workspace tool
+ * descriptor that used to own it, because the serializer below now depends on
+ * it — see the note there. The tool descriptor re-exports this one, so there is
+ * still exactly one normalizer and no second set of fallbacks.
+ */
+export function normalizeCounterStyle(
+  style: Partial<ViewerCounterStyle>,
+): ViewerCounterStyle {
+  return {
+    combined:
+      typeof style.combined === 'boolean' ? style.combined : DEFAULT_STYLE.combined,
+    icons: typeof style.icons === 'boolean' ? style.icons : DEFAULT_STYLE.icons,
+    bg: typeof style.bg === 'boolean' ? style.bg : DEFAULT_STYLE.bg,
+    textShadow: keepEnum<CounterTextShadow>(
+      style.textShadow,
+      TEXT_SHADOWS,
+      DEFAULT_STYLE.textShadow,
+    ),
+    stroke: keepEnum<CounterStroke>(style.stroke, STROKES, DEFAULT_STYLE.stroke),
+    align: keepEnum<CounterAlign>(style.align, ALIGNMENTS, DEFAULT_STYLE.align),
+  };
+}
+
 
 /**
  * Normalize a channel name: trim, drop a leading '@', and accept only the
@@ -207,7 +242,7 @@ export function parseViewerCounterConfig(
  */
 export function buildViewerCounterQuery(
   channels: ViewerCounterChannels,
-  style: ViewerCounterStyle,
+  style: Partial<ViewerCounterStyle>,
 ): string {
   const params = new URLSearchParams();
 
@@ -216,14 +251,34 @@ export function buildViewerCounterQuery(
     if (name) params.set(platform, name);
   }
 
-  params.set('combined', String(style.combined));
-  params.set('icons', String(style.icons));
-  params.set('bg', String(style.bg));
-  params.set('textShadow', style.textShadow);
-  params.set('stroke', style.stroke);
+  /* Normalized first, so a field that is missing at runtime becomes its default
+     rather than the literal string 'undefined'.
 
-  if (style.align !== DEFAULT_STYLE.align) {
-    params.set('align', style.align);
+     This is not hypothetical. A real request was observed as
+     /counter?kick=…&combined=undefined&icons=undefined&bg=undefined&
+     textShadow=small&stroke=none&align=undefined — exactly what the three
+     String() calls below and the align guard produce from a partial style, in
+     exactly this parameter order. The type said that could not happen; the
+     parameter is now Partial so the type matches reality and the coercion is
+     explicit.
+
+     Emitting 'undefined' is worse than cosmetic: boolTrueDefault treats anything
+     other than 'false' as true, so combined=undefined parses back as ON. Someone
+     who switched Combined off and copied the URL got one that reads as on, with
+     nothing to indicate the setting was lost.
+
+     Normalizing a complete style is a no-op, so every already-copied URL and
+     every existing caller serializes byte-identically. */
+  const safe = normalizeCounterStyle(style);
+
+  params.set('combined', String(safe.combined));
+  params.set('icons', String(safe.icons));
+  params.set('bg', String(safe.bg));
+  params.set('textShadow', safe.textShadow);
+  params.set('stroke', safe.stroke);
+
+  if (safe.align !== DEFAULT_STYLE.align) {
+    params.set('align', safe.align);
   }
 
   return params.toString();

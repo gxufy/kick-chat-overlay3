@@ -642,6 +642,58 @@ audit of the finished work turned up.
       every font emit a sheet fails 6, which is what proves the negative cases are
       not vacuous.
 
+### MultiChat migration — batch 9: undefined Counter URL parameters (implemented)
+
+- [x] **`buildViewerCounterQuery` serialized missing fields as the literal string
+      `undefined`.** A real request was observed in a development log:
+      `/counter?kick=iceposeidon&combined=undefined&icons=undefined&bg=undefined&textShadow=small&stroke=none&align=undefined`.
+      The serializer reproduces that byte for byte, in that exact parameter order,
+      from a style missing four fields — the three booleans go through `String()`,
+      and `align` passes its `!== DEFAULT_STYLE.align` guard because
+      `undefined !== 'left'`. `textShadow` and `stroke` look correct in the
+      evidence precisely because they were the two fields present.
+- [x] **Not cosmetic.** `parseViewerCounterConfig` reads booleans with
+      `boolTrueDefault`, which is `!== 'false'`, so `combined=undefined` parses
+      back as **true**. Someone who switched Combined off and copied the URL got
+      one that reads as on, with nothing indicating the setting was dropped.
+- [x] Fixed at the authoritative boundary: the serializer now normalizes its input
+      before emitting, and its parameter type is `Partial<ViewerCounterStyle>` so
+      the signature matches what can actually reach it rather than asserting a
+      completeness nothing enforced. Normalizing a complete style is a no-op, so
+      every existing caller and every already-copied URL serializes identically.
+- [x] `normalizeCounterStyle` moved from `lib/tools/counter/config.ts` into
+      `lib/viewerCounterConfig.ts` — the serializer cannot import from the tool
+      descriptor without a cycle. Re-exported from its old home, so import sites
+      and existing tests are unchanged and there is still exactly one set of
+      fallbacks rather than a second copy beside the serializer.
+- [x] **The current page path could not reproduce it.** `GeneratorWorkspace`
+      initializes from `tool.defaults` and routes every change through
+      `tool.normalize`, so the live workspace always supplied a complete style,
+      and neither committed `LandingPage` revision built a partial one. The
+      likely historical source is the era before shadow and stroke were split
+      onto counter-specific state, when the counter query was assembled from a
+      raw object literal mixing MultiChat's shared `textShadow`/`stroke` with
+      counter fields — the exact present/absent split the evidence shows. The
+      runtime evidence is not dismissed: it is reproduced as a fixture and
+      asserted against, and the defect it proves — an undefended serializer —
+      was real regardless of which caller supplied the partial style.
+- [x] `tests/unit/counterUndefinedUrl.test.tsx` (new) — page-level, through the
+      real shell and the real descriptor, not the serializer alone. Covers the
+      initial unconfigured render, entering only a Kick channel, the immediate
+      pre-debounce URL, the debounced iframe `src`, a MultiChat→Counter route
+      switch, a foreign draft restored from `sessionStorage`, first paint versus
+      post-effect state, the clipboard and `window.open` arguments, every
+      keystroke of a channel name, and a sweep of every toggle and every option of
+      every select. Each asserts the URL contains no `=undefined`, `undefined&`,
+      `?undefined`, and no bare `undefined` anywhere.
+- [x] The evidence string is itself asserted to be what the pre-fix code produced,
+      so the fixture cannot silently drift away from the bug it represents.
+- [x] Mutation-checked. Reverting the normalization fails 1 test; combining it with
+      partial `tool.defaults` — a plausible future refactor — fails 11, which is
+      what shows the page-level tests guard the boundary rather than restating the
+      serializer test. With the fix in place, partial defaults pass all 14, so the
+      serializer is a sufficient defense on its own.
+
 ### Security review — findings not acted on
 
 A read-only review of the OAuth lifecycle found the flow sound on CSRF state

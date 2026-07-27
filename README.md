@@ -37,6 +37,13 @@ Work from any connected platform's chat. Every command needs the same level — 
 | `!multichat yt [url or preset] -t [sec] -m` | Plays YouTube video/sound. Presets: `bruh` `vine-boom` `dc-ping` `rickroll` `win-error` | Mod+ |
 | `!multichat tts [message]` | Text-to-speech via StreamElements | Mod+ |
 
+Every command needs the same level, so the table above has no per-command access
+distinction to make. The generator's Demo mode lists all nine and can genuinely
+run four of them — `ping`, `stop`, `show`, and `hide`. The other five
+(`reload`, `refresh emotes`, `img`, `yt`, `tts`) are listed without a button
+rather than faked: reloading a browser source, refetching emote sets, and playing
+media are not things a preview can reproduce honestly.
+
 ## OBS Setup
 
 1. Open **`/tools/multichat`**, fill in your channel name(s) — any one platform or all four — and configure options. The preview beside the settings has two modes. **Live** is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet. **Demo** renders the same overlay over sample messages, so you can judge fonts, colours, and badges before going live; you can also compose your own test message and try the `!multichat` commands there. Nothing you do in Demo changes the URL.
@@ -60,6 +67,16 @@ available at `/classic/multichat` if you prefer it.
 `/multichat` is the overlay itself, not the generator. Existing OBS URLs pointing
 at it keep working unchanged and always will; a visit with no channel forwards to
 `/tools/multichat`.
+
+### Fonts
+
+The overlay only fetches the one Google font your `font=` value names
+(`lib/overlayFonts.ts`), not the whole set — so OBS never downloads faces it
+will not render. The homepage and `/classic/multichat` each load their own UI and
+font-picker faces the same way, via a `@import` inside `next/head`'s `<style>`
+rather than a `<link rel="stylesheet">`, which is what Next.js's Pages Router
+warns against outside `pages/_document.tsx`. `segoe`, `impact`, and `default`
+need no network request at all, and `alsina` is self-hosted.
 
 ## Hosting
 

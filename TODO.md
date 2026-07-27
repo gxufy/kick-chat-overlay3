@@ -796,6 +796,61 @@ preview animation that never reaches the URL.
       polling — asserted in jsdom by the iframe being unmounted, not observed
       against a running network.
 
+### MultiChat migration — batch 11: font loading and Counter polling guard (implemented)
+
+- [x] **Every font request warned at render time.** Next.js emits "Do not add
+      stylesheets using next/head" for any `<link rel="stylesheet">` passed to
+      `next/head`, once per href, on every development render. Three routes did
+      it: the homepage (Montserrat), `/classic/multichat` (two combined sheets),
+      and the overlay itself (the batch-8 selected-font link).
+- [x] Fixed as an `@import` inside an inline `<style>` — the same request through
+      a mechanism `next/head` supports. `pages/_document.tsx` was considered and
+      deliberately not added: the three routes need genuinely different faces
+      (one UI face, all eleven, or the single family a URL selected), so there is
+      no global set to hoist, and hoisting the union would make every OBS overlay
+      fetch nine faces it never draws — undoing batch 8.
+- [x] **The first attempt shipped broken and was caught by inspecting the served
+      HTML, not by the tests.** Passing the CSS as a text child let React escape
+      it: `&` became `&amp;` and `'` became `&#x27;`. A `<style>` element is
+      raw text and decodes neither, so the `url()` token was invalid and
+      `&amp;family=` would have collapsed the Classic generator's eleven families
+      to one. Now `dangerouslySetInnerHTML`, asserted on
+      `renderToStaticMarkup` output — a jsdom assertion reads `textContent`
+      identically either way and would have passed vacuously.
+- [x] `UI_FONT_SPECS` and `googleFontsImportCss` added to `lib/overlayFonts.ts`,
+      which was already the one place a face is described. The Classic
+      generator's sheet is now built from `UI_FONT_SPECS` + `OVERLAY_FONT_SPECS`
+      rather than restating nine `family=` specs that were already there.
+- [x] No URL, parameter, or default changed, and no font-family name changed.
+      `next/font` was rejected for that reason: it renames families to generated
+      identifiers, which would mean rewriting the overlay's `FONT_FAMILIES`, the
+      picker, and the Classic CSS, and mixing generated names with the
+      self-hosted Alsina and the two system faces.
+- [x] Verified at runtime, not from build output — the warning is render-time. A
+      clean dev server, then `/`, `/classic/multichat`, and `/multichat?kick=xqc`:
+      three 200s and an empty warning log. Proven non-vacuous by a throwaway page
+      with a stylesheet link, which did warn on the same server.
+- [x] A repository-wide test asserts no `rel="stylesheet"` in any file under
+      `pages/`, `components/`, or `app/`. Coarse, but it is the only thing that
+      catches a fourth route reintroducing it later.
+- [x] **The Viewer Counter's no-polling guarantee was only implied.**
+      `counterRegression.test.tsx` asserted the descriptor declares no runtime,
+      which implies no poller but never observed one not starting. Now asserts
+      the request layer directly: no `POST /api/twitch/pins` call across mount,
+      configuring a Twitch channel, 30s of timers, and unmount.
+- [x] 12 new tests (994 total, all passing). Typecheck and production build clean.
+
+**Verification still outstanding**
+
+- [ ] Manual browser confirmation that the homepage and `/classic/multichat`
+      render in Montserrat, and that the Classic font picker still previews each
+      option in its own face. The `@import` mechanism is asserted in the served
+      HTML, but "the face actually painted" needs eyes.
+- [ ] Manual browser-console check of `/multichat?kick=<channel>`. The overlay is
+      client-rendered, so any warning it emitted would appear there rather than in
+      the dev server log; the source now contains no stylesheet link for one to
+      fire on.
+
 ### Security review — findings not acted on
 
 A read-only review of the OAuth lifecycle found the flow sound on CSRF state

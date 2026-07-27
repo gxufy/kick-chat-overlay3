@@ -46,6 +46,23 @@ const TWITCH_CONN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  *  (MIN_INTERVAL_MS), so this is the fastest cadence it will honour. */
 const TWITCH_PIN_INTERVAL_MS = 5_000;
 
+/**
+ * How long a displayed Twitch pin may go unconfirmed before it is dropped.
+ *
+ * Transient lookup failures are retried with backoff and deliberately not shown
+ * to the viewer, but a pin on screen is a claim that something is pinned *now*.
+ * If the API stops answering after a pin is displayed, that claim goes
+ * unverifiable — and if the streamer unpins during the outage, the overlay would
+ * otherwise keep showing it for the rest of the stream.
+ *
+ * 60s is a deliberate trade. Showing a pin the streamer deliberately removed is
+ * worse than briefly dropping one that is still up: the removed pin may be a
+ * stale link or a correction, and a still-pinned message reappears on the next
+ * successful poll a few seconds later. The window is long enough that ordinary
+ * blips and a redeploy never clear anything.
+ */
+const TWITCH_PIN_STALE_AFTER_MS = 60_000;
+
 /** True when *value* looks like a Twitch connection id. */
 function isTwitchConnectionId(value: string): boolean {
   return TWITCH_CONN_RE.test(value);
@@ -837,11 +854,19 @@ export default function Page() {
     const connectionId = new URLSearchParams(window.location.hash.slice(1)).get('twitchConnectionId') ?? '';
     if (!isTwitchConnectionId(connectionId)) return;
 
+    /* When the pins API last answered. Scoped to this effect run, so a
+       reconnect or a config change starts the staleness clock fresh rather than
+       inheriting a deadline from a previous poller. */
+    let lastPinConfirmedAt = Date.now();
+
     const stopPolling = startTwitchPinPoller({
       connectionId,
       login: twitchPinLogin,
       intervalMs: TWITCH_PIN_INTERVAL_MS,
       onPin: pin => {
+        /* Any answer confirms the API is reachable — including "nothing is
+           pinned", which is what clears a pin on an ordinary unpin. */
+        lastPinConfirmedAt = Date.now();
         if (pin === null) {
           clearOwnedTwitchPin();
           return;
@@ -861,10 +886,17 @@ export default function Page() {
         twitchPinIdRef.current = `twitch:${unified.message.id}`;
       },
       onError: (_error, fatal) => {
-        // lookup-failed reports fatal=false and is retried with backoff —
-        // stay silent. The fatal branch can fire at most once per poller.
+        // The fatal branch can fire at most once per poller.
         if (fatal) {
           console.warn('Twitch pin polling stopped.');
+          clearOwnedTwitchPin();
+          return;
+        }
+        /* lookup-failed is retried with backoff and stays silent — a viewer
+           should not see transport noise. But a pin we are still showing has now
+           gone unconfirmed, so once the outage passes the staleness window, drop
+           it rather than assert indefinitely that it is still pinned. */
+        if (Date.now() - lastPinConfirmedAt > TWITCH_PIN_STALE_AFTER_MS) {
           clearOwnedTwitchPin();
         }
       },

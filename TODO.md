@@ -400,7 +400,10 @@ Forcing `number` on either would change generated URLs. `number` remains
 implemented and tested at the control level from batch 2.
 
 - [ ] Manual browser verification of `/tools/multichat` at 1920 / 1024 / 375 px.
-- [ ] Manual keyboard and mobile-overflow pass on the new route.
+- [ ] Manual keyboard and mobile-overflow pass on the new route. *(Landmark and
+      heading structure is now covered by `workspaceAccessibility.test.tsx`; the
+      keyboard and horizontal-overflow pass is still manual, and no automated
+      accessibility tooling is installed.)*
 - [ ] Manual confirmation that leaving `/tools/multichat` stops the preview
       overlay's connections.
 - [ ] Manual OBS confirmation of a workspace-generated MultiChat URL at
@@ -464,12 +467,163 @@ nothing.
       native Twitch pins in OBS.
 - [ ] Manual check that the fragment is absent from server access logs.
 
-### MultiChat migration — remaining batches (not started)
+### MultiChat migration — batch 6: route consolidation (implemented)
 
-- [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
-      update homepage links, and retire the legacy generator. `/multichat` stays
-      a working overlay route permanently. The OAuth return is already
-      repointed; `/multichat` remains allowlisted for in-flight authorizations.
+`/tools/multichat` and `/tools/counter` are now the canonical generator routes.
+`/multichat` keeps serving the overlay **permanently** — that half was never a
+migration step, because the URLs are in OBS scene collections nobody will edit.
+
+- [x] `lib/multichatRouting.ts` — one pure rule for what a `/multichat` visit
+      resolves to. A query naming any channel (`channel`, `kick`, `twitch`,
+      `youtube`, `tiktok`) is an overlay request and is checked **first**, so it
+      wins outright: a scene URL that also carries `tab=counter`, or any other
+      generator-shaped parameter, still renders chat. Only a channel-less visit
+      forwards, and an empty value (`?kick=`, what an unfilled generator field
+      submits) counts as channel-less rather than as a dead overlay.
+- [x] `pages/multichat.tsx` — forwards a channel-less visit with `replace` (not
+      `push`, so Back does not bounce through the path again) and renders nothing
+      while in flight, rather than flashing the old generator first.
+      `?tab=counter` forwards to `/tools/counter`, everything else to
+      `/tools/multichat`.
+- [x] Homepage cards and footer link point at the canonical routes directly, so
+      the common path has no redirect hop. The `/?kick=...` → `/multichat`
+      overlay forward on the homepage is deliberately **unchanged**.
+- [x] `tests/unit/multichatRouting.test.ts` + `legacyMultichatPage.test.tsx` —
+      the overlay-compatibility boundary, asserted per channel parameter. Both
+      files were mutation-checked: disabling the channel-first rule fails exactly
+      the overlay cases.
+
+The legacy generator was **not** retired — it stays reachable at
+`/classic/multichat` and listed in the workspace nav as "MultiChat (Classic)".
+
+### MultiChat migration — batch 6 follow-up: hardening (implemented)
+
+- [x] `components/workspace/OverlayUrlBar.tsx` — Copy no longer claims success
+      unconditionally. The clipboard write is awaited, and an absent API or a
+      rejected write reports the failure and names the recovery ("select the URL
+      above and copy it manually"). The field is readonly, so someone told
+      "copied" when nothing was had no way to notice until pasting into OBS.
+- [x] `components/workspace/GeneratorWorkspace.tsx` — added a `main` landmark and
+      the page's only `h1` (visually hidden; the layout has no header bar). Both
+      panel headings were `h2`s under no root, so heading navigation started
+      partway down a hierarchy.
+- [x] `components/workspace/multichat/TwitchConnectionPanel.tsx` — the disconnect
+      request is now bounded by a 10 s timeout and aborted on unmount. A hung
+      request previously left the button disabled reading "Disconnecting…" for
+      the life of the page, making the one action the user asked for unreachable.
+- [x] `tests/unit/workspaceAccessibility.test.tsx` and
+      `tests/unit/counterRegression.test.tsx` — the latter asserts **absence**:
+      the counter declares no runtime, no context, no gated options, renders no
+      connection surface, and produces URLs byte-identical to
+      `buildViewerCounterQuery` with no fragment. Mutation-checked by bolting a
+      runtime onto the counter descriptor; four guards fire.
+
+### MultiChat migration — batch 7: fragment preservation and a11y (implemented)
+
+Release-blocking bug found by self-review of batch 6, plus the gaps a read-only
+audit of the finished work turned up.
+
+- [x] **`pages/multichat.tsx` dropped OAuth fragments.** A channel-less visit to
+      `/multichat#twitchConnectionId=…&twitch=…` forwarded to `/tools/multichat`
+      with the fragment discarded, so a completed authorization was silently
+      thrown away and the user sent back through Twitch. The route decision only
+      saw `router.query`, and fragments never appear there. It now takes the hash
+      as an explicit argument, validates it with the authoritative parser
+      (`readConnectionFromFragment`), and rebuilds the fragment from only the two
+      recognized fields — so a malformed, duplicate-keyed, or arbitrary hash is
+      dropped rather than forwarded, and nothing extra rides along. Channel
+      parameters are still checked first, so no OBS overlay URL can be captured.
+      A valid fragment outranks `tab=counter`.
+- [x] The hash is captured in an effect, not during render (reading
+      `window.location` while rendering is a hydration mismatch), and the
+      redirect waits for it — redirecting before the hash is known *is* the bug.
+      `/multichat` still prerenders as static, confirming no render-time `window`.
+- [x] **`lib/oauthReturn.ts` comment was false.** It claimed a return to
+      `/multichat` still rendered a generator that read the fragment itself. That
+      stopped being true in batch 6. Now documents the actual compatibility path.
+- [x] **Unconfirmed pins no longer live forever.** Transient lookup failures are
+      retried silently, so an API outage after a pin was displayed left the
+      overlay asserting that pin indefinitely — including if the streamer
+      unpinned during the outage. A displayed pin is now dropped after 60 s
+      without a reachable API. Deliberate trade: a removed pin still showing is
+      worse than briefly losing one that is still up, and a live pin returns on
+      the next successful poll.
+- [x] **`PreviewBackground.tsx` was an incomplete ARIA radiogroup** —
+      `role="radio"` buttons promise one tab stop and arrow-key navigation, and
+      implemented neither. Replaced with native radio inputs, which get both from
+      the platform. Same reasoning as MultiSelect's native checkboxes.
+- [x] **No skip link.** The nav lists every tool before the settings, so keyboard
+      users re-tabbed the whole list on every visit. Added as the first focusable
+      element, targeting `<main tabIndex={-1}>` so focus actually lands.
+- [x] **`prefers-reduced-motion` unhandled.** The toggle knob was the only
+      element that actually moves; it now uses `motion-reduce:transition-none`.
+      Colour fades left alone deliberately — a fade is not motion, and removing
+      it would lose feedback without helping anyone.
+- [x] `tests/unit/twitchPinPoller.test.ts` (new) — the poll loop had **no tests
+      at all**; the page test mocks it away. Covers non-overlapping requests, the
+      interval floor, non-finite intervals, the backoff ladder and its 60 s
+      ceiling, the fatal-versus-transient split, abort on stop, and that a
+      consumer fault cannot be read as a transport failure.
+- [x] `tests/unit/twitchPinOwnership.test.ts` (new) — the ownership key is built
+      from two independent expressions hundreds of lines apart
+      (`` `twitch:${message.id}` `` and `` `${platform}:${id}` ``). A drift fails
+      silently by never clearing a pin, so the coupling is pinned by reading the
+      real source, following `multichatCommands.test.ts`.
+- [x] `tests/unit/homepageRoutes.test.tsx` (new) — the homepage card hrefs and the
+      classic route's `noindex` were unasserted. Also pins the homepage's own
+      legacy overlay forward, which passes `{pathname, query}` so every parameter
+      survives.
+- [x] Mutation-checked: reverting the redirect to `route.pathname` fails 4 tests;
+      removing the hash gate fails 4. The once-only `replace` ref is **not**
+      provable in this environment — the hash gate already serializes Strict
+      Mode's double mount, so removing the ref changes nothing observable. Kept
+      as insurance and commented as unexercised rather than claimed as covered.
+
+#### Documentation corrections
+
+- [x] `README.md` — "Broadcaster has full access; mods have access to most" was
+      false. There is one uniform `getAccessLevel(um) < 500` gate before the
+      switch; every command has identical requirements. Also added Twitch to the
+      pinned-messages feature line, which read as if Twitch pins did not exist.
+- [x] `DEPLOY.md` — "open the generator at `/multichat`" was stale; that path
+      serves the overlay. Now names `/tools/multichat` and explains the
+      compatibility forward.
+- [x] `DEPLOY.md` — the scope note said the connected account may be "the
+      broadcaster of, **or a moderator in**," the channel. True of the Twitch
+      scope, but `twitchPinsAvailable` requires the typed channel to equal the
+      connected login, so a moderator authorizes successfully and then finds the
+      option still gated. Documented as the broadcaster-only restriction it is.
+
+- [ ] **A moderator cannot generate a pin-enabled overlay for a channel they
+      moderate.** `twitchPinsAvailable` compares the typed channel against the
+      connected login, which is right for the broadcaster case and excludes a
+      legitimate one Twitch's own scope allows. Fixing it needs a way to confirm
+      moderator status for a channel before enabling pins; the server already
+      checks `broadcaster.login` on every pins request, so the gate is a UX
+      restriction rather than the security boundary.
+
+### Security review — findings not acted on
+
+A read-only review of the OAuth lifecycle found the flow sound on CSRF state
+(256-bit nonce, `timingSafeEqual`, cleared before branching so it is single-use),
+cookie flags, open redirect (exact-match allowlist, destination read from the
+cookie rather than the query), and error handling (fails closed, no detail
+leaked). Three items are **known and deliberately left alone** — each changes
+production auth behaviour and needs a decision plus a schema check first:
+
+- [ ] **Connection id is not rotated on reconnect.**
+      `lib/server/twitchConnectionStore.ts:125-141` upserts on `twitch_user_id`
+      and resets `revoked_at`, so disconnecting and reconnecting reuses the same
+      row and the same id. A leaked id therefore becomes valid again on
+      reconnect. Fixing it means rotating a primary key on the live table;
+      confirm nothing references it by FK first.
+- [x] **Connection id entropy confirmed.** `DEPLOY.md:194` documents the schema
+      as `default gen_random_uuid()` — v4, cryptographically random. The shape
+      validation in every consumer is redundant with respect to entropy, but not
+      with respect to correctness. Closed.
+- [ ] **No rate limiting** on `oauth/start`, `oauth/callback`, or
+      `oauth/disconnect`. Brute force is not realistic (exact state match, full
+      UUID), but nothing caps request volume or Twitch API quota burn.
 
 ### Verification still outstanding
 

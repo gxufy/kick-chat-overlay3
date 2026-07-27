@@ -6,6 +6,24 @@
 - The sole exception is `app/api/twitch/pins/route.ts`, which uses App Router conventions. Do not add more App Router files without an explicit reason.
 - `@/*` resolves to the project root (`tsconfig.json` paths).
 
+## Routes
+
+Generators are one shell (`components/workspace/GeneratorWorkspace.tsx`) driven by
+a tool descriptor from `lib/tools/registry.ts`, served by `pages/tools/[tool].tsx`:
+
+- `/tools/multichat`, `/tools/counter` — **canonical generators.** Link these.
+- `/multichat` — **the overlay OBS loads. Never redirect a URL with a channel
+  parameter.** Those URLs sit in scene collections nobody will edit, so serving
+  the overlay for them is permanent. A channel-*less* visit forwards to
+  `/tools/multichat`, carrying a valid OAuth fragment across the forward
+  (`lib/multichatRouting.ts`).
+- `/classic/multichat` — the original generator, `noindex`, kept for rollback.
+- `/counter` — the counter overlay, same permanence rule as `/multichat`.
+
+A URL fragment is not in `router.query`. Anything deciding a route from a
+fragment must read `window.location.hash` client-side and pass it in, or it will
+silently ignore it — this shipped as a bug once.
+
 ## Server-only code
 
 - `lib/server/**` is server-only. Never import it from a component or from any client-side `lib/` module.
@@ -31,10 +49,14 @@
 ## Verification — required before declaring implementation work complete
 
 ```bash
+npm test
 npx tsc --noEmit
 npm run build
 git diff --check
 ```
+
+`npm run build` regenerates `next-env.d.ts`; restore it rather than committing it
+(`git restore -- next-env.d.ts`).
 
 ## Hard rules
 

@@ -16,7 +16,7 @@ A multi-platform chat overlay for OBS and streaming software — **Kick · Twitc
 - **Real platform badges** — full Kick set, all Twitch badge sets (sub tiers, bits, events) + FFZ room overrides, YouTube member/mod/verified with owner gold-pill, TikTok top-gifter/fan-club/sub art
 - **Platform source tags** — official brand icon (default), dot, label, or none per message
 - **Event cards** — subs, gift subs, raids/hosts, cheers/Kicks, Super Chats/Stickers, memberships, TikTok gifts (with art + diamonds), follows & shares
-- **Pinned messages** — Kick, YouTube, and TikTok pins in a StreamNook-style card that collapses to a thin bar
+- **Pinned messages** — Kick, YouTube, and TikTok pins in a StreamNook-style card that collapses to a thin bar. Twitch pins too, with an optional connected account (Twitch's own pins are not readable over anonymous IRC)
 - Batched slide / fade animations (chatis-exact 200ms loop — no stutter on fast chat)
 - Stroke, shadow, font options (12 fonts including Alsina)
 - Bot filtering — ignore known bots + custom list
@@ -24,7 +24,7 @@ A multi-platform chat overlay for OBS and streaming software — **Kick · Twitc
 
 ## Chat Commands
 
-Work from any connected platform's chat. Broadcaster has full access; mods have access to most. `!kickchat` still works as an alias.
+Work from any connected platform's chat. Every command needs the same level — moderator or above — so the broadcaster and mods can run all of them equally. `!kickchat` still works as an alias.
 
 | Command | Description | Access |
 |---|---|---|
@@ -39,10 +39,27 @@ Work from any connected platform's chat. Broadcaster has full access; mods have 
 
 ## OBS Setup
 
-1. Open the landing page, fill in your channel name(s) — any one platform or all four — and configure options
-2. Click **Generate & Copy**
+1. Open **`/tools/multichat`**, fill in your channel name(s) — any one platform or all four — and configure options. The preview beside the settings is a real overlay at the exact URL you are about to copy.
+2. Click **Copy overlay URL**
 3. In OBS: **Add Source → Browser Source**, paste the URL
 4. Recommended size: **830 × 230**
+
+The Viewer Counter generator is at **`/tools/counter`**.
+
+Both generators are optional — the overlay URL is just query parameters, so a
+hand-written one works fine. The original single-page generator is still
+available at `/classic/multichat` if you prefer it.
+
+> Connecting a Twitch account is optional and only enables Twitch's own **pinned
+> messages**, which anonymous IRC cannot read. Everything else works with no
+> login. The connected account must be the same account as the Twitch channel you
+> typed — connecting as a moderator of someone else's channel authorizes fine but
+> leaves the pin option disabled, with the reason shown next to the connection.
+> See [DEPLOY.md](DEPLOY.md) for the environment variables that feature needs.
+
+`/multichat` is the overlay itself, not the generator. Existing OBS URLs pointing
+at it keep working unchanged and always will; a visit with no channel forwards to
+`/tools/multichat`.
 
 ## Hosting
 

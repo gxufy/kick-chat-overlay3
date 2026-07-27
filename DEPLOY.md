@@ -163,8 +163,19 @@ Required scope, and the only scope requested:
 moderator:read:chat_messages
 ```
 
-The connected account must be the broadcaster of, or a moderator in, the
-channel whose pins you want to read.
+Twitch grants this scope to the broadcaster of a channel or a moderator in it.
+
+**The generator is stricter than the scope: it requires the broadcaster.** Both
+generators enable the Twitch pin option only when the Twitch channel you type
+equals the account you connected (`twitchPinsAvailable` in
+`lib/tools/multichat/runtime.ts`). A moderator in someone else's channel will
+authorize successfully and then find the option still gated, with the reason
+shown next to the connected account.
+
+That is deliberate — polling pins for account A while the overlay reads chat for
+channel B returns pins that never appear on screen — but it does mean a mod
+cannot currently generate a pin-enabled overlay for a channel they moderate.
+Tracked in `TODO.md`.
 
 ### Database schema
 
@@ -247,9 +258,16 @@ npm run build        # production build
 `npm run build` regenerates `next-env.d.ts`; restore it if git reports it as
 modified (`git restore -- next-env.d.ts`).
 
-Connect flow — open the generator at `/multichat`, enter your channel, click
-**Connect**, approve on Twitch. You should return to the generator showing
-"Connected as <login>".
+Connect flow — open the generator at `/tools/multichat`, enter your Twitch
+channel, click **Connect Twitch**, approve on Twitch. You should return to the
+workspace showing "Connected as &lt;login&gt;", with your channels and settings
+still filled in (they are held in a session-scoped draft across the redirect).
+
+`/multichat` is no longer a generator: it serves the overlay, and a visit with no
+channel forwards to `/tools/multichat`. An OAuth return to `/multichat` is still
+supported for authorizations that began before the callback destination changed —
+the fragment is carried across that forward. `/classic/multichat` remains a
+working generator with its own connect flow.
 
 Pin check — with a message pinned in that channel, confirm the overlay URL
 built by the generator shows the pin within ~5 seconds. Unpin it and confirm

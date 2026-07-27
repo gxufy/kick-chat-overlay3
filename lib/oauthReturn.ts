@@ -1,56 +1,57 @@
 /* Where OAuth is allowed to send the browser back to.
  *
- * Deliberately outside lib/server: both generators need these path constants to
- * name their own return route, and the module is pure data plus string equality
- * with no Node imports, so it costs the client bundle nothing. The security
- * property does not depend on secrecy — the allowlist is a fixed set of internal
- * paths, and the enforcement that matters happens server-side in the callback.
+ * Deliberately outside lib/server: the generator needs the path constant to name
+ * its own return route, and the module is pure data plus string equality with no
+ * Node imports, so it costs the client bundle nothing. The security property does
+ * not depend on secrecy — the allowlist is a fixed set of internal paths, and the
+ * enforcement that matters happens server-side in the callback.
  *
- * The callback used to hardcode `/multichat`. Now that two pages can start a
- * connection, it needs a destination — and a destination that travels through an
- * OAuth round trip is the classic shape of an open redirect. So this module is
- * an exact-match allowlist, not a validator: a candidate is compared against a
- * fixed set of internal paths and anything not identical is refused.
+ * A destination that travels through an OAuth round trip is the classic shape of
+ * an open redirect. So this module is an exact-match allowlist, not a validator:
+ * a candidate is compared against a fixed set of internal paths and anything not
+ * identical is refused.
  *
  * Exact matching is what makes the dangerous cases uninteresting. Absolute URLs,
  * protocol-relative paths, encoded hosts, traversal, backslashes, and
  * whitespace-padded variants all fail for the same reason — they are not in the
- * set. There is no parsing to outsmart and no normalization step whose edge
- * cases have to be enumerated.
+ * set. There is no parsing to outsmart and no normalization step whose edge cases
+ * have to be enumerated.
  *
  * The destination is never taken from the callback's own query string. It is
  * bound at start time into an HttpOnly cookie, so a crafted callback URL cannot
  * choose it, and it is revalidated on the way out in case the cookie was
  * tampered with.
  */
+import { CANONICAL_MULTICHAT_ROUTE } from './multichatRouting';
 
-/** The workspace generator — the canonical destination. */
-export const OAUTH_RETURN_WORKSPACE = '/tools/multichat';
+/**
+ * The generator — the canonical destination.
+ *
+ * This is `/multichat`, which is both the overlay and, on a channel-less visit,
+ * the generator. A return here has no channel parameters, so it renders the
+ * generator, which reads the fragment itself. Nothing forwards.
+ */
+export const OAUTH_RETURN_GENERATOR = CANONICAL_MULTICHAT_ROUTE;
 
-/** The classic generator, kept reachable for rollback and troubleshooting. */
+/**
+ * The retired original-generator path.
+ *
+ * Allowed because an authorization can be in flight across the deploy that
+ * retired it: a browser that began authorizing against the old code will present
+ * this destination, and refusing it would fail that authorization for no benefit.
+ * `pages/classic/multichat.tsx` redirects to the canonical route and carries the
+ * connection fragment across that redirect — validated and rebuilt from its two
+ * recognized fields — so the generator adopts it exactly as if the callback had
+ * landed there directly. That forwarding is what makes this entry honest.
+ */
 export const OAUTH_RETURN_CLASSIC = '/classic/multichat';
 
 /**
- * The legacy generator path.
- *
- * Allowed because it is where every connection started before this change came
- * back to, and one can be in flight across the deploy: a browser that began
- * authorizing against the old code will present this destination, and refusing
- * it would fail that authorization for no benefit.
- *
- * How a return here completes, as of the route consolidation: `/multichat` no
- * longer renders a generator at all. A channel-less visit forwards to
- * `/tools/multichat`, and `pages/multichat.tsx` carries the connection fragment
- * across that forward — validated and rebuilt from its two recognized fields, so
- * the workspace's own fragment consumer adopts it exactly as if the callback had
- * landed there directly. That forwarding is what makes this entry honest; it is
- * asserted in tests/unit/legacyMultichatPage.test.tsx, and without it a return
- * to this path would silently discard a completed authorization.
- *
- * A visit that *does* name a channel is an overlay and is never forwarded, which
- * is why the fragment also still reaches the overlay's own pin poller.
+ * The retired workspace path, allowed for the same in-flight reason as
+ * OAUTH_RETURN_CLASSIC. `pages/tools/[tool].tsx` preserves the fragment across
+ * its redirect too.
  */
-export const OAUTH_RETURN_LEGACY = '/multichat';
+export const OAUTH_RETURN_WORKSPACE = '/tools/multichat';
 
 /**
  * Every destination OAuth may return to, matched exactly.
@@ -59,13 +60,13 @@ export const OAUTH_RETURN_LEGACY = '/multichat';
  * path from user input.
  */
 export const OAUTH_RETURN_ALLOWLIST: readonly string[] = [
-  OAUTH_RETURN_WORKSPACE,
+  OAUTH_RETURN_GENERATOR,
   OAUTH_RETURN_CLASSIC,
-  OAUTH_RETURN_LEGACY,
+  OAUTH_RETURN_WORKSPACE,
 ];
 
 /** Used when no destination was requested, or the requested one was refused. */
-export const OAUTH_RETURN_DEFAULT = OAUTH_RETURN_WORKSPACE;
+export const OAUTH_RETURN_DEFAULT = OAUTH_RETURN_GENERATOR;
 
 /**
  * Return the candidate only if it is exactly an allowlisted internal path.

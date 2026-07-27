@@ -20,7 +20,7 @@ import {
   normalizeTwitchLogin,
 } from '@/lib/twitchConnection';
 
-export { OAUTH_RETURN_WORKSPACE } from '@/lib/oauthReturn';
+export { OAUTH_RETURN_GENERATOR } from '@/lib/oauthReturn';
 
 /** Runtime state the workspace shell stores opaquely for this tool. */
 export type MultichatRuntime = {

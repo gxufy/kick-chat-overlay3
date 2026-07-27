@@ -602,6 +602,46 @@ audit of the finished work turned up.
       checks `broadcaster.login` on every pins request, so the gate is a UX
       restriction rather than the security boundary.
 
+### MultiChat migration — batch 8: the overlay never loaded its fonts (implemented)
+
+- [x] **`/multichat` shipped no font stylesheet at all.** `ChatOverlay`'s
+      `FONT_FAMILIES` maps `font=` to families like `'Open Sans'`, `'Roboto'`, and
+      `'Baloo Tammudu 2'`, but naming a family does not load it, and the overlay
+      route requested none. Confirmed against the prerendered markup, not by
+      reading: `.next/server/pages/multichat.html` contained zero
+      `fonts.googleapis.com` references while `classic/multichat.html` contained
+      two. So nine of the twelve font options rendered as generic sans-serif in
+      OBS — including `opensans`, which is `MULTICHAT_GENERATOR_DEFAULTS.font`,
+      making the default the broken case. The classic generator loads these faces
+      for its own UI, so its inline preview showed the real font and the overlay
+      did not: the preview and the overlay disagreed about what a URL renders as.
+- [x] `lib/overlayFonts.ts` (new) — the one place a `font=` value maps to the face
+      it needs. Specs are copied verbatim from the stylesheet the generator page
+      already requests, so a face renders identically in both. Only the selected
+      family is fetched, not a combined sheet of all nine.
+- [x] Three keys deliberately need no stylesheet, each for a different reason, and
+      each is asserted individually rather than silently omitted: `default`
+      resolves to `inherit`, `segoe` and `impact` are system faces, and `alsina`
+      is self-hosted through the `@font-face` ChatOverlay already emits.
+- [x] `preconnect` to both font origins, emitted only when a stylesheet is, plus
+      `display=swap` so text stays visible while the face loads.
+- [x] No URL, parameter, or default changed. An existing OBS source now renders
+      the font its URL already asked for; nothing needs regenerating.
+- [x] `tests/unit/overlayFonts.test.ts` (new) — reads `FONT_FAMILIES` out of
+      `components/ChatOverlay.tsx` and asserts every family has either a spec or a
+      stated exemption, following `multichatCommands.test.ts`. A hardcoded list
+      would drift the moment a font is added; reading the source cannot.
+- [x] `tests/unit/overlayFontLink.test.tsx` (new) — renders the real overlay and
+      asserts the emitted links. `next/head` is mocked to render children inline:
+      in jsdom the real one flushes asynchronously, so asserting on
+      `document.head` returns an empty list for *every* font, which would make the
+      negative cases pass vacuously with the feature entirely removed. Noted in
+      the file so the boundary is not mistaken for laziness.
+- [x] Mutation-checked in both directions. Removing the `opensans` spec fails 3;
+      removing the `<link>` fails 1; pinning `fontHref` to null fails 4; making
+      every font emit a sheet fails 6, which is what proves the negative cases are
+      not vacuous.
+
 ### Security review — findings not acted on
 
 A read-only review of the OAuth lifecycle found the flow sound on CSRF state

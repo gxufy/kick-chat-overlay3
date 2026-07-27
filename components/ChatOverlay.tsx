@@ -4,6 +4,7 @@ import type { MultichatConfig } from '../lib/multichatConfig';
 import type { ParsedMessage } from '../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../lib/render';
 import type { Platform } from '../lib/types';
+import { overlayFontUrl } from '../lib/overlayFonts';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -172,6 +173,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const filterVal  = getShadowFilter(cfg.textShadow);
   const strokeVal  = getStroke(cfg.stroke ?? 'none');
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'default'] ?? 'inherit';
+  /* Naming a family does not load it. Only the selected face is requested, and
+     system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
+  const fontHref   = overlayFontUrl(cfg.font);
   const emoteScale = cfg.emoteScale ?? 1;
   const emoteMaxH  = `${parseFloat(sz.emoteMaxH) * emoteScale}px`;
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
@@ -242,6 +246,18 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   return (
     <>
       <Head>
+        {/* The selected web font. Without this the overlay named a family it had
+            never fetched, so every Google face — including the generator's
+            default, Open Sans — fell back to generic sans-serif in OBS while the
+            generator preview, which loads them for its own UI, showed the real
+            face. `display=swap` keeps text visible while it loads. */}
+        {fontHref && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            <link rel="stylesheet" href={fontHref} />
+          </>
+        )}
         <style>{`
           /* Exact chatis body reset from style.css
              Also reset #__next (Next.js wrapper) so it doesn't

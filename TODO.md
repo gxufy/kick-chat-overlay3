@@ -274,15 +274,15 @@ route change, and no `enabledWhen` or dynamic catalog predicate.
 
 - [ ] Manual browser confirmation of `/tools/counter` at 1920 / 1024 / 375 px.
 
-### MultiChat migration — batch 4: descriptor and catalog (implemented, unregistered)
+### MultiChat migration — batch 4: descriptor and catalog (implemented)
 
-The MultiChat tool is now modelled, but nothing renders it. It is absent from
-`TOOLS`, so `/tools/multichat` still does not exist and still returns 404. The
-workspace is **not** complete.
+The MultiChat tool was modelled here but not rendered: it was absent from
+`TOOLS`, so `/tools/multichat` returned 404. **Batch 5A below registers it**, so
+the "deliberately not registered" notes in this section are historical.
 
 - [x] `lib/tools/multichat/config.ts` — a `multichatTool` descriptor matching the
       generalized `OverlayTool<MultichatWorkspaceStyle, MultichatPlatform>`.
-      Importable directly for tests; deliberately not registered.
+      Registered as of batch 5A.
 - [x] Defaults are `MULTICHAT_WORKSPACE_DEFAULTS` itself, by reference — no
       second defaults object, and the generator's `textShadow: 'small'` is
       preserved against the overlay's omission default of `'large'`.
@@ -308,7 +308,8 @@ workspace is **not** complete.
       share `param: 'fade'` since they describe one parameter.
 - [x] `pinPlatforms` is a multiselect over the platform tuple, empty selection
       allowed, CSV encoding left entirely to the serializer. No OAuth gating —
-      the Twitch chip's connected-account requirement is Batch 5.
+      the Twitch chip's connected-account requirement is batch 5C; batch 5A
+      states it in the control's description instead.
 - [x] The four unread compatibility-only parameters — `ttsEnabled`,
       `showAvatars`, `showSystemMsgs`, `showRedeems` — receive no controls. They
       remain parse-compatible and listed in `MULTICHAT_UNREAD_PARAMS`.
@@ -347,15 +348,71 @@ workspace is **not** complete.
       source while the in-app setup step says `680 × 280`. The descriptor follows
       the in-app value. Decide which is right and make them agree.
 
+### MultiChat migration — batch 5A: route registration (implemented)
+
+`/tools/multichat` is registered, prerendered, and reachable. No OAuth surface
+was added, and the existing generator at `/multichat` is untouched.
+
+- [x] `multichatTool` registered in `TOOLS`, first, ahead of the counter.
+      `TOOL_IDS` is `['multichat', 'counter']`, so `getStaticPaths` emits both
+      and the build prerenders `/tools/multichat` and `/tools/counter`.
+      `/tools/unknown` still 404s.
+- [x] Real `/multichat` iframe preview, at the descriptor's own 280 px height,
+      through the same `OverlayPreviewFrame` the counter uses — same 350 ms
+      debounce, same immediate teardown when the last channel clears, no
+      `setInterval`, no `Math.random`.
+- [x] All 24 catalog controls and all four channel fields operational, in
+      catalog and descriptor order. No channel field appears in the centre
+      settings panel.
+- [x] One derived URL feeds the preview iframe, the readonly field, Copy, and
+      Open. Asserted as complete strings against `buildMultichatQuery`, not as
+      parsed parameter sets.
+- [x] `previewNote` moved onto the descriptor. The caption under the preview was
+      counter-specific prose hardcoded in `PreviewViewport`; each tool now
+      supplies its own sentence, and the counter's rendered text is unchanged.
+- [x] Navigation is MultiChat → MultiChat (Classic) → Viewer Counter. The
+      classic entry keeps the existing generator reachable and is relabelled so
+      no two entries read "MultiChat".
+- [x] `sourceTag` copy now explains the one compatibility asymmetry a user can
+      observe: `icon` is the legacy omitted-parameter case, so a single
+      configured platform shows no marker. Explaining it was the fix; changing
+      the serializer would restyle URLs already in OBS scenes.
+- [x] `pinPlatforms` copy states plainly that native Twitch pins need a
+      connected account this workspace cannot set up, and points at MultiChat
+      (Classic). Twitch is absent from the workspace pin defaults.
+
+**No OAuth in this batch, deliberately.** There is no connect button, no
+disconnect button, no connection status, no connection UUID, no OAuth-start
+request, and no fragment parser. `multichatTool.context` remains `undefined`, so
+every URL this workspace generates is an ordinary `/multichat` URL with no
+fragment — verified by asserting no `#` survives anywhere, including when a user
+types `#` into a filter field (it is percent-encoded into the query).
+
+**Deviation from the batch brief.** The brief called for all six control types to
+be exercised. The catalog uses five: `toggle`, `select`, `text`, `color`, and
+`multiselect`. `number` is unused because `fade` and `emoteScale` are the only
+numeric-looking parameters and both must be `text` — an empty string
+independently suppresses the parameter, which a number control cannot express.
+Forcing `number` on either would change generated URLs. `number` remains
+implemented and tested at the control level from batch 2.
+
+- [ ] Manual browser verification of `/tools/multichat` at 1920 / 1024 / 375 px.
+- [ ] Manual keyboard and mobile-overflow pass on the new route.
+- [ ] Manual confirmation that leaving `/tools/multichat` stops the preview
+      overlay's connections.
+- [ ] Manual OBS confirmation of a workspace-generated MultiChat URL at
+      680 × 280 and 830 × 230.
+
 ### MultiChat migration — remaining batches (not started)
 
-`/tools/multichat` does not exist, and no navigation links to it.
-- [ ] Batch 5 — register `multichatTool`, ship the `/tools/multichat` workspace,
-      the real-overlay iframe preview, and the Twitch connect/disconnect panel.
-      OAuth belongs here: the descriptor's `context` function, the
-      `#twitchConnectionId=…` fragment the existing generator appends itself, and
-      contextual enabling of the Twitch pin option. Still pending — the batch 3
-      context remains generic and MultiChat supplies nothing through it.
+- [ ] Batch 5B — OAuth return flow and connection state restoration for the
+      workspace: the descriptor's `context` function, the `#twitchConnectionId=…`
+      fragment the existing generator appends itself, and a connection panel.
+      Not started. Connecting Twitch remains exclusive to MultiChat (Classic).
+- [ ] Batch 5C — contextual gating of the Twitch pin option on a connected,
+      matching account. Not started; `disabled` on a setting descriptor is still
+      static, so it cannot express this, and batch 5A explains the requirement in
+      copy instead.
 - [ ] Batch 6 — route consolidation: forward channel-less `/multichat` visits,
       repoint the OAuth return, update homepage and nav links, and retire the
       legacy generator. `/multichat` stays a working overlay route permanently.

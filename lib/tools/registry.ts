@@ -6,6 +6,10 @@
  * enough channel input to show a preview. The workspace shell holds no per-tool
  * knowledge — including no platform list of its own.
  *
+ * Both registered tools describe themselves entirely through this type — the
+ * shell holds no counter-specific or MultiChat-specific knowledge, including no
+ * preview copy of its own.
+ *
  * Fields are limited to what a built tool needs. Timers, alerts, goals, and
  * scoreboards are not modelled — they get added to this type when they are
  * actually built.
@@ -15,6 +19,7 @@
 import type { SettingCatalog } from './settingTypes';
 import type { ToolContext } from './toolContext';
 import { counterTool } from './counter/config';
+import { multichatTool } from './multichat/config';
 
 /** Channel names keyed by the tool's own platform keys, as typed in. */
 export type ToolChannels<P extends string = string> = Partial<Record<P, string>>;
@@ -76,6 +81,15 @@ export type OverlayTool<S, P extends string = string> = {
   /** Suggested OBS browser-source size, also used for the preview viewport. */
   obs: { width: number; height: number };
   /**
+   * What the preview iframe is, in this tool's own terms.
+   *
+   * Owned by the descriptor because the accurate sentence differs per tool: the
+   * counter's preview is about counts and polling, MultiChat's is about messages
+   * and channel liveness. One shared sentence could only be vague or wrong for
+   * one of them. Plain text — it is rendered as a caption, not as markup.
+   */
+  previewNote?: string;
+  /**
    * Optional workspace state this tool contributes to its overlay URL. Given
    * the current style so a future tool can vary it; returning nothing — as
    * every tool does today — yields a URL identical to plain serialization.
@@ -104,6 +118,8 @@ export type RegisteredTool = {
   /** Widened for display and validation; each key stays a plain string here. */
   platforms: readonly ToolPlatform[];
   obs: { width: number; height: number };
+  /** Carried through as-is; it names no style field, so nothing is erased. */
+  previewNote?: string;
   /** Apply `consume` to the concrete descriptor. */
   use: <R>(
     consume: <S extends ToolStyle, P extends string>(tool: OverlayTool<S, P>) => R,
@@ -121,6 +137,7 @@ function register<S extends ToolStyle, P extends string>(
     overlayRoute: tool.overlayRoute,
     platforms: tool.platforms,
     obs: tool.obs,
+    previewNote: tool.previewNote,
     use: (consume) => consume(tool),
   };
 }
@@ -128,11 +145,16 @@ function register<S extends ToolStyle, P extends string>(
 /**
  * Registered tools, in navigation order.
  *
- * MultiChat is not here: it still lives at `/multichat` and has not been
- * migrated. Workspace navigation links to it directly rather than pretending
- * it is a registered tool.
+ * MultiChat comes first, matching the order the workspace nav already showed it
+ * in while it was an unregistered direct link. Its overlay still lives at
+ * `/multichat`, and the existing generator there stays reachable and unchanged —
+ * navigation links to it separately as MultiChat (Classic), since it is the only
+ * place a Twitch account can be connected today.
  */
-export const TOOLS: readonly RegisteredTool[] = [register(counterTool)];
+export const TOOLS: readonly RegisteredTool[] = [
+  register(multichatTool),
+  register(counterTool),
+];
 
 /** Every registered route segment, for static path generation. */
 export const TOOL_IDS: readonly string[] = TOOLS.map((tool) => tool.id);

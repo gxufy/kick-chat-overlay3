@@ -20,6 +20,7 @@ export default function LivePreviewPanel<P extends string>({
   onBackgroundChange,
   previewTitle,
   previewHeight,
+  previewNote,
 }: {
   url: string;
   configured: boolean;
@@ -31,6 +32,8 @@ export default function LivePreviewPanel<P extends string>({
   onBackgroundChange: (next: PreviewBackgroundId) => void;
   previewTitle: string;
   previewHeight: number;
+  /** The active tool's own description of its preview. Plain text. */
+  previewNote: string;
 }) {
   return (
     <section
@@ -56,6 +59,7 @@ export default function LivePreviewPanel<P extends string>({
           background={background}
           title={previewTitle}
           height={previewHeight}
+          note={previewNote}
         />
 
         <PreviewBackgroundPicker value={background} onChange={onBackgroundChange} />

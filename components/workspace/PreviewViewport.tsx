@@ -3,9 +3,12 @@
  *
  * Shell states are deliberately limited to what the parent can actually know:
  * whether a platform is configured, and whether the debounced frame has
- * mounted yet. Offline, live-unknown, and unavailable are the overlay's own
- * states and are rendered inside the iframe by /counter; nothing reports them
- * back out, and this component never claims them.
+ * mounted yet. Offline, empty, live-unknown, and unavailable are the embedded
+ * overlay's own states; nothing reports them back out, and this component never
+ * claims them.
+ *
+ * The caption below the frame is the active tool's own `previewNote`. No overlay
+ * route or per-tool prose is written here.
  */
 import { useCallback, useState } from 'react';
 import OverlayPreviewFrame from './OverlayPreviewFrame';
@@ -17,12 +20,15 @@ export default function PreviewViewport({
   background,
   title,
   height,
+  note,
 }: {
   url: string;
   configured: boolean;
   background: PreviewBackgroundId;
   title: string;
   height: number;
+  /** What this preview is, in the active tool's own words. Plain text. */
+  note: string;
 }) {
   const [frameMounted, setFrameMounted] = useState(false);
   const handleMountedChange = useCallback(
@@ -55,11 +61,8 @@ export default function PreviewViewport({
         </div>
       </PreviewBackground>
 
-      <p className="mt-2 text-xs text-ws-muted">
-        A real <code className="text-ws-text">/counter</code> overlay at this exact
-        URL. It shows live counts and polls like any browser source, so it is
-        empty while every configured channel is offline.
-      </p>
+      {/* Supplied by the active tool. No overlay route is named here. */}
+      <p className="mt-2 text-xs text-ws-muted">{note}</p>
     </div>
   );
 }

@@ -3,18 +3,30 @@
  * Branding is the existing product's own: the same wordmark and logo asset the
  * homepage already uses. Nothing is renamed. There is no version line, no
  * support link, no build timestamp, and no auth block — Twitch connect and
- * disconnect stay where they already are, in the existing generator.
+ * disconnect stay where they already are, in the existing generator, which this
+ * nav links to as MultiChat (Classic).
  *
  * Active state is derived from the current route rather than held in state.
  */
 import Link from 'next/link';
 import { TOOLS } from '@/lib/tools/registry';
 
-/** Nav targets: registered workspace tools plus the not-yet-migrated generator. */
-const ENTRIES: { href: string; label: string }[] = [
-  { href: '/multichat', label: 'MultiChat' },
-  ...TOOLS.map((tool) => ({ href: tool.workspaceRoute, label: tool.label })),
-];
+/** The existing generator, kept reachable and clearly distinguished by label. */
+const CLASSIC = { href: '/multichat', label: 'MultiChat (Classic)' };
+
+/**
+ * Nav targets: every registered workspace tool, plus the existing generator.
+ *
+ * The classic entry sits immediately after the registered MultiChat tool rather
+ * than at the top, and carries a distinct label, so the two are never two items
+ * both reading "MultiChat". It stays in the list because it is still the only
+ * place a Twitch account can be connected for native pins.
+ */
+const ENTRIES: { href: string; label: string }[] = TOOLS.flatMap((tool) =>
+  tool.id === 'multichat'
+    ? [{ href: tool.workspaceRoute, label: tool.label }, CLASSIC]
+    : [{ href: tool.workspaceRoute, label: tool.label }],
+);
 
 export default function WorkspaceNav({ currentPath }: { currentPath: string }) {
   return (

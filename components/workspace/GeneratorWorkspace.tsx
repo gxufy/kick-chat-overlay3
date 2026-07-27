@@ -63,6 +63,14 @@ export default function GeneratorWorkspace<
 
   const configured = tool.configuredPlatforms(channels).length > 0;
 
+  /* The tool's own words for what its preview is. Both registered tools supply
+     one; the field is optional on the descriptor, so a tool added later without
+     one still gets an accurate, if plainer, sentence rather than another tool's
+     prose or a hardcoded route name. */
+  const previewNote =
+    tool.previewNote ??
+    `A real ${tool.overlayRoute} overlay at this exact URL.`;
+
   return (
     <div className="min-h-screen bg-ws-bg text-ws-text">
       <div className="lg:flex lg:h-screen lg:overflow-hidden">
@@ -88,6 +96,7 @@ export default function GeneratorWorkspace<
             onBackgroundChange={setBackground}
             previewTitle={`Live ${tool.label.toLowerCase()} preview`}
             previewHeight={tool.obs.height}
+            previewNote={previewNote}
           />
         </div>
       </div>

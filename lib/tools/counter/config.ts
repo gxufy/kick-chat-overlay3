@@ -112,4 +112,8 @@ export const counterTool: OverlayTool<ViewerCounterStyle, ViewerPlatform> = {
   /* Matches the fixed 34 px type plus the overlay's 8 px padding; width is the
      common single-row browser-source size used in the existing docs. */
   obs: { width: 400, height: 80 },
+  /* The caption PreviewViewport used to hardcode, moved here verbatim so the
+     rendered text is unchanged now that the viewport takes it from the tool. */
+  previewNote:
+    'A real /counter overlay at this exact URL. It shows live counts and polls like any browser source, so it is empty while every configured channel is offline.',
 };

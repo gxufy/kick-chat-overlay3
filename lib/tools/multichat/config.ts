@@ -1,4 +1,4 @@
-/* MultiChat tool descriptor — built, not registered.
+/* MultiChat tool descriptor — registered, and hosted at /tools/multichat.
  *
  * This adapts the existing MultiChat generator for the workspace shell the way
  * lib/tools/counter/config.ts adapts the viewer counter. It reimplements
@@ -12,10 +12,10 @@
  * post-processes the query string: dot and label are emitted by the
  * authoritative serializer itself, in the slot the boolean already used.
  *
- * Deliberately absent from lib/tools/registry's TOOLS: /tools/multichat has no
- * page in this batch and must keep 404ing. Import this module directly to test
- * it. Registration, the Twitch connection panel, and anything OAuth-shaped are
- * later work.
+ * Registered in lib/tools/registry's TOOLS, so /tools/multichat is a real
+ * prerendered workspace route. The Twitch connection panel and anything
+ * OAuth-shaped are still later work: this tool contributes no fragment, so
+ * native Twitch pins are still only reachable through the existing generator.
  *
  * Browser-safe — no server-only imports, no secrets.
  */
@@ -228,13 +228,14 @@ export function normalizePinPlatforms(
 /* ------------------------------------------------------------------ */
 
 /**
- * The MultiChat tool, deliberately not in TOOLS.
+ * The MultiChat tool, registered in TOOLS.
  *
- * No `context` function: MultiChat contributes nothing to its URL beyond the
- * query string in this batch. The existing generator does append
- * `#twitchConnectionId=…` itself, but that value only exists once a connection
- * panel does, which is Batch 5. Declaring an empty context now would model
- * nothing.
+ * Still no `context` function: MultiChat contributes nothing to its URL beyond
+ * the query string. The existing generator does append `#twitchConnectionId=…`
+ * itself, but that value only exists once a connection panel does, and this
+ * batch ships none. Declaring an empty context would model nothing, and its
+ * absence is what guarantees every URL this workspace produces is an ordinary
+ * `/multichat` URL that keeps working if the route is withdrawn.
  */
 export const multichatTool: OverlayTool<MultichatWorkspaceStyle, MultichatPlatform> = {
   id: 'multichat',
@@ -259,4 +260,9 @@ export const multichatTool: OverlayTool<MultichatWorkspaceStyle, MultichatPlatfo
      this very tool wins. The discrepancy is logged in TODO rather than
      reconciled here. */
   obs: { width: 680, height: 280 },
+  /* Accurate for what the iframe actually is: the real overlay, at the exact
+     URL below it, connected to the real platforms. An empty preview is normal
+     and is not a workspace failure. */
+  previewNote:
+    'A real /multichat overlay at this exact URL. It connects to the channels you configure and shows their actual messages, so it stays empty while those channels are offline or nobody is chatting.',
 };

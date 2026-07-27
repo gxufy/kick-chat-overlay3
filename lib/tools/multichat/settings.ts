@@ -222,10 +222,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'pinPlatforms',
     type: 'multiselect',
     label: 'Pins from',
-    /* No gating: Twitch pins need a connected account, and the generator
-       disables that chip accordingly. Contextual enabling is Batch 5 work —
-       `disabled` here is static, so it cannot express it. */
-    description: 'An empty selection turns pins off for every platform.',
+    /* Still no gating: `disabled` is static, so it cannot express "a matching
+       Twitch account is connected". Contextual predicates are later work. The
+       copy therefore states the requirement plainly instead of implying this
+       workspace can satisfy it — it cannot, since it has no connect control and
+       contributes no connection to the URL. Twitch is absent from the workspace
+       defaults, so nothing here selects an option that would not work. */
+    description:
+      'An empty selection turns pins off for every platform. Native Twitch pins additionally require a connected Twitch account, which this workspace cannot set up yet — use MultiChat (Classic) to connect Twitch and generate that URL.',
     options: PIN_OPTIONS,
     default: D.pinPlatforms,
   },
@@ -236,8 +240,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     label: 'Platform tag',
     /* All four values the overlay implements. The legacy platformIcons boolean
        could only reach 'icon' and 'none'; workspace state carries the enum, and
-       the authoritative serializer emits 'dot' and 'label' directly. */
-    description: 'How each message shows which platform it came from.',
+       the authoritative serializer emits 'dot' and 'label' directly.
+       The description explains the one asymmetry a user can actually observe:
+       'icon' is the legacy omitted-parameter case, so with a single configured
+       platform the overlay's own pre-existing default applies and no marker is
+       drawn. Explaining it is the fix — changing the serializer would restyle
+       every URL already in an OBS scene. */
+    description:
+      'Colored dot, Platform name, and Off apply exactly as chosen. Platform icon keeps the original URL format, where a single configured platform shows no marker; with several platforms, icons identify each message’s source.',
     options: SOURCE_TAG_OPTIONS,
     default: D.sourceTag,
   },

@@ -205,25 +205,37 @@ describe('the stylesheet keeps focus visible and honours reduced motion', () => 
        one permitted case is `main`, focused programmatically by the skip link,
        which needs no ring of its own. The selector is taken as the text between
        the previous `}` and the `{` — matching from `[^{]*` alone would swallow
-       the tail of the preceding rule. */
-    const suppressions = CLASSIC_GENERATOR_CSS.match(/[^}{]*\{[^}]*outline:\s*(none|0)[^}]*\}/g) ?? [];
+       the tail of the preceding rule.
+
+       Comments are stripped first: a CSS comment above a rule sits in exactly
+       that gap, so an explained rule would otherwise fail this check for being
+       explained, which is the wrong incentive. */
+    const css = CLASSIC_GENERATOR_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const suppressions = css.match(/[^}{]*\{[^}]*outline:\s*(none|0)[^}]*\}/g) ?? [];
     expect(suppressions.length).toBeGreaterThan(0);
 
     /* Two rules legitimately suppress an outline, and each has to say why:
          - `main:focus` is focused programmatically by the skip link. A ring
            around the whole page body would be noise, and the destination is
            announced by its heading rather than by an outline.
-         - the text/number/select base rule replaces the outline with a border
-           colour change and a box-shadow ring on :focus. That substitute is
-           asserted below rather than assumed, and it fires on :focus rather than
-           :focus-visible, so it is if anything more visible than the default. */
-    const allowed = ['main:focus', 'input[type=text], input[type=number], select'];
+         - the text/number/select/textarea base rule replaces the outline with a
+           border colour change and a box-shadow ring on :focus. That substitute
+           is asserted below rather than assumed, and it fires on :focus rather
+           than :focus-visible, so it is if anything more visible than the
+           default. */
+    const allowed = [
+      'main:focus',
+      'input[type=text], input[type=number], select, textarea',
+    ];
     for (const rule of suppressions) {
       const selector = rule.trim().split('{')[0].trim();
       expect(allowed, rule.trim()).toContain(selector);
     }
+    /* The substitute ring must cover every element the base rule silenced —
+       textarea included, or the one multiline field would lose its outline and
+       gain nothing back. */
     expect(CLASSIC_GENERATOR_CSS).toMatch(
-      /input\[type=text\]:focus, input\[type=number\]:focus, select:focus \{[^}]*box-shadow/,
+      /input\[type=text\]:focus, input\[type=number\]:focus, select:focus, textarea:focus \{[^}]*box-shadow/,
     );
   });
 

@@ -178,12 +178,14 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
   .form_table.cols-2 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
 }
 
-input[type=text], input[type=number], select {
+/* textarea is listed here rather than left to the browser: without it the one
+   multiline field on the page renders as a white serif box on a dark card. */
+input[type=text], input[type=number], select, textarea {
   background: #16161b; border: 1px solid var(--line); border-radius: 8px; color: var(--text);
   padding: 6px 11px; font-size: 0.86rem; font-family: inherit; outline: none;
   transition: border-color .15s, box-shadow .15s; max-width: 100%;
 }
-input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,132,250,.15); }
+input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,132,250,.15); }
 select option { background: var(--card); }
 select option:disabled { color: var(--dim); }
 input[type=text].short { width: 52px; }
@@ -193,7 +195,7 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-field { margin-bottom: 2px; }
 .classic-field.stacked { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
 .classic-field.stacked label { font-size: 0.77rem; color: var(--dim); }
-.classic-field.stacked input[type=text] { width: 100%; font-size: 0.8rem; }
+.classic-field.stacked input[type=text], .classic-field.stacked textarea { width: 100%; font-size: 0.8rem; }
 .classic-help { font-size: 0.71rem; line-height: 1.35; color: var(--dim); margin: 1px 0 5px; }
 .classic-help.warn { color: var(--warn); }
 
@@ -291,6 +293,22 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
    real overlay. Deliberately quiet — it sits in the label row at the same size as
    the row's own text, states a fact, and is not styled as a warning. */
 .preview-badge { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 0.66rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
+
+/* Custom preview messages, inside the chat output card.
+   Compact on purpose: this sits under a 600px preview in a card that also holds
+   the generated URL, so the fields share one row and the actions share another.
+   Any taller and the chat settings card leaves the first screen. */
+.preview-compose { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+.preview-compose-note { font-size: 0.71rem; line-height: 1.35; color: var(--dim); margin: 0 0 7px; }
+.preview-compose-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+/* The platform pills take the slack, the name field keeps a usable width. */
+.preview-compose-seg { flex: 1 1 260px; margin-bottom: 8px; }
+.preview-compose-name { flex: 1 1 160px; }
+.preview-compose-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Disabled here means "nothing to do yet" rather than "not allowed": the button
+   is still readable, it just stops looking clickable. */
+.preview-compose-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+.preview-compose-status { font-size: 0.7rem; color: var(--dim); }
 
 /* URL result.
    The field takes the row and the two actions sit beside it at their natural

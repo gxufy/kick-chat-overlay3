@@ -38,6 +38,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
 import ClassicChatPreview from './ClassicChatPreview';
+import ClassicPreviewComposer from './ClassicPreviewComposer';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
@@ -56,6 +57,7 @@ import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/mult
 import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
 import type { ViewerCounterStyle, ViewerPlatform } from '@/lib/viewerCounterConfig';
 import type { ToolChannels } from '@/lib/tools/registry';
+import type { UnifiedMessage } from '@/lib/types';
 import type { CatalogAvailability, SettingValue } from '@/lib/tools/settingTypes';
 import {
   colorSetting,
@@ -184,6 +186,37 @@ export default function ClassicGenerator({
   const [baseUrl, setBaseUrl] = useState('https://multichat-gxufy.com');
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedCounter, setCopiedCounter] = useState(false);
+  /* Composed preview messages, appended after the built-in samples.
+     Generator-only state: never serialized into an overlay URL, never written to
+     the saved draft, and gone when the tab closes. */
+  const [customMessages, setCustomMessages] = useState<readonly UnifiedMessage[]>([]);
+
+  /* What the fixture preview renders: the samples, then anything composed. A new
+     array only when the composed list actually changes, so typing in a settings
+     field does not re-convert every message. */
+  const previewMessages = useMemo(
+    () =>
+      customMessages.length === 0
+        ? SAMPLE_CHAT_MESSAGES
+        : [...SAMPLE_CHAT_MESSAGES, ...customMessages],
+    [customMessages],
+  );
+
+  /* Appends rather than replaces, and never mutates: the fixture list is shared at
+     module scope, and the preview compares message arrays by identity. */
+  const addCustomMessage = useCallback((message: UnifiedMessage) => {
+    setCustomMessages((current) => [...current, message]);
+  }, []);
+
+  /* Reset and Clear land on the same state today, and that is not an oversight
+     worth "simplifying" away: they differ in what else they do and in when they
+     are offered. Clear is about the composed messages alone and is disabled when
+     there are none; Reset also empties the composer's own fields and is always
+     available, so it is the one button that always returns the card to how it
+     looked on arrival. Keeping them separate means adding a control that mutates
+     the sample list has one obvious place to hook into. */
+  const clearCustomMessages = useCallback(() => setCustomMessages([]), []);
+  const resetPreviewMessages = useCallback(() => setCustomMessages([]), []);
 
   /* Rendered origin. Kept out of the initial state so the server-rendered markup
      and the first client render agree; the effect corrects it immediately. */
@@ -604,11 +637,25 @@ export default function ClassicGenerator({
                iframe, so nothing connects, polls, or authenticates. */
             <ClassicChatPreview
               query={chatQuery}
-              messages={SAMPLE_CHAT_MESSAGES}
+              messages={previewMessages}
               height={MULTICHAT_OBS_SIZE.height}
             />
           )}
         </div>
+
+        {/* Paired with the fixture preview, because it composes lines *for* that
+            preview. With a channel configured the panel above is the real overlay
+            showing real chat, and a composed message would have nowhere to
+            appear — a control that visibly did nothing would be worse than no
+            control. */}
+        {!chatConfigured && (
+          <ClassicPreviewComposer
+            onAdd={addCustomMessage}
+            onReset={resetPreviewMessages}
+            onClear={clearCustomMessages}
+            customCount={customMessages.length}
+          />
+        )}
 
         <p className="card-note">{multichatTool.previewNote}</p>
 

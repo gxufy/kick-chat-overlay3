@@ -19,6 +19,11 @@ import {
 } from '../../../../lib/server/oauthCookies';
 import { resolveReturnDestination } from '../../../../lib/oauthReturn';
 import {
+  OAUTH_NOT_CONFIGURED,
+  missingTwitchOAuthEnv,
+  reportTwitchOAuthMisconfiguration,
+} from '../../../../lib/server/oauthConfig';
+import {
   exchangeTwitchAuthorizationCode,
 } from '../../../../lib/server/twitchOAuth';
 import {
@@ -161,6 +166,18 @@ export default async function handler(
   /* --- Constant-time state comparison -------------------------------- */
   if (!validateState(state, cookieState)) {
     res.status(400).json({ error: AUTH_ERR });
+    return;
+  }
+
+  /* --- Configuration, diagnosed rather than discovered --------------- */
+  /* Checked after the state proof, so an unauthenticated request cannot use this
+     route to probe whether the deployment is configured, and before the exchange,
+     so an operator reading the log sees the missing key names instead of an
+     opaque helper failure. The client still learns only a stable code. */
+  const missing = missingTwitchOAuthEnv();
+  if (missing.length > 0) {
+    reportTwitchOAuthMisconfiguration('callback', missing);
+    res.status(500).json({ error: OAUTH_NOT_CONFIGURED });
     return;
   }
 

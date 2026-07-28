@@ -92,8 +92,16 @@ const issuedState = (res: ReturnType<typeof makeRes>) =>
   cookieNamed(res, 'twitch_oauth_state')!.split(';')[0].split('=')[1];
 
 beforeEach(() => {
+  /* The whole configuration contract, because the start route now refuses on any
+     absent key rather than only the two it dereferences — a deployment missing the
+     encryption key or the Supabase credentials would otherwise take a user's
+     consent and fail on the way back. REQUIRED_TWITCH_OAUTH_ENV owns the list. */
   process.env.TWITCH_CLIENT_ID = 'test-client-id';
+  process.env.TWITCH_CLIENT_SECRET = 'test-client-secret';
   process.env.TWITCH_REDIRECT_URI = 'https://example.com/api/twitch/oauth/callback';
+  process.env.TWITCH_TOKEN_ENCRYPTION_KEY = 'a'.repeat(64);
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SECRET_KEY = 'test-service-role-key';
   exchange.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
   validate.mockResolvedValue({
     userId: '1',
@@ -186,10 +194,18 @@ describe('start — destination binding', () => {
   });
 
   it('reports misconfiguration without naming the missing variable value', () => {
+    /* Silenced rather than left to print: the route now logs the absent key
+       names deliberately, and oauthConfig.test.ts is what asserts that log's
+       contents. Here it would only be noise on a passing run. */
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     delete process.env.TWITCH_CLIENT_ID;
     const res = run(startHandler, req());
     expect(res.statusCode).toBe(500);
+    /* A stable machine-readable code, so support can be told to look for exactly
+       this string rather than for prose that may be reworded. */
+    expect(res.body).toEqual({ error: 'oauth_not_configured' });
     expect(JSON.stringify(res.body)).not.toContain('test-client-id');
+    logged.mockRestore();
   });
 });
 

@@ -165,9 +165,9 @@ moderator:read:chat_messages
 
 Twitch grants this scope to the broadcaster of a channel or a moderator in it.
 
-**The generator is stricter than the scope: it requires the broadcaster.** Both
-generators enable the Twitch pin option only when the Twitch channel you type
-equals the account you connected (`twitchPinsAvailable` in
+**The generator is stricter than the scope: it requires the broadcaster.** It
+enables the Twitch pin option only when the Twitch channel you type equals the
+account you connected (`twitchPinsAvailable` in
 `lib/tools/multichat/runtime.ts`). A moderator in someone else's channel will
 authorize successfully and then find the option still gated, with the reason
 shown next to the connected account.
@@ -258,16 +258,17 @@ npm run build        # production build
 `npm run build` regenerates `next-env.d.ts`; restore it if git reports it as
 modified (`git restore -- next-env.d.ts`).
 
-Connect flow — open the generator at `/tools/multichat`, enter your Twitch
-channel, click **Connect Twitch**, approve on Twitch. You should return to the
-workspace showing "Connected as &lt;login&gt;", with your channels and settings
-still filled in (they are held in a session-scoped draft across the redirect).
+Connect flow — open the generator at `/multichat` (no channel parameter), enter
+your Twitch channel, click **Connect Twitch**, approve on Twitch. You should
+return showing "Connected as &lt;login&gt;", with your channels and settings still
+filled in (they are held in a session-scoped draft across the redirect), for both
+the chat and the counter.
 
-`/multichat` is no longer a generator: it serves the overlay, and a visit with no
-channel forwards to `/tools/multichat`. An OAuth return to `/multichat` is still
-supported for authorizations that began before the callback destination changed —
-the fragment is carried across that forward. `/classic/multichat` remains a
-working generator with its own connect flow.
+`/multichat` serves the overlay whenever a channel parameter is present, and the
+generator when one is not. `/tools/multichat`, `/tools/counter`, and
+`/classic/multichat` are redirect stubs into it; each carries a valid OAuth return
+fragment across the forward, so an authorization that began before the callback
+destination changed still lands.
 
 Pin check — with a message pinned in that channel, confirm the overlay URL
 built by the generator shows the pin within ~5 seconds. Unpin it and confirm

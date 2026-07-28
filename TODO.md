@@ -1,6 +1,7 @@
 # TODO.md
 
-> **Current shape of the product: section 10, "Original Classic generator revamp".**
+> **Current shape of the product: section 10, "Original Classic generator revamp",
+> with the final layout and audit in section 11.**
 > The single generator is the revamped original Classic page, served at a
 > channel-less `/multichat`, with the Viewer Counter embedded in it. The `/tools`
 > generator pages and the Demo interface are gone.
@@ -946,22 +947,11 @@ Counter embedded as a companion panel.
 
 ### Layout
 
-DOM order is the mobile order; the desktop arrangement is CSS grid placement over
-the same tree, so nothing is duplicated or reordered per breakpoint.
-
-1. Classic header → 2. channels → 3. chat preview + URL → 4. **counter preview +
-URL** → 5. chat settings → 6. counter settings → 7. Commands & help → 8. OBS setup.
-
-- [x] 1920: chat left, counter right, both visible without scrolling past a
-      settings list. Commands and OBS setup full width underneath.
-- [x] 1024: the two columns collapse to one rather than becoming two unusably
-      narrow panels; the counter is still the second thing on the page.
-- [x] 375: the counter's preview and URL come **before** the 24 chat settings, so
-      it is reachable without scrolling through them.
-- [x] Commands & help is built from `MULTICHAT_COMMANDS`, the parser's own list, so
-      it documents the nine real commands and nothing else. OBS setup states
-      plainly that the two overlays are two independent browser sources with two
-      URLs, and gives each its own size.
+Superseded by section 11. The chat/counter side-by-side arrangement described
+here was replaced by output-left / settings-right rows per tool. What still holds:
+DOM order is the mobile order, the desktop arrangement is CSS grid placement over
+the same tree, and Commands & help is built from `MULTICHAT_COMMANDS` — the
+parser's own list — so it documents the nine real commands and nothing else.
 
 ### Removed
 
@@ -1029,3 +1019,95 @@ stylesheet warning.
       work as two separate browser sources at their stated sizes.
 - [ ] OBS confirmation that a pre-existing scene-collection `/multichat?…` URL
       still renders the overlay untouched.
+
+## 11. Final layout and release audit (implemented)
+
+Two changes to the product, then an audit of everything already built. The design,
+routes, backend, and homepage were not redesigned.
+
+### Final layout
+
+Each tool is one row: its output on the left (heading, live preview, preview
+background control, URL, Copy, Open, fragment note, OBS size) and its settings on
+the right. The Chat Overlay and Chat Settings sit **side by side** at desktop
+widths; the same holds for the Counter.
+
+- [x] Page order: header → channels → MultiChat row → Counter row → Commands &
+      help → OBS setup → footer, in a 1500px container.
+- [x] 1920: two columns per row, no oversized gutter, no full-height Copy button.
+- [x] 1024: two columns only while both stay usable, then one column — a narrow
+      unusable settings column is worse than stacking.
+- [x] 390: the nine-item stack order, with the Counter's preview and URL still
+      ahead of the chat settings list.
+- [x] Segmented pills, the fade and emote-scale sliders, the font select, the pill
+      switches, and the pin-platform multiselect all survived the move; they are
+      the same `ClassicSetting` renderers.
+- [x] `tests/unit/classicGenerator.test.tsx` asserts the pairing structurally —
+      each output and its settings panel inside one row container — rather than by
+      screenshot, since jsdom computes no layout.
+
+### Command audit
+
+Traced each platform's incoming message into the dispatcher rather than testing
+the parser alone.
+
+- [x] `lib/multichatCommandRuntime.ts` — the dispatcher extracted out of the
+      overlay effect, taking an injected `CommandHost` (document, timers, speech,
+      reload, sessionStorage, `now`). The overlay behaviour is unchanged; it is now
+      reachable from a test.
+- [x] `tests/unit/multichatCommandDispatch.test.ts` — 121 tests. Fake Pusher,
+      WebSocket, EventSource, and `fetch` drive the **real** Kick, Twitch,
+      YouTube, and TikTok connectors, so a connector that put the text elsewhere or
+      spelled a badge differently would fail. Every command in the registry runs
+      from every platform; the registry is the only command list and no alias was
+      invented.
+- [x] Casing, surrounding whitespace, arguments, and Unicode all dispatch. A
+      message that merely mentions a command string does not. One message
+      dispatches once, and a reconnect binds no second listener.
+- [x] `img` / `yt` accept only `http:` and `https:` via `isSafeMediaUrl`, and a URL
+      carrying an `onerror=` payload is rejected as a URL rather than sanitized as
+      HTML. `tts` speech is cancelled by `stop`. The 15s reload cooldown holds
+      across a reconnect because it lives in `sessionStorage`.
+
+### Permissions
+
+- [x] Documented the rule that exists, not one invented for the audit: a
+      broadcaster/owner badge — or, on TikTok, a username matching the configured
+      channel — is level 1000; a moderator badge is 500; everything else is 0. All
+      nine commands require moderator or above. Missing role metadata yields 0, so
+      it fails closed. Recorded in README.
+
+### URLs, lifecycle, accessibility, Counter
+
+- [x] `tests/unit/overlayUrlStrings.test.ts` — literal complete-string regressions
+      for both tools. Identity tests would pass while the serializer changed shape;
+      these pin the compatibility surface: parameter order, the `kick=yourchannel`
+      placeholder, fade-off omission, no `undefined`/`null`/`NaN`, no bare or
+      doubled `#`, and the Counter never carrying a fragment.
+- [x] `tests/unit/overlayLifecycle.test.tsx` — one connector per configured
+      platform and none on a generator visit; unmount stops every connector, poller,
+      and timer; React Strict Mode leaves exactly one of each. Pin polling is gated
+      on a valid fragment id, pins enabled, and Twitch selected. The connection id
+      never reaches the address bar.
+- [x] `tests/unit/counterOverlayRuntime.test.tsx` — through `pages/counter`: a
+      measured zero is shown, a failed request is not turned into one, staleness is
+      bounded and then becomes the em-dash, polls never overlap, and the Counter
+      opens no socket and starts no pin poll.
+- [x] `tests/unit/generatorAccessibility.test.tsx` — no duplicate ids, every
+      `label[for]` and `aria-describedby` resolves, `textShadow` ids namespaced per
+      tool, independent radio groups, per-panel copy live regions, one `h1` with no
+      skipped heading level, focus visible wherever the outline is suppressed, and
+      reduced motion honoured.
+
+### Verification still outstanding (human eyes required)
+
+Nothing below was observed; no visual, screen-reader, OBS, or live-provider check
+is claimed anywhere in this section.
+
+- [ ] Visual pass at 1920 × 1080, 1024 × 768, and 390 × 844 confirming the
+      side-by-side rows, no horizontal overflow, and usable preview heights.
+- [ ] Keyboard and screen-reader pass. No automated accessibility tooling is
+      installed.
+- [ ] OBS confirmation of both generated URLs as two browser sources.
+- [ ] Live-channel confirmation of each command from all four chat platforms,
+      including a real moderator and a real non-moderator.

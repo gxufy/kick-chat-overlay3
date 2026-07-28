@@ -8,17 +8,17 @@
 
 ## Routes
 
-Generators are one shell (`components/workspace/GeneratorWorkspace.tsx`) driven by
-a tool descriptor from `lib/tools/registry.ts`, served by `pages/tools/[tool].tsx`:
+There is one generator: `components/classic/ClassicGenerator.tsx`, rendering both
+tools from their descriptors in `lib/tools/registry.ts`.
 
-- `/tools/multichat`, `/tools/counter` — **canonical generators.** Link these.
-- `/multichat` — **the overlay OBS loads. Never redirect a URL with a channel
-  parameter.** Those URLs sit in scene collections nobody will edit, so serving
-  the overlay for them is permanent. A channel-*less* visit forwards to
-  `/tools/multichat`, carrying a valid OAuth fragment across the forward
-  (`lib/multichatRouting.ts`).
-- `/classic/multichat` — the original generator, `noindex`, kept for rollback.
+- `/multichat` — **with any channel parameter this is the overlay OBS loads. Never
+  redirect a URL with a channel parameter.** Those URLs sit in scene collections
+  nobody will edit, so serving the overlay for them is permanent. A channel-*less*
+  visit is **the canonical generator** — link this (`lib/multichatRouting.ts`).
 - `/counter` — the counter overlay, same permanence rule as `/multichat`.
+- `/tools/multichat`, `/tools/counter`, `/classic/multichat` — redirect stubs into
+  `/multichat`, each carrying a valid OAuth fragment across the forward. Do not
+  link them and do not turn them back into generators.
 
 A URL fragment is not in `router.query`. Anything deciding a route from a
 fragment must read `window.location.hash` client-side and pass it in, or it will

@@ -24,7 +24,14 @@ A multi-platform chat overlay for OBS and streaming software — **Kick · Twitc
 
 ## Chat Commands
 
-Work from any connected platform's chat. Every command needs the same level — moderator or above — so the broadcaster and mods can run all of them equally. `!kickchat` still works as an alias.
+Work from any connected platform's chat — Kick, Twitch, YouTube, and TikTok reach
+the same dispatcher, and the tests drive every command through each platform's real
+connector rather than through the parser alone. Every command needs the same level,
+moderator or above, so the broadcaster and mods can run all of them equally.
+`!kickchat` still works as an alias.
+
+The trigger has to be the message's **first word**. `!multichats stop` and "type
+`!multichat hide` to hide it" are ordinary chat messages and run nothing.
 
 | Command | Description | Access |
 |---|---|---|
@@ -42,6 +49,23 @@ distinction to make. The generator's **Commands & help** section is built from t
 parser's own command list, so it documents these nine and nothing else. The viewer
 counter has no commands of its own.
 
+**How access is decided.** From the badges on the message: a broadcaster or owner
+badge, or an author name matching the channel you configured, counts as
+broadcaster; a moderator badge counts as moderator; anything else is 0, which is
+below the gate. It fails closed — a message whose role metadata is missing or
+unrecognised runs nothing. The name fallback exists because TikTok sends no
+broadcaster badge at all, so without it a streamer could not use their own commands
+in their own chat.
+
+**Behaviour worth knowing.** `hide` hides the container without disconnecting, so
+messages keep arriving behind it and `show` restores a live chat rather than an
+empty box; both are idempotent. `stop` clears every overlay *and* silences speech.
+`reload` ignores a second call within 15 seconds — a replayed message from
+YouTube's continuation or TikTok's buffer could otherwise reload the source in a
+loop. `img` accepts `http` and `https` only, so a `javascript:` or `data:` URL from
+chat does nothing. One chat message runs one command, even if a platform delivers
+it twice.
+
 ## OBS Setup
 
 The chat overlay and the viewer counter are **two independent browser sources with
@@ -50,6 +74,13 @@ two different URLs**. Add either, both, or neither — neither needs the other.
 Open **[`/multichat`](https://multichat-gxufy.com/multichat)** — with no channel
 parameters, that is the generator. Fill in your channel name(s) once (any one
 platform or all four); they feed both tools.
+
+The page is one column of sections: the shared **channel** fields, then a row per
+tool, then **Commands & help**, then **OBS setup**. Each tool row puts its output on
+the left — heading, live preview, generated URL, Copy and Open — and that tool's
+settings on the right, side by side on a desktop. On a narrow screen each row
+stacks, so the order becomes chat preview, chat settings, counter preview, counter
+settings.
 
 **Chat overlay**
 
@@ -61,9 +92,17 @@ platform or all four); they feed both tools.
 
 **Viewer counter**
 
-1. The **Viewer counter** panel sits beside the chat panel, with its own settings, preview, and URL.
+1. The **Viewer counter** row sits below the chat row, with its own six settings beside its own preview and URL.
 2. Click its **Copy**, add a **second Browser source**, and paste it in.
 3. Size it **400 × 80**.
+
+It polls each platform's viewer count and shows what it measured. A measured zero
+is shown, because zero viewers on a live stream is a fact; a request that failed is
+not turned into a zero. A brief outage keeps the last known number for a bounded
+window and then shows an em-dash rather than continuing to assert a count it can no
+longer confirm. Nothing renders until the first poll has settled, so no fabricated
+number ever flashes on stream. The counter carries no connection key and opens no
+sockets — it is polling only.
 
 The preview-background buttons on the generator change that page only. They are
 never part of either URL and never reach OBS.

@@ -8,11 +8,10 @@
  * What is new here is layout and the accessibility work the inline version never
  * had:
  *
- *   - `.tool-grid` places the chat panel left and the Viewer Counter right on a
- *     desktop while leaving DOM order alone. Order is the mobile order (chat
- *     preview, counter preview, chat settings, counter settings), so a phone
- *     reaches the Counter without scrolling through 24 chat settings, and the
- *     desktop arrangement is grid placement rather than a second tree.
+ *   - `.tool-row` pairs each tool's output with its own settings on a desktop
+ *     while leaving DOM order alone. Order is the stacked order (chat output, chat
+ *     settings, counter output, counter settings), so a phone reads each tool as a
+ *     unit and the desktop pairing is grid tracks rather than a second tree.
  *   - Focus is visible on every control, including the pill switches whose real
  *     checkbox is visually hidden — the ring is drawn on the slider from the
  *     input's :focus-visible.
@@ -105,29 +104,28 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 .card-note { color: var(--dim); font-size: 0.76rem; margin: 6px 0 0; line-height: 1.45; }
 
 /* ── The two-tool layout ──
-   DOM order is the mobile order. On a desktop the four panels are placed into two
-   columns so chat is left, the Counter is right, and both previews sit at the top
-   — the Counter is visible without scrolling through the chat settings, which is
-   the whole reason the settings are separate panels rather than one long card. */
-.tool-grid { display: flex; flex-direction: column; }
+   One row per tool: its output left, its settings right. DOM order is already the
+   stacked order (output, settings, per tool, chat first), so the phone layout is
+   this tree unchanged and the desktop pairing is two tracks inside each row.
+
+   A row per tool rather than one four-cell grid: sharing a grid made the two
+   settings panels share a row, so the taller one set the other's height, and the
+   counter's controls sat a chat-settings panel away from the preview they change.
+   Rows also let each tool keep its own ratio. */
+.tool-row { display: flex; flex-direction: column; }
 @media (min-width: 1000px) {
-  .tool-grid {
+  .tool-row {
     display: grid;
-    /* 1.35fr / 1fr: MultiChat has 24 settings and a 680px-wide preview, the
-       Counter has six and a 400px one, so an even split left the chat URL
-       wrapping while the counter column ran empty. Both minmax(0,…) so a long
-       unbroken URL cannot push a column past its share. */
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    grid-template-areas:
-      'chat-output counter-output'
-      'chat-settings counter-settings';
     gap: 0 16px;
     align-items: start;
   }
-  .panel-chat-output { grid-area: chat-output; }
-  .panel-counter-output { grid-area: counter-output; }
-  .panel-chat-settings { grid-area: chat-settings; }
-  .panel-counter-settings { grid-area: counter-settings; }
+  /* MultiChat stays visually primary: a 680px-wide preview and a 24-setting
+     panel, so the output half keeps the larger share. Both minmax(0,…) so a long
+     unbroken URL cannot push a column past its track. */
+  .row-chat { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+  /* The Counter's preview is 400px and it has six controls, so an even split
+     leaves neither half starved. */
+  .row-counter { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
 /* Platform inputs — compact row, one per platform */
@@ -154,19 +152,18 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 .form_row.left { justify-content: flex-start; }
 .col-heading { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 7px; }
 
-/* Column counts, applied only where there is room for them. Below 1000px every
-   table is a single column, which is what keeps the mobile reading order equal
-   to the DOM order — the columns are grid tracks over one unchanged tree, so no
-   control is duplicated for a breakpoint. */
-@media (min-width: 1000px) {
+/* Column counts, applied only where there is room for them. Every table is a
+   single column below the breakpoint, which is what keeps the stacked reading
+   order equal to the DOM order — the columns are grid tracks over one unchanged
+   tree, so no control is duplicated for a breakpoint.
+
+   1360px, not 1000px: a settings panel is now half of a tool row rather than the
+   page's full width, so two tracks only become usable once the row itself is wide.
+   Splitting a 390px half into two 180px columns is worse than one readable column,
+   which is the failure this breakpoint exists to avoid. */
+@media (min-width: 1360px) {
   .form_table.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form_table.cols-2 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
-}
-/* Three columns need the full-width breakpoint: inside the 1.35fr chat column a
-   third track would put two words per line on the longer labels. */
-@media (min-width: 1500px) {
-  .form_table.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .form_table.cols-3 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
 }
 
 input[type=text], input[type=number], select {

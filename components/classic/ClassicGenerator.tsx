@@ -20,13 +20,13 @@
  *     counterTool descriptor — the same defaults, normalizer, serializer, and
  *     preview frame as the standalone tool had. There is no second Counter.
  *
- * Layout, which is load-bearing rather than cosmetic: on a desktop the chat panel
- * is left and the Counter right, both visible without scrolling past a long
- * settings list. The DOM order is the mobile order — header, channels, chat
- * preview and URL, Counter preview and URL, chat settings, Counter settings,
- * commands, OBS setup — and the desktop arrangement is produced by grid
- * placement, not by a different tree. So the Counter is reachable on a phone
- * without scrolling through all 24 chat settings first.
+ * Layout, which is load-bearing rather than cosmetic: each tool is one row with
+ * its own output on the left and its own settings on the right, so a reader
+ * comparing a control against the preview it changes has both on screen at once.
+ * The DOM order is already the stacked order — header, channels, chat preview and
+ * URL, chat settings, Counter preview and URL, Counter settings, commands, OBS
+ * setup — so a phone gets that sequence with no reordering, and the desktop
+ * pairing is two grid tracks inside each row rather than a second tree.
  *
  * Browser-safe: no server-only imports. The Twitch connection id is never
  * rendered, logged, or placed in a query string — it reaches only the generated
@@ -435,12 +435,22 @@ export default function ClassicGenerator({
               them just splices their JSX into this tree. */}
           {channelCard()}
 
-          {/* DOM order is the mobile order. See classicStyles for how the
-              desktop two-column arrangement is produced without reordering. */}
-          <div className="tool-grid">
+          {/* One row per tool: its output left, its settings right. DOM order is
+              already the mobile order — output then settings, chat then counter —
+              so the stacked reading order needs no reordering, and the desktop
+              pairing is two grid tracks inside each row.
+
+              A row per tool rather than one four-cell grid: with a shared grid the
+              two settings panels sat in one row and the taller one dictated the
+              other's row height, and a reader scanning the counter had the chat
+              settings between its preview and its controls. */}
+          <div className="tool-row row-chat">
             {chatOutputPanel()}
-            {counterOutputPanel()}
             {chatSettingsPanel()}
+          </div>
+
+          <div className="tool-row row-counter">
+            {counterOutputPanel()}
             {counterSettingsPanel()}
           </div>
 
@@ -728,10 +738,13 @@ export default function ClassicGenerator({
           Chat settings
         </h2>
 
-        {/* Three columns at the widest breakpoint, two below it, one on a phone —
-            grid tracks over one unchanged tree, so reading and tab order follow
-            this DOM order at every width and no control exists twice. */}
-        <div className="form_table cols-3">
+        {/* Two columns once the settings half is wide enough for them, one below
+            that — grid tracks over one unchanged tree, so reading and tab order
+            follow this DOM order at every width and no control exists twice.
+            Two rather than three: this panel is now the narrower half of a row
+            instead of the page's full width, and a third track put two words per
+            line on the longer labels. */}
+        <div className="form_table cols-2">
           {/* How it is drawn. */}
           <div className="form_col">
             <p className="col-heading">Text</p>
@@ -779,23 +792,19 @@ export default function ClassicGenerator({
           </div>
         </div>
 
-        {/* Filters: three free-text lists, each needing the width of a line. */}
-        <div className="form_table cols-3">
+        {/* Filters: three free-text lists, each needing the width of a line, so
+            they take the same two tracks rather than three narrow ones. */}
+        <div className="form_table cols-2">
           <div className="form_col">
             <p className="col-heading">Filters</p>
             {chat(MC_BOT_NAMES)}
+            {chat(MC_PREFIX_BL)}
           </div>
           <div className="form_col">
             <p className="col-heading" aria-hidden="true">
               &nbsp;
             </p>
             {chat(MC_USER_BL)}
-          </div>
-          <div className="form_col">
-            <p className="col-heading" aria-hidden="true">
-              &nbsp;
-            </p>
-            {chat(MC_PREFIX_BL)}
           </div>
         </div>
       </section>

@@ -165,12 +165,14 @@ describe('layout order', () => {
     expect(order('.panel-chat-output')).toBeLessThan(order('.panel-counter-output'));
   });
 
-  it('puts the Counter output before the full chat settings list', () => {
-    /* The mobile requirement, and the reason DOM order is not the desktop order:
-       a phone user must reach the counter without scrolling through 24 chat
-       settings. */
+  it('keeps each tool together: its own output immediately before its own settings', () => {
+    /* The stacked reading order, and the reason it needs no reordering on a
+       phone: each tool is a unit, so the counter's controls follow the counter's
+       preview rather than 24 chat settings. */
     mount();
-    expect(order('.panel-counter-output')).toBeLessThan(order('.panel-chat-settings'));
+    expect(order('.panel-chat-output')).toBeLessThan(order('.panel-chat-settings'));
+    expect(order('.panel-chat-settings')).toBeLessThan(order('.panel-counter-output'));
+    expect(order('.panel-counter-output')).toBeLessThan(order('.panel-counter-settings'));
   });
 
   it('follows the required order end to end', () => {
@@ -181,8 +183,8 @@ describe('layout order', () => {
     expect(sections).toEqual([
       'channels-heading',
       'chat-output-heading',
-      'counter-output-heading',
       'chat-settings-heading',
+      'counter-output-heading',
       'counter-settings-heading',
       'commands-heading',
       'obs-heading',
@@ -197,9 +199,10 @@ describe('layout order', () => {
     expect(order('[aria-labelledby="obs-heading"]')).toBeGreaterThan(commands);
   });
 
-  it('declares the grid areas the desktop arrangement is built from', () => {
-    /* jsdom computes no layout, so the assertion is that each panel carries the
-       class the stylesheet places — chat left, counter right. */
+  it('pairs each output with its settings in one row, output first', () => {
+    /* The structural half of "side by side": jsdom computes no layout, so what is
+       assertable here is that the two panels are siblings in a row container and
+       that the row is the element the stylesheet gives two columns. */
     mount();
     for (const area of [
       'panel-chat-output',
@@ -209,7 +212,38 @@ describe('layout order', () => {
     ]) {
       expect(document.querySelectorAll(`.${area}`)).toHaveLength(1);
     }
-    expect(panel('.tool-grid').children).toHaveLength(4);
+
+    const rows = Array.from(document.querySelectorAll('.tool-row'));
+    expect(rows).toHaveLength(2);
+
+    const shape = (row: Element) =>
+      Array.from(row.children).map((child) =>
+        Array.from(child.classList).find((c) => c.startsWith('panel-')),
+      );
+    expect(shape(rows[0])).toEqual(['panel-chat-output', 'panel-chat-settings']);
+    expect(shape(rows[1])).toEqual(['panel-counter-output', 'panel-counter-settings']);
+    expect(rows[0].className).toContain('row-chat');
+    expect(rows[1].className).toContain('row-counter');
+  });
+
+  it('gives both rows two columns at the desktop breakpoint', () => {
+    /* Both halves of the requirement, read off the stylesheet: settings must not
+       sit beneath their preview on a wide screen, and each row declares exactly
+       two tracks. */
+    const desktop = CLASSIC_GENERATOR_CSS.match(
+      /@media \(min-width: 1000px\) \{\s*\.tool-row \{([\s\S]*?)\n\}/,
+    );
+    expect(desktop, 'the .tool-row desktop block is missing').not.toBeNull();
+
+    for (const row of ['row-chat', 'row-counter']) {
+      const rule = CLASSIC_GENERATOR_CSS.match(
+        new RegExp(`\\.${row} \\{ grid-template-columns: ([^;]+);`),
+      );
+      expect(rule, `${row} declares no columns`).not.toBeNull();
+      /* Two tracks, both minmax(0,…) so a long URL cannot push one past its
+         share. */
+      expect(rule![1].match(/minmax\(0, [\d.]+fr\)/g)).toHaveLength(2);
+    }
   });
 });
 
@@ -497,16 +531,24 @@ describe('density', () => {
     expect(gutter).toBeLessThanOrEqual(48);
   });
 
-  it('gives MultiChat more of the row than the Counter, without stretching', () => {
-    const grid = CLASSIC_GENERATOR_CSS.match(
-      /\.tool-grid \{\s*display: grid;([\s\S]*?)grid-template-areas/,
-    )![1];
-    const [chat, counter] = grid
-      .match(/grid-template-columns:\s*minmax\(0,\s*([\d.]+)fr\)\s*minmax\(0,\s*([\d.]+)fr\)/)!
-      .slice(1)
-      .map(Number);
-    expect(chat / counter).toBeGreaterThanOrEqual(1.25);
-    expect(chat / counter).toBeLessThanOrEqual(1.4);
+  it('gives the chat output the larger share of its row, without stretching', () => {
+    /* MultiChat stays visually primary: its preview is 680px wide against the
+       counter's 400px, so its output half takes more of the row than its settings
+       half. The counter's own row is even, which is why the ratio is read per
+       row rather than once. */
+    const ratio = (row: string) => {
+      const [left, right] = CLASSIC_GENERATOR_CSS.match(
+        new RegExp(
+          `\\.${row} \\{ grid-template-columns: minmax\\(0, ([\\d.]+)fr\\) minmax\\(0, ([\\d.]+)fr\\);`,
+        ),
+      )!
+        .slice(1)
+        .map(Number);
+      return left / right;
+    };
+    expect(ratio('row-chat')).toBeGreaterThanOrEqual(1.25);
+    expect(ratio('row-chat')).toBeLessThanOrEqual(1.4);
+    expect(ratio('row-counter')).toBe(1);
   });
 
   it('puts both output actions in one group beside the field', () => {
@@ -538,22 +580,33 @@ describe('density', () => {
 
   it('uses multi-column settings tables on wide screens only', () => {
     mount();
-    /* The class declares the intent; the media queries in the stylesheet are what
-       keep a phone at one column. Both are asserted, because the class alone
-       would not prove the narrow case. */
-    expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-3').length)
+    /* The class declares the intent; the media query in the stylesheet is what
+       keeps a narrow screen at one column. Both are asserted, because the class
+       alone would not prove the narrow case. */
+    expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-2').length)
       .toBeGreaterThan(0);
     expect(
       document.querySelectorAll('.panel-counter-settings .form_table.cols-2').length,
     ).toBe(1);
-    expect(CLASSIC_GENERATOR_CSS).toMatch(
-      /@media \(min-width: 1000px\)[\s\S]*?\.form_table\.cols-2 \{ grid-template-columns: repeat\(2/,
+    /* Gated above the row breakpoint, not at it: a settings panel is half of a
+       row now, so two tracks only fit once the row itself is wide. This is the
+       "never create unusably narrow settings columns" requirement. */
+    const columnRule = CLASSIC_GENERATOR_CSS.indexOf(
+      '.form_table.cols-2 { grid-template-columns: repeat(2',
     );
-    expect(CLASSIC_GENERATOR_CSS).toMatch(
-      /@media \(min-width: 1500px\)[\s\S]*?\.form_table\.cols-3 \{ grid-template-columns: repeat\(3/,
+    expect(columnRule, 'the second-column rule is missing').toBeGreaterThan(-1);
+    /* The nearest preceding media query is the one that gates it — searching
+       forward from the top would match whichever block came first. */
+    const enclosing = CLASSIC_GENERATOR_CSS.slice(0, columnRule).match(
+      /@media \(min-width: (\d+)px\)[^{]*\{[^@]*$/,
     );
+    expect(enclosing, 'the second column is not inside a media query').not.toBeNull();
+    expect(Number(enclosing![1])).toBeGreaterThan(1000);
     // The base rule is one column, so narrow widths inherit it.
     expect(CLASSIC_GENERATOR_CSS).toMatch(/\.form_table \{[\s\S]*?grid-template-columns: 1fr;/);
+    // No stale three-column rule left behind for a class nothing carries.
+    expect(document.querySelectorAll('.form_table.cols-3')).toHaveLength(0);
+    expect(CLASSIC_GENERATOR_CSS).not.toContain('cols-3');
   });
 
   it('does not reserve a line for the absent fragment warning', () => {

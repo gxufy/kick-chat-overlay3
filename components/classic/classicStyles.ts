@@ -310,6 +310,21 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-compose-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 .preview-compose-status { font-size: 0.7rem; color: var(--dim); }
 
+/* Preview counts, inside the Counter output card.
+   Shorter than the chat composer because it has less to hold: four small numeric
+   fields on one wrapping row, then one action. The counter preview surface is
+   80px rather than 600px, so this card has room to spare — but it still sits
+   above the Counter settings card, and growing it pushes those settings down. */
+.preview-counts { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+.preview-counts-fields { display: flex; gap: 10px; flex-wrap: wrap; border: 0; padding: 0; margin: 0 0 7px; }
+.preview-counts-fields legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 6px; }
+.preview-counts-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 92px; }
+.preview-counts-field label { font-size: 0.68rem; color: var(--dim); }
+/* Tabular digits so the four fields do not shift width as numbers are typed. */
+.preview-counts-field input[type=text] { width: 100%; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.preview-counts-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.preview-counts-actions .classic-help { margin: 0; flex: 1 1 220px; }
+
 /* URL result.
    The field takes the row and the two actions sit beside it at their natural
    height. Previously all three were align-items:stretch flex items, so Copy

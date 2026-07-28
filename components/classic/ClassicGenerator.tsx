@@ -38,6 +38,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
 import ClassicChatPreview from './ClassicChatPreview';
+import ClassicCounterPreview from './ClassicCounterPreview';
 import ClassicPreviewComposer from './ClassicPreviewComposer';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
@@ -53,8 +54,15 @@ import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multich
 import { multichatTool } from '@/lib/tools/multichat/config';
 import { sampleMessages } from '@/lib/tools/multichat/samples';
 import { counterTool } from '@/lib/tools/counter/config';
+import {
+  COUNTER_COUNT_MAX,
+  SAMPLE_COUNTER_COUNTS,
+  parseCounterCount,
+  sampleCounterStatuses,
+} from '@/lib/tools/counter/samples';
 import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/multichat/runtime';
 import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
+import { PLATFORM_ORDER } from '@/lib/viewerCounterConfig';
 import type { ViewerCounterStyle, ViewerPlatform } from '@/lib/viewerCounterConfig';
 import type { ToolChannels } from '@/lib/tools/registry';
 import type { UnifiedMessage } from '@/lib/types';
@@ -90,6 +98,17 @@ const COPIED_MS = 2000;
    message for nothing. The list is never mutated — custom messages are appended
    into a new array — so one shared frozen-in-practice value is correct. */
 const SAMPLE_CHAT_MESSAGES = sampleMessages();
+
+/* The built-in counts as field strings, for the editable preview inputs.
+   A fresh object per call, deliberately: this seeds state and backs Restore, and
+   a shared object would let one of those mutate the other's baseline. */
+function initialSampleCountFields(): Record<ViewerPlatform, string> {
+  const fields = {} as Record<ViewerPlatform, string>;
+  for (const platform of PLATFORM_ORDER) {
+    fields[platform] = String(SAMPLE_COUNTER_COUNTS[platform]);
+  }
+  return fields;
+}
 
 /* The two catalogs, looked up once at module scope. Every lookup asserts the key
    exists with the expected control type, so a catalog rename breaks the build
@@ -149,6 +168,14 @@ const EMOTE_SCALE_RANGE: SettingRange = {
   unit: '×',
   blankLabel: 'Default',
 };
+
+/* Counter platform labels, taken from the descriptor's own channel fields rather
+   than written out again. The counter panel already labels its channel inputs
+   from this list, so the preview-count fields cannot end up disagreeing with
+   them about what a platform is called. */
+const COUNTER_PLATFORM_LABEL = Object.fromEntries(
+  counterTool.platforms.map((platform) => [platform.key, platform.label]),
+) as Record<ViewerPlatform, string>;
 
 /* Platform chip classes, matching the Classic tag colours. */
 const PLATFORM_TAG: Record<string, string> = {
@@ -217,6 +244,42 @@ export default function ClassicGenerator({
      the sample list has one obvious place to hook into. */
   const clearCustomMessages = useCallback(() => setCustomMessages([]), []);
   const resetPreviewMessages = useCallback(() => setCustomMessages([]), []);
+
+  /* Sample viewer counts, as typed. Strings rather than numbers, because the
+     field has to be able to hold "" — the state the renderer draws as an em dash
+     — and a numeric state would have to encode that absence some other way.
+     Generator-only, exactly like the composed messages: never serialized, never
+     written to the draft, never sent to /api/viewers. */
+  const [sampleCounts, setSampleCounts] = useState<Record<ViewerPlatform, string>>(
+    () => initialSampleCountFields(),
+  );
+
+  const setSampleCount = useCallback((platform: ViewerPlatform, raw: string) => {
+    /* Rejected keystrokes are dropped rather than corrected: silently rewriting
+       what someone typed is worse than refusing it, and the field is already
+       constrained to seven digits. An empty field is always allowed through —
+       it is a meaningful value here, not an invalid one. */
+    if (raw !== '' && parseCounterCount(raw) === null) return;
+    setSampleCounts((current) => ({ ...current, [platform]: raw }));
+  }, []);
+
+  const restoreSampleCounts = useCallback(
+    () => setSampleCounts(initialSampleCountFields()),
+    [],
+  );
+
+  /* The statuses the preview renders. Every field is parsed through the shared
+     helper, so a blank field becomes 'live-unknown' and the renderer's own
+     unavailable presentation is what appears — no second reading of the counts
+     here. */
+  const sampleStatuses = useMemo(() => {
+    const counts: Partial<Record<ViewerPlatform, number>> = {};
+    for (const platform of PLATFORM_ORDER) {
+      const parsed = parseCounterCount(sampleCounts[platform]);
+      if (parsed !== null) counts[platform] = parsed;
+    }
+    return sampleCounterStatuses(counts);
+  }, [sampleCounts]);
 
   /* Rendered origin. Kept out of the initial state so the server-rendered markup
      and the first client render agree; the effect corrects it immediately. */
@@ -713,6 +776,10 @@ export default function ClassicGenerator({
 
         <div className="preview-label">
           <span>Preview</span>
+          {/* The same marker the chat preview carries, for the same reason: four
+              plausible numbers with nothing saying otherwise read as a real
+              audience. */}
+          {!counterConfigured && <span className="preview-badge">Preview data</span>}
           {/* Independent of the chat preview's background: they are separate
               browser sources and may be checked against different scenes. */}
           <button
@@ -735,11 +802,62 @@ export default function ClassicGenerator({
               height={counterTool.obs.height}
             />
           ) : (
-            <p className="preview-empty">
-              Enter a channel above to see the live counter here.
-            </p>
+            /* No channel yet, so there is no live counter to show — and a frame
+               holding nothing, or only dashes, says nothing about how the six
+               settings look. Sample counts go through the production renderer
+               instead. No iframe, so nothing fetches /api/viewers and nothing
+               polls. */
+            <ClassicCounterPreview
+              query={counterQuery}
+              statuses={sampleStatuses}
+              height={counterTool.obs.height}
+            />
           )}
         </div>
+
+        {/* Paired with the fixture preview, because these counts feed it. With a
+            channel configured the panel above is the real overlay showing real
+            numbers, and editing a sample would have nowhere to appear. */}
+        {!counterConfigured && (
+          <div className="preview-counts">
+            <fieldset className="preview-counts-fields">
+              <legend>Preview counts</legend>
+              {PLATFORM_ORDER.map((platform) => (
+                <span key={platform} className="preview-counts-field">
+                  <label htmlFor={`sample-count-${platform}`}>
+                    {COUNTER_PLATFORM_LABEL[platform]}
+                  </label>
+                  <input
+                    id={`sample-count-${platform}`}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={String(COUNTER_COUNT_MAX).length}
+                    value={sampleCounts[platform]}
+                    onChange={(e) => setSampleCount(platform, e.target.value)}
+                  />
+                </span>
+              ))}
+            </fieldset>
+            <div className="preview-counts-actions">
+              <button
+                type="button"
+                className="classic-conn-btn"
+                onClick={restoreSampleCounts}
+              >
+                Restore sample counts
+              </button>
+              {/* Says what an empty field does, because leaving one blank is a
+                  deliberate way to see the unavailable styling rather than a
+                  mistake. */}
+              <p className="classic-help">
+                Sample values only — never fetched, never saved, and never part of
+                the URL below. Clear a field to see how an uncountable platform
+                looks.
+              </p>
+            </div>
+          </div>
+        )}
 
         <p className="card-note">{counterTool.previewNote}</p>
 

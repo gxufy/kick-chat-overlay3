@@ -752,13 +752,17 @@ describe('the two authoritative URLs', () => {
     mount();
     settle();
     expect(document.querySelectorAll('iframe')).toHaveLength(0);
-    /* The chat side no longer waits for a channel: fixtures render immediately
-       through the production overlay. */
+    /* Neither side waits for a channel any more: both render fixtures through
+       their own production renderer, and neither needs a frame to do it. */
     expect(
       within(panel('.panel-chat-output')).getByTestId('chat-fixture-preview'),
     ).toBeTruthy();
-    /* The counter side still states its empty case, and only one panel does. */
-    expect(screen.getAllByText(/Enter a channel above/).length).toBe(1);
+    expect(
+      within(panel('.panel-counter-output')).getByTestId('counter-fixture-preview'),
+    ).toBeTruthy();
+    /* And so the "enter a channel" placeholder is gone from both panels rather
+       than merely from one — it described a state neither panel now reaches. */
+    expect(screen.queryAllByText(/Enter a channel above/)).toHaveLength(0);
   });
 
   it('previews both overlays at exactly their generated URLs', () => {
@@ -1037,12 +1041,17 @@ describe('the Demo interface is gone', () => {
     expect(chat.textContent ?? '').not.toMatch(/\bdemo\b/i);
   });
 
-  it('states the honest empty case where there is genuinely nothing to show', () => {
-    /* The counter panel keeps its empty state until its own fixtures land. */
+  it('marks the counter panel s sample numbers as samples too', () => {
+    /* This test used to asert the counter's "enter a channel" placeholder, which
+       was the honest empty case while the counter had no fixtures. It has them
+       now, so the requirement is the same one the chat panel carries: sample
+       numbers must be labelled as samples, not passed off as a real audience. */
     mount();
-    expect(
-      within(panel('.panel-counter-output')).getByText(/Enter a channel above/),
-    ).toBeTruthy();
+    const counter = panel('.panel-counter-output');
+    expect(within(counter).getByTestId('counter-fixture-preview')).toBeTruthy();
+    expect(within(counter).getByText('Preview data')).toBeTruthy();
+    /* No mode switch here either: a configured channel decides live vs sample. */
+    expect(counter.textContent ?? '').not.toMatch(/\bdemo\b/i);
   });
 });
 

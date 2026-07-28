@@ -990,16 +990,9 @@ export default function ClassicGenerator({
       <footer>
         <p>
           multichat-gxufy with 🕊️ —{' '}
-          <a href="https://x.com/Gxufy_" target="_blank" rel="noreferrer">
-            https://x.com/Gxufy_
+          <a href="https://guns.lol/gxufy" target="_blank" rel="noreferrer">
+            https://guns.lol/gxufy
           </a>
-        </p>
-        <p>
-          Inspired by{' '}
-          <a href="https://chatis.is2511.com/" target="_blank" rel="noreferrer">
-            ChatIS
-          </a>{' '}
-          by IS2511 &amp; giambaJ
         </p>
         <p>
           Not affiliated with{' '}

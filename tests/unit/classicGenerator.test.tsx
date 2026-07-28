@@ -143,11 +143,42 @@ describe('the original Classic identity', () => {
     expect(document.querySelectorAll('.toggle-slider').length).toBe(wraps.length);
   });
 
-  it('keeps the Classic footer credits', () => {
+  it('credits the author with the guns.lol link, shown as its own URL', () => {
     mount();
     const footer = panel('footer');
     expect(footer.textContent).toContain('multichat-gxufy');
-    expect(footer.textContent).toContain('ChatIS');
+
+    /* Both the destination and the visible text: the footer shows the URL
+       literally rather than a label, so a change to one and not the other is a
+       real defect. */
+    const link = within(footer).getByRole('link', {
+      name: 'https://guns.lol/gxufy',
+    });
+    expect(link.getAttribute('href')).toBe('https://guns.lol/gxufy');
+    expect(footer.textContent).not.toContain('x.com/Gxufy_');
+  });
+
+  it('carries no third-party attribution line', () => {
+    /* Removed deliberately. Asserted by name so restoring the markup fails here
+       rather than only being noticed visually. */
+    mount();
+    const footer = panel('footer');
+    expect(footer.textContent).not.toMatch(/inspired by/i);
+    for (const name of ['ChatIS', 'IS2511', 'giambaJ']) {
+      expect(footer.textContent, `${name} is back in the footer`).not.toContain(name);
+    }
+    expect(
+      within(footer).queryByRole('link', { name: /chatis/i }),
+    ).toBeNull();
+  });
+
+  it('keeps the non-affiliation line', () => {
+    mount();
+    const footer = panel('footer');
+    expect(footer.textContent).toContain('Not affiliated with');
+    for (const platform of ['Kick', 'Twitch', 'YouTube', 'TikTok']) {
+      expect(footer.textContent).toContain(platform);
+    }
   });
 });
 

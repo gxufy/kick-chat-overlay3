@@ -37,7 +37,16 @@ vi.mock('next/link', () => ({
 
 afterEach(cleanup);
 
-const preview = () => screen.getByTestId('chat-fixture-preview');
+/* The renderer lives in the isolation frame's own document, not in the generator
+   document, so every query below starts there. A React portal moves DOM without
+   moving it into the parent document's tree, which is exactly the containment
+   these previews now depend on: a `screen` query would find the iframe element
+   and nothing inside it. If ChatOverlay were ever mounted into the generator
+   document again, `bodies()` would come back empty and this suite would fail. */
+const previewDoc = () =>
+  document.querySelector<HTMLIFrameElement>('iframe[title="MultiChat sample preview"]')!
+    .contentDocument!;
+const preview = () => previewDoc().body;
 const bodies = () =>
   Array.from(preview().querySelectorAll('#chat_container .ck-body')).map(
     (el) => el.textContent ?? '',

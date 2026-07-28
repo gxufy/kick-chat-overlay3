@@ -696,11 +696,13 @@ export default function ClassicGenerator({
             /* No channel yet, so there is no live overlay to show — and an empty
                frame says nothing about styling, which is the whole reason someone
                is on this page. Fixtures go through the production renderer
-               instead, so all twenty-four settings are visible immediately. No
-               iframe, so nothing connects, polls, or authenticates. */
+               instead, so all twenty-four settings are visible immediately. The
+               frame here is a local blank document, not the overlay URL, so
+               nothing connects, polls, or authenticates. */
             <ClassicChatPreview
               query={chatQuery}
               messages={previewMessages}
+              width={MULTICHAT_OBS_SIZE.width}
               height={MULTICHAT_OBS_SIZE.height}
             />
           )}
@@ -805,11 +807,12 @@ export default function ClassicGenerator({
             /* No channel yet, so there is no live counter to show — and a frame
                holding nothing, or only dashes, says nothing about how the six
                settings look. Sample counts go through the production renderer
-               instead. No iframe, so nothing fetches /api/viewers and nothing
-               polls. */
+               instead. The frame here is a local blank document, not the overlay
+               URL, so nothing fetches /api/viewers and nothing polls. */
             <ClassicCounterPreview
               query={counterQuery}
               statuses={sampleStatuses}
+              width={counterTool.obs.width}
               height={counterTool.obs.height}
             />
           )}

@@ -57,16 +57,31 @@ const mountPreview = (
     <ClassicCounterPreview
       query={queryFor(style)}
       statuses={sampleCounterStatuses(counts)}
+      width={counterTool.obs.width}
       height={counterTool.obs.height}
     />,
   );
 
-const preview = () => screen.getByTestId('counter-fixture-preview');
+/** The isolation frame, in the generator document. */
+const frame = () =>
+  document.querySelector<HTMLIFrameElement>('iframe[title="Viewer Counter sample preview"]')!;
+
+/* Every query below starts inside the frame's own document rather than at
+   `screen`, because the renderer is portalled into that document and a portal
+   moves DOM without moving it into the parent document's tree. The scoping is
+   the point rather than an inconvenience: if ViewerCounterDisplay were ever
+   mounted into the generator document again, these queries would find nothing. */
+const previewDoc = () => frame().contentDocument!;
+const preview = () => previewDoc().body;
 const previewText = () => preview().textContent ?? '';
 
-/* The renderer's own flex row, which is the only element carrying alignment and
-   the only honest place to count pills: each pill is one of its element children. */
-const row = () => preview().querySelector('div') as HTMLElement;
+/* body > the inset wrapper reproducing pages/counter.tsx's padding > the
+   renderer's own flex row, which is the only element carrying alignment and the
+   only honest place to count pills: each pill is one of its element children.
+   Walking the two levels explicitly rather than taking the first div in the
+   document, so the wrapper can never be mistaken for the row. */
+const inset = () => preview().firstElementChild as HTMLElement;
+const row = () => inset().querySelector('div') as HTMLElement;
 const pills = () => Array.from(row().children) as HTMLElement[];
 
 /** What the production formatter prints for a number, not what I assume it does. */
@@ -120,10 +135,14 @@ describe('the built-in counter preview is populated immediately', () => {
   });
 
   it('is deterministic — identical markup across two mounts', () => {
-    const first = mountPreview().container.innerHTML;
+    /* Read from inside the frame, not from `container`: the container now holds
+       an empty iframe element and comparing that would compare nothing. */
+    mountPreview();
+    const first = preview().innerHTML;
+    expect(first).toContain(formatted(SAMPLE_TOTAL));
     cleanup();
-    const second = mountPreview().container.innerHTML;
-    expect(first).toBe(second);
+    mountPreview();
+    expect(preview().innerHTML).toBe(first);
   });
 
   it('reads no clock and no random source', () => {
@@ -182,9 +201,21 @@ describe('the counter preview opens no connections', () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 4);
     });
     expect(seen).toEqual([]);
-    /* No iframe either, which is what would reintroduce the overlay's own
-       polling by loading the real /counter document. */
-    expect(document.querySelectorAll('iframe')).toHaveLength(0);
+    /* Iframes now exist by design — they are what contain each overlay's styles
+       and positioning, and without a channel the generator holds both fixture
+       frames. What must remain true is that neither ever *navigates*: loading the
+       real /counter or /multichat document is what would reintroduce the
+       overlays' own polling. So the assertion is about src, not about existence,
+       and it covers both frames rather than only the counter's. */
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    expect(frames.map((f) => f.getAttribute('title')).sort()).toEqual([
+      'MultiChat sample preview',
+      'Viewer Counter sample preview',
+    ]);
+    for (const f of frames) {
+      expect(f.getAttribute('src')).toBeNull();
+      expect(f.getAttribute('srcdoc')).toBeNull();
+    }
     vi.useRealTimers();
   });
 });

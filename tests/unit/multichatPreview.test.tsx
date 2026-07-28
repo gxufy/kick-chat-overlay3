@@ -5,9 +5,11 @@
  *   - the preview is populated on first paint, with no channel, no click, and no
  *     timer advanced. A preview that only fills in after an effect settles would
  *     pass a laxer test and still show an empty card to a visitor;
- *   - nothing connects. No WebSocket, no EventSource, no fetch, no iframe. The
- *     fixtures exist so the generator can render without a channel, and the moment
- *     it opens a socket that claim stops being true;
+ *   - nothing connects. No WebSocket, no EventSource, no fetch, and no iframe that
+ *     navigates anywhere. The fixtures exist so the generator can render without a
+ *     channel, and the moment it opens a socket that claim stops being true. The
+ *     preview does mount an iframe — that is what contains the overlay's styles —
+ *     but it holds a locally written document and has no src;
  *   - the settings reach the screen. Four of them are applied while a message is
  *     converted rather than while it is drawn, so they are the ones a hand-built
  *     fixture list would silently ignore — each is asserted by toggling it and
@@ -24,6 +26,7 @@ import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
 import { multichatTool } from '@/lib/tools/multichat/config';
+import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_EPOCH,
@@ -59,11 +62,23 @@ const mountPreview = (style: Partial<Record<string, unknown>> = {}) =>
       query={queryFor(style)}
       messages={sampleMessages()}
       cosmetics={SAMPLE_COSMETICS}
-      height={600}
+      width={MULTICHAT_OBS_SIZE.width}
+      height={MULTICHAT_OBS_SIZE.height}
     />,
   );
 
-const preview = () => screen.getByTestId('chat-fixture-preview');
+/** The isolation frame, in the generator document. */
+const frame = () =>
+  document.querySelector<HTMLIFrameElement>('iframe[title="MultiChat sample preview"]')!;
+
+/* Every query below starts here rather than at `screen`, because the renderer is
+   portalled into the frame's own document and a portal moves DOM without moving
+   it into the parent document's tree. That is the containment this whole suite
+   now rests on, so the scoping is the point rather than an inconvenience: if the
+   overlay were ever mounted into the generator document again, these queries
+   would find nothing. */
+const previewDoc = () => frame().contentDocument!;
+const preview = () => previewDoc().body;
 /* Scoped to #chat_container deliberately: the pin card renders through the same
    MsgLine and so emits its own .ck-body outside the list. An unscoped query would
    count the pin twice over and make the list length assertions meaningless. */
@@ -111,11 +126,15 @@ describe('the built-in chat preview is populated immediately', () => {
   });
 
   it('is deterministic — identical markup across two independent mounts', () => {
-    const first = mountPreview();
-    const firstHtml = first.getByTestId('chat-fixture-preview').innerHTML;
+    /* The frame document's body, not the group's innerHTML: the group holds only
+       the iframe element now, so comparing its markup would compare two empty
+       shells and pass however the renderer behaved. */
+    mountPreview();
+    const firstHtml = preview().innerHTML;
+    expect(firstHtml).toContain('ck-body');
     cleanup();
-    const second = mountPreview();
-    expect(second.getByTestId('chat-fixture-preview').innerHTML).toBe(firstHtml);
+    mountPreview();
+    expect(preview().innerHTML).toBe(firstHtml);
   });
 
   it('uses fixed fixture timestamps rather than the wall clock', () => {
@@ -262,8 +281,8 @@ describe('the preview opens no connections', () => {
   it('opens nothing when the whole generator is mounted without a channel', async () => {
     vi.useFakeTimers();
     render(<ClassicGenerator />);
-    /* Advance well past the preview debounce: an iframe or a poller would have
-       started by now if one existed. */
+    /* Advance well past the preview debounce: a navigating frame or a poller
+       would have started by now if one existed. */
     await act(async () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 4);
     });
@@ -273,11 +292,19 @@ describe('the preview opens no connections', () => {
     vi.useRealTimers();
   });
 
-  it('mounts no iframe for the fixture preview', () => {
-    /* An iframe of the real route would connect for real, which is the entire
-       reason the fixtures render in-place instead. */
+  it('mounts a frame that never navigates to the real overlay route', () => {
+    /* The fixture preview does use an iframe now — that is what contains the
+       overlay's html/body reset and its positioned layers. What must stay true is
+       that the frame never *navigates*: pointing it at /multichat?channels=… is
+       what would open real sockets. So the assertion is about src, not about the
+       iframe's existence, and it is the src attribute rather than contentWindow
+       because an unset src is the only value that cannot load anything. */
     mountPreview();
-    expect(document.querySelectorAll('iframe')).toHaveLength(0);
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0].getAttribute('src')).toBeNull();
+    expect(frames[0].getAttribute('srcdoc')).toBeNull();
+    expect(seen).toEqual([]);
   });
 });
 
@@ -287,18 +314,16 @@ describe('the four parse-time settings reach the preview', () => {
      while looking correct, which is why each is asserted by observing a change. */
 
   it('sevenTVEmotesEnabled swaps third-party emotes in and out', () => {
-    const on = mountPreview({ sevenTVEmotesEnabled: true });
-    const withEmotes = on
-      .getByTestId('chat-fixture-preview')
-      .querySelectorAll('img.ck-emote').length;
+    mountPreview({ sevenTVEmotesEnabled: true });
+    /* Counted before cleanup, because the count lives in the frame's document and
+       the frame goes away with the mount. */
+    const withEmotes = preview().querySelectorAll('img.ck-emote').length;
     cleanup();
-    const off = mountPreview({ sevenTVEmotesEnabled: false });
-    const withoutEmotes = off
-      .getByTestId('chat-fixture-preview')
-      .querySelectorAll('img.ck-emote').length;
+    mountPreview({ sevenTVEmotesEnabled: false });
+    const withoutEmotes = preview().querySelectorAll('img.ck-emote').length;
     expect(withEmotes).toBeGreaterThan(withoutEmotes);
     /* The words come back as text rather than vanishing. */
-    expect(off.getByTestId('chat-fixture-preview').textContent).toContain('OMEGALUL');
+    expect(previewText()).toContain('OMEGALUL');
   });
 
   it('sevenTVCosmeticsEnabled attaches and detaches the paint', () => {

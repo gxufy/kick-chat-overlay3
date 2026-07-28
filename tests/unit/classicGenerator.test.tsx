@@ -744,16 +744,28 @@ describe('the two authoritative URLs', () => {
     expect(counterUrl().startsWith(`${BASE}/counter?`)).toBe(true);
   });
 
-  it('shows no preview iframe until a channel is configured', () => {
-    /* No iframe means no overlay document loads, so nothing connects, polls, or
-       authenticates on a page a visitor is only looking at. The chat panel is
-       populated from fixtures instead, which is a pure render — this assertion is
-       what keeps that true, because an iframe would reintroduce the sockets. */
+  it('loads no overlay document until a channel is configured', () => {
+    /* The claim being protected is that nothing connects, polls, or authenticates
+       on a page a visitor is only looking at. That is a claim about *navigation*,
+       not about iframe elements: both fixture previews now render inside an
+       isolated frame, and those frames hold locally written documents that cannot
+       load anything. So the assertion is that no frame has a src or a srcdoc —
+       which is what would pull in the real overlay route and its sockets. */
     mount();
     settle();
-    expect(document.querySelectorAll('iframe')).toHaveLength(0);
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    expect(frames).toHaveLength(2);
+    for (const f of frames) {
+      expect(f.getAttribute('src')).toBeNull();
+      expect(f.getAttribute('srcdoc')).toBeNull();
+    }
+    /* And they are the two fixture frames rather than anything else. */
+    expect(frames.map((f) => f.getAttribute('title')).sort()).toEqual([
+      'MultiChat sample preview',
+      'Viewer Counter sample preview',
+    ]);
     /* Neither side waits for a channel any more: both render fixtures through
-       their own production renderer, and neither needs a frame to do it. */
+       their own production renderer, each inside its own frame. */
     expect(
       within(panel('.panel-chat-output')).getByTestId('chat-fixture-preview'),
     ).toBeTruthy();

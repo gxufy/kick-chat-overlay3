@@ -17,16 +17,24 @@
  * because a parameter the serializer stops emitting is a parameter this stops
  * receiving.
  *
- * WHAT IT DOES NOT DO. No iframe, no socket, no fetch, no polling, no OAuth, no
- * timers. It is a pure function of (query string, fixtures): mount it and it
- * paints, which is the point — a live preview of a channel nobody has typed yet
- * is correctly empty, and an empty frame shows nothing about styling.
+ * WHAT IT DOES NOT DO. No socket, no fetch, no polling, no OAuth. It is a pure
+ * function of (query string, fixtures): mount it and it paints, which is the
+ * point — a live preview of a channel nobody has typed yet is correctly empty,
+ * and an empty frame shows nothing about styling.
+ *
+ * There IS an iframe, but not a navigating one. `IsolatedPreviewFrame` writes a
+ * local document and portals the renderer into it; nothing is loaded over the
+ * network and no overlay URL is visited. That containment is not cosmetic: the
+ * overlay's `html, body` reset and its absolutely positioned chat and pin layers
+ * are written to own a whole browser source, and in a shared document they take
+ * over the generator page. See the frame's own header for the full account.
  *
  * The fixtures never reach a generated URL. They are not serialized, not written
  * to the draft, and not part of `chatQuery`; this component only reads it.
  */
 import { useMemo } from 'react';
 import ChatOverlay, { type PinnedState } from '@/components/ChatOverlay';
+import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
 import { safeParseMultichatConfig } from '@/lib/multichatConfig';
 import {
   buildMessageFilter,
@@ -53,6 +61,7 @@ export default function ClassicChatPreview({
   query,
   messages,
   cosmetics = SAMPLE_COSMETICS,
+  width,
   height,
 }: {
   /** The overlay query string, from the tool's own serializer. */
@@ -61,7 +70,9 @@ export default function ClassicChatPreview({
   messages: readonly UnifiedMessage[];
   /** 7TV fixtures the conversion draws on. Defaults to the sample set. */
   cosmetics?: MessageCosmetics;
-  /** Viewport height, matching the OBS height the tool declares. */
+  /** Canonical OBS width the tool declares, for the frame's aspect ratio. */
+  width: number;
+  /** Canonical OBS height the tool declares, for the frame's aspect ratio. */
   height: number;
 }) {
   const config = useMemo(() => configFromQuery(query), [query]);
@@ -145,23 +156,29 @@ export default function ClassicChatPreview({
     <div
       role="group"
       aria-label="Preview data — sample chat messages, not a live stream"
-      style={{ minHeight: height }}
       data-testid="chat-fixture-preview"
     >
-      <ChatOverlay
-        config={config}
-        messages={parsed}
-        fadingIds={EMPTY_FADING}
-        pinnedMessage={pinnedMessage}
-        /* The samples are present from first paint, so a spinner would be a
-           lie — there is nothing to connect to and nothing to wait for. */
-        showLoader={false}
-        /* The generator always holds a real sourceTag choice, but the serializer
-           omits sourceTag=icon as its default. Relying on the round trip alone
-           would silently turn an explicit 'icon' selection into the legacy
-           single-platform fallback of showing no marker at all. */
-        sourceTagExplicit
-      />
+      <IsolatedPreviewFrame
+        title="MultiChat sample preview"
+        width={width}
+        height={height}
+        testId="chat-preview-frame"
+      >
+        <ChatOverlay
+          config={config}
+          messages={parsed}
+          fadingIds={EMPTY_FADING}
+          pinnedMessage={pinnedMessage}
+          /* The samples are present from first paint, so a spinner would be a
+             lie — there is nothing to connect to and nothing to wait for. */
+          showLoader={false}
+          /* The generator always holds a real sourceTag choice, but the serializer
+             omits sourceTag=icon as its default. Relying on the round trip alone
+             would silently turn an explicit 'icon' selection into the legacy
+             single-platform fallback of showing no marker at all. */
+          sourceTagExplicit
+        />
+      </IsolatedPreviewFrame>
     </div>
   );
 }

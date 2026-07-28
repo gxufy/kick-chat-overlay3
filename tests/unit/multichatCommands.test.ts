@@ -1,13 +1,15 @@
-/* Command metadata must describe the real parser, not a parallel wish list.
+/* Command metadata must describe the real dispatcher, not a parallel wish list.
  *
- * The load-bearing test here reads pages/multichat.tsx and extracts the `case`
- * labels from the command handler's own switch statement, then asserts they are
- * exactly the documented names. A hardcoded expected list would drift silently
- * the moment someone adds or removes a case; reading the source cannot.
+ * The load-bearing test here reads lib/multichatCommandRuntime.ts and extracts the
+ * `case` labels from the dispatcher's own switch statement, then asserts they are
+ * exactly the documented names. A hardcoded expected list would drift silently the
+ * moment someone adds or removes a case; reading the source cannot.
  *
- * The remaining tests pin the facts the UI copy asserts — both triggers, the
- * single shared access gate, and the argument shapes — so documentation cannot
- * claim capabilities the handler lacks.
+ * The remaining tests pin the facts the UI copy asserts — both triggers, the single
+ * shared access gate, and the argument shapes — so documentation cannot claim
+ * capabilities the dispatcher lacks. Behaviour itself is tested by executing it:
+ * see multichatCommandDispatch.test.ts, which drives every command through each
+ * connector's real ingestion path.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,17 +22,22 @@ import {
   MULTICHAT_COMMAND_MIN_ACCESS,
   MULTICHAT_COMMAND_TRIGGER,
 } from '@/lib/multichatCommands';
+import { MULTICHAT_TRIGGERS, YT_PRESETS } from '@/lib/multichatCommandRuntime';
 
-const SOURCE = readFileSync(join(process.cwd(), 'pages', 'multichat.tsx'), 'utf8');
+const SOURCE = readFileSync(
+  join(process.cwd(), 'lib', 'multichatCommandRuntime.ts'),
+  'utf8',
+);
 
-/** The handler body, from `function handleCommand` to `handle7TVDispatch`. */
+/** The dispatcher body: the switch inside `handle`, to the end of the module. */
 const handlerBody = () => {
-  const start = SOURCE.indexOf('function handleCommand');
-  const end = SOURCE.indexOf('function handle7TVDispatch');
+  const start = SOURCE.indexOf('switch (command.name)');
   expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return SOURCE.slice(start, end);
+  return SOURCE.slice(start);
 };
+
+/** The whole runtime module, for facts that live outside the switch. */
+const runtimeSource = () => SOURCE;
 
 /** Every `case 'x':` label inside the handler, in source order. */
 const parsedCases = () =>
@@ -62,11 +69,14 @@ describe('documented commands match the parser', () => {
 });
 
 describe('triggers and access', () => {
-  it('matches the two triggers the handler accepts', () => {
+  it('matches the two triggers the dispatcher accepts', () => {
     expect(MULTICHAT_COMMAND_TRIGGER).toBe('!multichat');
     expect(MULTICHAT_COMMAND_ALIAS).toBe('!kickchat');
-    expect(handlerBody()).toContain("startsWith('!multichat')");
-    expect(handlerBody()).toContain("startsWith('!kickchat')");
+    /* The runtime's own list, so a third trigger cannot appear undocumented. */
+    expect([...MULTICHAT_TRIGGERS]).toEqual([
+      MULTICHAT_COMMAND_TRIGGER,
+      MULTICHAT_COMMAND_ALIAS,
+    ]);
   });
 
   it('applies one shared moderator gate, not per-command levels', () => {
@@ -75,13 +85,18 @@ describe('triggers and access', () => {
     expect(MULTICHAT_ACCESS_BROADCASTER).toBe(1000);
     /* One gate, before the switch: no command can be documented as having a
      * different requirement, because the code has only this check. */
-    expect(handlerBody()).toContain('getAccessLevel(um) < 500');
-    expect(handlerBody().match(/getAccessLevel\(um\)/g)).toHaveLength(1);
+    const gate = runtimeSource().match(/multichatAccessLevel\([^)]*\)\s*</g);
+    expect(gate).toHaveLength(1);
+    expect(runtimeSource()).toContain('< MULTICHAT_COMMAND_MIN_ACCESS');
   });
 
   it('keeps the access levels the badge reader assigns', () => {
-    expect(SOURCE).toContain("b.type === 'broadcaster' || b.type === 'owner') return 1000");
-    expect(SOURCE).toContain("b.type === 'moderator') return 500");
+    expect(runtimeSource()).toContain(
+      "badge.type === 'broadcaster' || badge.type === 'owner'",
+    );
+    expect(runtimeSource()).toContain('return MULTICHAT_ACCESS_BROADCASTER');
+    expect(runtimeSource()).toContain("badge.type === 'moderator'");
+    expect(runtimeSource()).toContain('return MULTICHAT_ACCESS_MODERATOR');
   });
 });
 
@@ -107,13 +122,13 @@ describe('documented syntax is well formed', () => {
     }
   });
 
-  it('documents only the flags the handler actually parses', () => {
-    const body = handlerBody();
+  it('documents only the flags the dispatcher actually parses', () => {
+    const source = runtimeSource();
     const img = MULTICHAT_COMMANDS.find((c) => c.name === 'img');
     const yt = MULTICHAT_COMMANDS.find((c) => c.name === 'yt');
-    expect(body).toContain('-t\\s+([\\d.]+)');
-    expect(body).toContain('-o\\s+([\\d.]+)');
-    expect(body).toContain("text.includes('-m')");
+    expect(source).toContain('-t\\s+([\\d.]+)');
+    expect(source).toContain('-o\\s+([\\d.]+)');
+    expect(source).toContain("command.text.includes('-m')");
     expect(img?.syntax).toContain('-t');
     expect(img?.syntax).toContain('-o');
     expect(yt?.syntax).toContain('-m');
@@ -121,21 +136,25 @@ describe('documented syntax is well formed', () => {
     expect(yt?.syntax).not.toContain('-o');
   });
 
-  it('documents the five yt presets the handler defines', () => {
+  it('documents exactly the yt presets the dispatcher defines', () => {
     const yt = MULTICHAT_COMMANDS.find((c) => c.name === 'yt');
-    for (const preset of ['bruh', 'vine-boom', 'dc-ping', 'rickroll', 'win-error']) {
-      expect(handlerBody()).toContain(`'${preset}'`);
+    /* The runtime's own table, so a preset cannot be added or removed without the
+       documented detail line failing. */
+    expect(Object.keys(YT_PRESETS).sort()).toEqual(
+      ['bruh', 'dc-ping', 'rickroll', 'vine-boom', 'win-error'].sort(),
+    );
+    for (const preset of Object.keys(YT_PRESETS)) {
       expect(yt?.detail).toContain(preset);
     }
   });
 
-  it('documents img clear, which the handler special-cases', () => {
-    expect(handlerBody()).toContain("args[2] === 'clear'");
+  it('documents img clear, which the dispatcher special-cases', () => {
+    expect(runtimeSource()).toContain("command.args[0] === 'clear'");
     expect(MULTICHAT_COMMANDS.find((c) => c.name === 'img')?.detail).toContain('clear');
   });
 
   it('documents refresh as taking only the optional emotes argument', () => {
-    expect(handlerBody()).toContain("!args[2] || args[2] === 'emotes'");
+    expect(runtimeSource()).toContain("if (argument && argument !== 'emotes') return;");
     const refresh = MULTICHAT_COMMANDS.find((c) => c.name === 'refresh');
     expect(refresh?.syntax).toContain('[emotes]');
     expect(refresh?.detail).toContain('emotes');

@@ -1,20 +1,21 @@
 /* Authoritative !multichat command metadata.
  *
- * The overlay's command handler in pages/multichat.tsx is the implementation;
- * this module is the single description of it. Both the workspace Commands panel
- * and the classic generator's table read from here, so neither can document a
- * command the parser does not implement.
+ * lib/multichatCommandRuntime.ts is the implementation; this module is the single
+ * description of it. Both the workspace Commands panel and the classic generator's
+ * table read from here, so neither can document a command the dispatcher does not
+ * implement.
  *
- * A test in tests/unit/multichatCommands.test.ts reads the handler's own switch
+ * A test in tests/unit/multichatCommands.test.ts reads the dispatcher's own switch
  * statement out of the source file and asserts its `case` labels are exactly the
  * names below. That is what keeps this from drifting into fiction: adding a case
  * without documenting it, or documenting one that was removed, fails the suite.
+ * Further tests drive every command through each connector's real ingestion path.
  *
- * Everything here was traced from the handler rather than assumed. In
- * particular: both triggers are prefix matches on the lowercased text, the
- * access gate is a single `>= 500` check applied before the switch (so every
- * command carries the same requirement), and there is no `refresh` variant other
- * than a bare call or the literal `emotes`.
+ * Everything here was traced from the dispatcher rather than assumed. In
+ * particular: a trigger must be the message's first token, the access gate is a
+ * single `>= 500` check applied before the switch (so every command carries the
+ * same requirement), and there is no `refresh` variant other than a bare call or
+ * the literal `emotes`.
  */
 
 /** Primary trigger word. */

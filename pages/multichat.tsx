@@ -35,6 +35,10 @@ import {
   resolveMultichatRoute,
   wantsCounterSection,
 } from '../lib/multichatRouting';
+import {
+  RELOAD_STAMP_KEY,
+  createMultichatCommandRunner,
+} from '../lib/multichatCommandRuntime';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
 import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
@@ -526,26 +530,6 @@ function MultichatOverlay() {
       }));
     }
 
-    /* ── !multichat command handler — works from ANY platform's chat.
-       Access via unified badges: broadcaster/owner = 1000, mod = 500.
-       (!kickchat kept as a legacy alias.) ── */
-    function getAccessLevel(um: UnifiedMessage): number {
-      for (const b of um.badges) {
-        if (b.type === 'broadcaster' || b.type === 'owner') return 1000;
-      }
-      // broadcaster fallback by name — TikTok has no broadcaster badge
-      const uname = um.username.toLowerCase();
-      if (
-        (um.platform === 'kick' && uname === kickChannel.toLowerCase()) ||
-        (um.platform === 'twitch' && uname === (cfg.twitch ?? '').toLowerCase()) ||
-        (um.platform === 'tiktok' && uname === (cfg.tiktok ?? '').replace(/^@/, '').toLowerCase())
-      ) return 1000;
-      for (const b of um.badges) {
-        if (b.type === 'moderator') return 500;
-      }
-      return 0;
-    }
-
     const floats: { [id: number]: { el: HTMLElement; timer: ReturnType<typeof setTimeout> | null } } = {};
     function showFloat(id: number, msg: string, timeoutMs = 5000, alpha = 0.3) {
       removeFloat(id);
@@ -574,111 +558,121 @@ function MultichatOverlay() {
       if (el) el.style.display = v ? '' : 'none';
     }
 
-    function handleCommand(um: UnifiedMessage) {
-      const text: string = um.text ?? '';
-      const trigger = text.toLowerCase().startsWith('!multichat') ? '!multichat'
-        : text.toLowerCase().startsWith('!kickchat') ? '!kickchat' : null;
-      if (!trigger) return;
-      if (getAccessLevel(um) < 500) return;
-      const args = text.trim().split(/\s+/);
-      const cmd = (args[1] ?? '').toLowerCase();
-      switch (cmd) {
-        case 'ping': showFloat(1, 'Pong!\nmultichat-gxufy', 3000); break;
-        case 'reload': window.location.reload(); break;
-        case 'stop': removeAllFloats(); break;
-        case 'show': setChatVisible(true); break;
-        case 'hide': setChatVisible(false); break;
-        case 'refresh':
-          if (!args[2] || args[2] === 'emotes') {
-            showFloat(9, '🔄 Reloading emotes...', 10000, 0.7);
-            (async () => {
-              try {
-                const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
-                const ch = s.channel;
-                if (ch) {
-                  const { emotes: ce } = await getSevenTVChannelEmotes(ch.user_id.toString());
-                  fresh.push(...ce);
-                }
-                // Twitch FFZ/BTTV/7TV stack too (roomId captured on connect)
-                if (twitchRoomId) {
-                  const te = await loadTwitchEmotes(twitchRoomId);
-                  const have = new Set(fresh.map(e => e.name));
-                  fresh.push(...te.filter(e => !have.has(e.name)));
-                }
-                s.emotes = fresh;
-                showFloat(9, '✅ Emotes reloaded!', 2000, 0.7);
-              } catch (_) {
-                showFloat(9, '❌ Emote reload failed', 2000, 0.7);
-              }
-            })();
-          }
-          break;
-        case 'img': {
-          if (args[2] === 'clear') { removeFloat(4); break; }
-          const urlMatch = text.match(/https?:\/\/\S+/);
-          const emoteName = args[2] ?? '';
-          const link = urlMatch ? urlMatch[0] : s.emotes.find(e => e.name === emoteName)?.image ?? null;
-          if (!link) break;
-          const timeout = (parseFloat((text.match(/-t\s+([\d.]+)/) || [])[1] ?? '') || 5) * 1000;
-          const opacity = parseFloat((text.match(/-o\s+([\d.]+)/) || [])[1] ?? '') || 1;
-          const el = document.createElement('div');
-          el.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9998;pointer-events:none;';
-          el.innerHTML = `<img src="${link}" style="width:100%;height:100%;object-fit:fill;opacity:${opacity};" />`;
-          document.body.appendChild(el);
-          floats[4] = { el, timer: setTimeout(() => removeFloat(4), timeout) };
-          break;
-        }
-        case 'yt': {
-          const ytPresets: Record<string, string> = {
-            'bruh': '2ZIpFytCSVc', 'vine-boom': '_vBVGjFdwk4', 'dc-ping': 'jiWj1zZlRjQ',
-            'rickroll': 'dQw4w9WgXcQ', 'win-error': 'v76-ChTSLJk',
-          };
-          const urlMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/watch\?v=)([\w\-]+)/);
-          const ytId = urlMatch ? urlMatch[1] : ytPresets[args[2]] ?? null;
-          if (!ytId) break;
-          const timeout = (parseFloat((text.match(/-t\s+([\d.]+)/) || [])[1] ?? '') || 5) * 1000;
-          const mute = text.includes('-m');
-          const el = document.createElement('div');
-          el.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9998;pointer-events:none;';
-          el.innerHTML = `<iframe src="https://www.youtube.com/embed/${ytId}?autoplay=1${mute ? '&mute=1' : ''}&rel=0"
-            width="100%" height="100%" frameborder="0" allow="autoplay" style="display:block;"></iframe>`;
-          document.body.appendChild(el);
-          floats[5] = { el, timer: setTimeout(() => removeFloat(5), timeout) };
-          break;
-        }
-        case 'tts': {
-          const ttsText = text.replace(/^!(?:multichat|kickchat)\s+tts\s*/i, '').trim();
-          if (!ttsText) break;
-          const speakFallback = (t: string) => {
-            if (!window.speechSynthesis) return;
-            window.speechSynthesis.cancel();
-            const utt = new SpeechSynthesisUtterance(t);
-            utt.volume = 1.0;
-            const go = () => {
-              const voices = window.speechSynthesis.getVoices();
-              const v = voices.find(v => v.name === 'Google UK English Male')
-                || voices.find(v => v.lang === 'en-GB')
-                || voices.find(v => v.lang.startsWith('en')) || null;
-              if (v) utt.voice = v;
-              window.speechSynthesis.speak(utt);
-            };
-            window.speechSynthesis.getVoices().length ? go() : window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
-          };
-          fetch(`/api/tts?voice=Brian&text=${encodeURIComponent(ttsText)}`)
-            .then(r => { if (!r.ok) throw new Error('proxy failed'); return r.blob(); })
-            .then(blob => {
-              const url = URL.createObjectURL(blob);
-              const audio = new Audio(url);
-              audio.volume = 1.0;
-              audio.addEventListener('canplaythrough', () => audio.play().catch(() => {}));
-              audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-              audio.load();
-            })
-            .catch(() => speakFallback(ttsText));
-          break;
-        }
+    /* ── !multichat commands ──
+       The dispatcher is lib/multichatCommandRuntime: platform-neutral, and driven
+       in tests through the real connectors. Everything platform-specific or
+       effect-local is supplied here as the host.
+
+       Audio and speech are tracked so `stop`, a further `tts`, and unmount can all
+       silence them. Previously each `tts` created an Audio nobody held a reference
+       to, so two commands talked over each other and neither stopped. */
+    let activeAudio: HTMLAudioElement | null = null;
+    let activeAudioUrl = '';
+
+    function stopSpeaking() {
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio.src = '';
+        activeAudio = null;
       }
+      if (activeAudioUrl) {
+        URL.revokeObjectURL(activeAudioUrl);
+        activeAudioUrl = '';
+      }
+      window.speechSynthesis?.cancel();
     }
+    cleanups.push(stopSpeaking);
+
+    /** Browser voice, used when the server proxy fails. */
+    function speakFallback(t: string) {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(t);
+      utt.volume = 1.0;
+      const go = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const v = voices.find(v => v.name === 'Google UK English Male')
+          || voices.find(v => v.lang === 'en-GB')
+          || voices.find(v => v.lang.startsWith('en')) || null;
+        if (v) utt.voice = v;
+        window.speechSynthesis.speak(utt);
+      };
+      window.speechSynthesis.getVoices().length
+        ? go()
+        : window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
+    }
+
+    const commandRunner = createMultichatCommandRunner({
+      channels: {
+        kick: kickChannel,
+        twitch: cfg.twitch ?? '',
+        youtube: cfg.youtube ?? '',
+        tiktok: cfg.tiktok ?? '',
+      },
+      showFloat,
+      removeFloat,
+      removeAllFloats,
+      mountFloat(slot, el, timeoutMs) {
+        removeFloat(slot);
+        document.body.appendChild(el);
+        floats[slot] = { el, timer: setTimeout(() => removeFloat(slot), timeoutMs) };
+      },
+      createElement: (tag) => document.createElement(tag),
+      setChatVisible,
+      reload: () => window.location.reload(),
+      async refreshEmotes() {
+        const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
+        const ch = s.channel;
+        if (ch) {
+          const { emotes: ce } = await getSevenTVChannelEmotes(ch.user_id.toString());
+          fresh.push(...ce);
+        }
+        // Twitch FFZ/BTTV/7TV stack too (roomId captured on connect)
+        if (twitchRoomId) {
+          const te = await loadTwitchEmotes(twitchRoomId);
+          const have = new Set(fresh.map(e => e.name));
+          fresh.push(...te.filter(e => !have.has(e.name)));
+        }
+        s.emotes = fresh;
+      },
+      findEmoteUrl: (name) => (name ? s.emotes.find(e => e.name === name)?.image ?? null : null),
+      speak(t) {
+        stopSpeaking();
+        fetch(`/api/tts?voice=Brian&text=${encodeURIComponent(t)}`)
+          .then(r => { if (!r.ok) throw new Error('proxy failed'); return r.blob(); })
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.volume = 1.0;
+            activeAudio = audio;
+            activeAudioUrl = url;
+            audio.addEventListener('canplaythrough', () => audio.play().catch(() => {}));
+            audio.addEventListener('ended', () => {
+              if (activeAudio === audio) stopSpeaking();
+            });
+            audio.load();
+          })
+          .catch(() => speakFallback(t));
+      },
+      stopSpeaking,
+      readReloadStamp() {
+        const raw = window.sessionStorage?.getItem(RELOAD_STAMP_KEY);
+        const at = raw === null || raw === undefined ? NaN : Number(raw);
+        return Number.isFinite(at) ? at : null;
+      },
+      writeReloadStamp(at) {
+        try { window.sessionStorage?.setItem(RELOAD_STAMP_KEY, String(at)); }
+        catch { /* private mode: the cooldown degrades, the command still works */ }
+      },
+      now: () => Date.now(),
+    });
+
+    function handleCommand(um: UnifiedMessage) {
+      commandRunner.handle(um);
+    }
+
+    /** Everything on screen or in the speakers, gone on unmount. */
+    cleanups.push(removeAllFloats);
 
     /* handle7TVDispatch — ChatIS-v2 handleDispatchEvent (script.js:700).
        platform: which connection namespace the entitlements belong to;

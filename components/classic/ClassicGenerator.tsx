@@ -20,13 +20,14 @@
  *     counterTool descriptor — the same defaults, normalizer, serializer, and
  *     preview frame as the standalone tool had. There is no second Counter.
  *
- * Layout, which is load-bearing rather than cosmetic: each tool is one row with
- * its own output on the left and its own settings on the right, so a reader
- * comparing a control against the preview it changes has both on screen at once.
- * The DOM order is already the stacked order — header, channels, chat preview and
- * URL, chat settings, Counter preview and URL, Counter settings, commands, OBS
- * setup — so a phone gets that sequence with no reordering, and the desktop
- * pairing is two grid tracks inside each row rather than a second tree.
+ * Layout, which is load-bearing rather than cosmetic: one column per tool. The
+ * chat and Counter outputs sit aligned beside each other in the first row, and
+ * each settings card sits directly beneath its own output in the second, with
+ * commands and OBS setup full width below. The DOM order is the stacked order —
+ * header, channels, chat preview and URL, chat settings, Counter preview and URL,
+ * Counter settings, commands, OBS setup — so a phone gets that sequence with no
+ * reordering, and the desktop arrangement is named grid areas over that same tree
+ * rather than a second one.
  *
  * Browser-safe: no server-only imports. The Twitch connection id is never
  * rendered, logged, or placed in a query string — it reaches only the generated
@@ -435,27 +436,27 @@ export default function ClassicGenerator({
               them just splices their JSX into this tree. */}
           {channelCard()}
 
-          {/* One row per tool: its output left, its settings right. DOM order is
-              already the mobile order — output then settings, chat then counter —
-              so the stacked reading order needs no reordering, and the desktop
-              pairing is two grid tracks inside each row.
+          {/* One grid, six children, named areas. DOM order is the mobile order —
+              chat output, chat settings, counter output, counter settings, then
+              the two full-width cards — so the phone stack is this tree unchanged
+              and no control is duplicated per breakpoint.
 
-              A row per tool rather than one four-cell grid: with a shared grid the
-              two settings panels sat in one row and the taller one dictated the
-              other's row height, and a reader scanning the counter had the chat
-              settings between its preview and its controls. */}
-          <div className="tool-row row-chat">
+              Desktop places them into:
+                "chat-output    counter-output"
+                "chat-settings  counter-settings"
+                "commands       commands"
+                "obs            obs"
+              so the two previews stay aligned beside each other and each settings
+              card sits directly beneath the output it belongs to. Grid placement
+              only — the reading and tab order is always the DOM order above. */}
+          <div className="tool-grid">
             {chatOutputPanel()}
             {chatSettingsPanel()}
-          </div>
-
-          <div className="tool-row row-counter">
             {counterOutputPanel()}
             {counterSettingsPanel()}
+            {commandsCard()}
+            {obsSetupCard()}
           </div>
-
-          {commandsCard()}
-          {obsSetupCard()}
         </main>
       </div>
 
@@ -741,9 +742,9 @@ export default function ClassicGenerator({
         {/* Two columns once the settings half is wide enough for them, one below
             that — grid tracks over one unchanged tree, so reading and tab order
             follow this DOM order at every width and no control exists twice.
-            Two rather than three: this panel is now the narrower half of a row
-            instead of the page's full width, and a third track put two words per
-            line on the longer labels. */}
+            Two rather than three: this panel is one column of the grid rather
+            than the page's full width, and a third track put two words per line
+            on the longer labels. */}
         <div className="form_table cols-2">
           {/* How it is drawn. */}
           <div className="form_col">
@@ -863,7 +864,7 @@ export default function ClassicGenerator({
   /** Commands, from the parser's own metadata. */
   function commandsCard() {
     return (
-      <section className="card" aria-labelledby="commands-heading">
+      <section className="card panel-commands" aria-labelledby="commands-heading">
         <h2 id="commands-heading" className="section-title">
           Commands &amp; help
         </h2>
@@ -914,7 +915,7 @@ export default function ClassicGenerator({
   /** OBS setup, for two independent browser sources. */
   function obsSetupCard() {
     return (
-      <section className="card" aria-labelledby="obs-heading">
+      <section className="card panel-obs" aria-labelledby="obs-heading">
         <h2 id="obs-heading" className="section-title">
           OBS setup
         </h2>

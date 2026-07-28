@@ -8,10 +8,12 @@
  * What is new here is layout and the accessibility work the inline version never
  * had:
  *
- *   - `.tool-row` pairs each tool's output with its own settings on a desktop
+ *   - `.tool-grid` places the two tools into a column each on a desktop — outputs
+ *     aligned in row one, each settings card beneath its own output in row two —
  *     while leaving DOM order alone. Order is the stacked order (chat output, chat
  *     settings, counter output, counter settings), so a phone reads each tool as a
- *     unit and the desktop pairing is grid tracks rather than a second tree.
+ *     unit and the desktop arrangement is named grid areas rather than a second
+ *     tree.
  *   - Focus is visible on every control, including the pill switches whose real
  *     checkbox is visually hidden — the ring is drawn on the slider from the
  *     input's :focus-visible.
@@ -104,28 +106,38 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 .card-note { color: var(--dim); font-size: 0.76rem; margin: 6px 0 0; line-height: 1.45; }
 
 /* ── The two-tool layout ──
-   One row per tool: its output left, its settings right. DOM order is already the
-   stacked order (output, settings, per tool, chat first), so the phone layout is
-   this tree unchanged and the desktop pairing is two tracks inside each row.
+   One grid holding both tools and the two full-width sections. DOM order is the
+   stacked order — chat output, chat settings, counter output, counter settings,
+   commands, setup — so the phone layout is this tree unchanged, with no media
+   query needed for it and no control duplicated per breakpoint.
 
-   A row per tool rather than one four-cell grid: sharing a grid made the two
-   settings panels share a row, so the taller one set the other's height, and the
-   counter's controls sat a chat-settings panel away from the preview they change.
-   Rows also let each tool keep its own ratio. */
-.tool-row { display: flex; flex-direction: column; }
+   The desktop arrangement is named areas over that same tree: the two outputs
+   share row 1 so the previews stay aligned beside each other, and each settings
+   card sits directly beneath its own output in row 2. Rows 3 and 4 span both
+   columns. Because this is placement only, reading and tab order stay per tool
+   (output then its settings) at every width. */
+.tool-grid { display: flex; flex-direction: column; }
 @media (min-width: 1000px) {
-  .tool-row {
+  .tool-grid {
     display: grid;
+    /* An even split: the outputs must align beside each other, so neither tool
+       can claim a wider track than the other. Both minmax(0,…) so a long
+       unbroken URL cannot push a column past its track. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "chat-output   counter-output"
+      "chat-settings counter-settings"
+      "commands      commands"
+      "obs           obs";
     gap: 0 16px;
     align-items: start;
   }
-  /* MultiChat stays visually primary: a 680px-wide preview and a 24-setting
-     panel, so the output half keeps the larger share. Both minmax(0,…) so a long
-     unbroken URL cannot push a column past its track. */
-  .row-chat { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
-  /* The Counter's preview is 400px and it has six controls, so an even split
-     leaves neither half starved. */
-  .row-counter { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .panel-chat-output { grid-area: chat-output; }
+  .panel-counter-output { grid-area: counter-output; }
+  .panel-chat-settings { grid-area: chat-settings; }
+  .panel-counter-settings { grid-area: counter-settings; }
+  .panel-commands { grid-area: commands; }
+  .panel-obs { grid-area: obs; }
 }
 
 /* Platform inputs — compact row, one per platform */

@@ -199,51 +199,86 @@ describe('layout order', () => {
     expect(order('[aria-labelledby="obs-heading"]')).toBeGreaterThan(commands);
   });
 
-  it('pairs each output with its settings in one row, output first', () => {
-    /* The structural half of "side by side": jsdom computes no layout, so what is
-       assertable here is that the two panels are siblings in a row container and
-       that the row is the element the stylesheet gives two columns. */
+  it('holds all six panels in one grid, in the stacked order', () => {
+    /* The structural half of the layout: jsdom computes no layout, so what is
+       assertable in the tree is that all six panels are children of the single
+       grid, once each, in the order a phone should read them. Which cell each
+       lands in on a desktop is the stylesheet's job, asserted below. */
     mount();
-    for (const area of [
+    const grids = document.querySelectorAll('.tool-grid');
+    expect(grids).toHaveLength(1);
+
+    const shape = Array.from(grids[0].children).map((child) =>
+      Array.from(child.classList).find((c) => c.startsWith('panel-')),
+    );
+    expect(shape).toEqual([
       'panel-chat-output',
-      'panel-counter-output',
       'panel-chat-settings',
+      'panel-counter-output',
       'panel-counter-settings',
-    ]) {
-      expect(document.querySelectorAll(`.${area}`)).toHaveLength(1);
-    }
-
-    const rows = Array.from(document.querySelectorAll('.tool-row'));
-    expect(rows).toHaveLength(2);
-
-    const shape = (row: Element) =>
-      Array.from(row.children).map((child) =>
-        Array.from(child.classList).find((c) => c.startsWith('panel-')),
-      );
-    expect(shape(rows[0])).toEqual(['panel-chat-output', 'panel-chat-settings']);
-    expect(shape(rows[1])).toEqual(['panel-counter-output', 'panel-counter-settings']);
-    expect(rows[0].className).toContain('row-chat');
-    expect(rows[1].className).toContain('row-counter');
+      'panel-commands',
+      'panel-obs',
+    ]);
   });
 
-  it('gives both rows two columns at the desktop breakpoint', () => {
-    /* Both halves of the requirement, read off the stylesheet: settings must not
-       sit beneath their preview on a wide screen, and each row declares exactly
-       two tracks. */
-    const desktop = CLASSIC_GENERATOR_CSS.match(
-      /@media \(min-width: 1000px\) \{\s*\.tool-row \{([\s\S]*?)\n\}/,
-    );
-    expect(desktop, 'the .tool-row desktop block is missing').not.toBeNull();
+  it('places the panels into the locked grid areas at the desktop breakpoint', () => {
+    /* The locked arrangement, read off the stylesheet:
+         "chat-output   counter-output"
+         "chat-settings counter-settings"
+         "commands      commands"
+         "obs           obs"
+       so the two outputs are aligned beside each other, each settings card is
+       directly beneath its own output, and the last two sections span the page. */
+    const areas = CLASSIC_GENERATOR_CSS.match(/grid-template-areas:([\s\S]*?);/);
+    expect(areas, 'the grid declares no template areas').not.toBeNull();
+    const rows = areas![1]
+      .match(/"[^"]+"/g)!
+      .map((row) => row.replace(/"/g, '').trim().split(/\s+/));
 
-    for (const row of ['row-chat', 'row-counter']) {
-      const rule = CLASSIC_GENERATOR_CSS.match(
-        new RegExp(`\\.${row} \\{ grid-template-columns: ([^;]+);`),
-      );
-      expect(rule, `${row} declares no columns`).not.toBeNull();
-      /* Two tracks, both minmax(0,…) so a long URL cannot push one past its
-         share. */
-      expect(rule![1].match(/minmax\(0, [\d.]+fr\)/g)).toHaveLength(2);
+    expect(rows).toEqual([
+      ['chat-output', 'counter-output'],
+      ['chat-settings', 'counter-settings'],
+      ['commands', 'commands'],
+      ['obs', 'obs'],
+    ]);
+
+    // Each panel class is bound to the area of the same name.
+    for (const area of [
+      'chat-output',
+      'counter-output',
+      'chat-settings',
+      'counter-settings',
+      'commands',
+      'obs',
+    ]) {
+      expect(
+        CLASSIC_GENERATOR_CSS,
+        `.panel-${area} is not bound to its grid area`,
+      ).toContain(`.panel-${area} { grid-area: ${area}; }`);
     }
+  });
+
+  it('gives the grid two equal columns so the outputs align', () => {
+    const desktop = CLASSIC_GENERATOR_CSS.match(
+      /@media \(min-width: 1000px\) \{\s*\.tool-grid \{([\s\S]*?)\n  \}/,
+    );
+    expect(desktop, 'the .tool-grid desktop block is missing').not.toBeNull();
+    const columns = desktop![1].match(/grid-template-columns: ([^;]+);/);
+    expect(columns, 'the grid declares no columns').not.toBeNull();
+    /* Two tracks, both minmax(0, 1fr): equal so the two outputs align beside
+       each other, and minmax(0,…) so a long URL cannot push one past its
+       share. */
+    expect(columns![1].match(/minmax\(0, 1fr\)/g)).toHaveLength(2);
+  });
+
+  it('needs no media query for the stacked order', () => {
+    /* The mobile order is the DOM order, so the base rule is a plain column and
+       the grid exists only above the breakpoint. If the stack were built by
+       reordering, this would be where it broke silently. */
+    expect(CLASSIC_GENERATOR_CSS).toContain(
+      '.tool-grid { display: flex; flex-direction: column; }',
+    );
+    expect(CLASSIC_GENERATOR_CSS).not.toMatch(/\.panel-[a-z-]+ \{[^}]*order:/);
   });
 });
 
@@ -531,24 +566,16 @@ describe('density', () => {
     expect(gutter).toBeLessThanOrEqual(48);
   });
 
-  it('gives the chat output the larger share of its row, without stretching', () => {
-    /* MultiChat stays visually primary: its preview is 680px wide against the
-       counter's 400px, so its output half takes more of the row than its settings
-       half. The counter's own row is even, which is why the ratio is read per
-       row rather than once. */
-    const ratio = (row: string) => {
-      const [left, right] = CLASSIC_GENERATOR_CSS.match(
-        new RegExp(
-          `\\.${row} \\{ grid-template-columns: minmax\\(0, ([\\d.]+)fr\\) minmax\\(0, ([\\d.]+)fr\\);`,
-        ),
-      )!
-        .slice(1)
-        .map(Number);
-      return left / right;
-    };
-    expect(ratio('row-chat')).toBeGreaterThanOrEqual(1.25);
-    expect(ratio('row-chat')).toBeLessThanOrEqual(1.4);
-    expect(ratio('row-counter')).toBe(1);
+  it('splits the two tool columns evenly rather than favouring one', () => {
+    /* The chat column cannot claim a wider track than the counter column: the two
+       output cards share a grid row and have to line up, which an uneven split
+       would break. Read as a ratio so a future change to the unit still fails. */
+    const [left, right] = CLASSIC_GENERATOR_CSS.match(
+      /grid-template-columns: minmax\(0, ([\d.]+)fr\) minmax\(0, ([\d.]+)fr\);\s*\n\s*grid-template-areas/,
+    )!
+      .slice(1)
+      .map(Number);
+    expect(left / right).toBe(1);
   });
 
   it('puts both output actions in one group beside the field', () => {

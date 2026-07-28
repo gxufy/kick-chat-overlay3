@@ -54,7 +54,8 @@ export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactN
   const meta = PROVIDERS[platform];
   if (mode === 'dot') {
     return (
-      <span key="srctag" style={{
+      /* Decorative: the dot repeats no text, so it stays out of the a11y tree. */
+      <span key="srctag" data-source-tag="dot" data-platform={platform} aria-hidden="true" style={{
         display:'inline-block', width:'0.5em', height:'0.5em',
         borderRadius:9999, backgroundColor:meta.color,
         marginRight:'0.4em', verticalAlign:'middle',
@@ -63,13 +64,18 @@ export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactN
   }
   if (mode === 'icon') {
     return (
-      <span key="srctag" style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em' }}>
+      /* Decorative for the same reason — the brand mark carries no unique text.
+         providerIcon's <img> already uses an empty-intent alt via aria-hidden. */
+      <span key="srctag" data-source-tag="icon" data-platform={platform} aria-hidden="true"
+        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em' }}>
         {providerIcon(platform)}
       </span>
     );
   }
+  /* The label's visible text is the platform name, so it is left readable — no
+     aria-label duplicating what is already on screen. */
   return (
-    <span key="srctag" style={{
+    <span key="srctag" data-source-tag="label" data-platform={platform} style={{
       fontSize:'0.72em', fontWeight:700, color:meta.color,
       backgroundColor:`color-mix(in srgb, ${meta.color} 16%, transparent)`,
       padding:'0.12em 0.4em', borderRadius:'0.4em', marginRight:'0.4em',

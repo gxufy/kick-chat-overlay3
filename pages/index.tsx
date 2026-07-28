@@ -1,17 +1,35 @@
 /* / — personal hub (slaiqe.com structure: hero → skill tags → product
- * cards → CTA → socials footer). The overlay generator lives at
- * /multichat; old bookmarked /?kick=... overlay URLs still work because
- * this page forwards any channel-param URL straight to /multichat.
+ * cards → CTA → socials footer).
+ *
+ * Both cards point at /multichat, which is the generator when no channel is
+ * named. The viewer counter is a panel inside that generator rather than a page
+ * of its own, so its card links to the panel's anchor.
+ *
+ * Old bookmarked /?kick=... overlay URLs still work: this page forwards any
+ * channel-param URL straight to /multichat, which serves the overlay
+ * permanently. That forward is deliberately unchanged — it is the same rule that
+ * makes a channel-carrying /multichat an overlay rather than a generator.
  */
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { UI_FONT_SPECS, googleFontsImportCss } from '@/lib/overlayFonts';
+import {
+  CANONICAL_COUNTER_ROUTE,
+  CANONICAL_MULTICHAT_ROUTE,
+} from '@/lib/multichatRouting';
 
-const SOCIALS = [
-  { label: 'X / Twitter', href: 'https://x.com/Gxufy_', icon: '𝕏' },
-  { label: 'GitHub', href: 'https://github.com/gxufy', icon: '⌥' },
-  { label: 'Discord', href: 'https://discord.com/users/882428313644179486', icon: '💬' },
-];
+/*
+ * The one outbound link at the bottom of the page.
+ *
+ * The href is carried over from the previous small Follow button byte for byte —
+ * it is a link hub the user maintains, and every individual social this page used
+ * to list separately is already behind it. Only the visible text changed: the old
+ * label said @Gxufy_, the X handle, which is not the name to use for what is now
+ * a general follow link.
+ */
+const FOLLOW_HREF = 'https://guns.lol/gxufy';
+const FOLLOW_LABEL = 'Follow @gxufy';
 
 const TAGS = ['multi-platform chat', 'viewer counters', 'OBS overlays', '7TV · BTTV · FFZ', 'no OAuth', 'real-time'];
 
@@ -34,9 +52,15 @@ export default function Hub() {
         <meta name="description" content="I build tools that make streams smoother — multi-platform chat overlays and stream widgets that just work." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+        {/* An @import rather than a stylesheet link: next/head does not support
+            the latter. Only the one UI face this page sets type in.
+            dangerouslySetInnerHTML because React would escape `&` and `'`, and
+            a <style> element does not decode entities. */}
+        <style dangerouslySetInnerHTML={{
+          __html: googleFontsImportCss([UI_FONT_SPECS.montserrat]),
+        }} />
       </Head>
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         *, *::before, *::after { box-sizing: border-box; }
         :root {
           --bg: #141418; --card: #1d1d23; --card-2: #24242c; --line: #2c2c35;
@@ -59,7 +83,7 @@ export default function Hub() {
         .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 44px; }
         .tag { font-size: 0.74rem; font-weight: 600; color: var(--muted); background: rgba(255,255,255,.035); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; }
 
-        .cards { display: grid; grid-template-columns: 1fr; gap: 18px; margin-bottom: 44px; }
+        .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 36px; }
         .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 26px; box-shadow: var(--shadow); transition: transform .15s, border-color .15s; display: block; }
         .card:hover { transform: translateY(-3px); border-color: rgba(74,132,250,.5); opacity: 1; }
         .card-kicker { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); margin: 0 0 8px; }
@@ -73,27 +97,30 @@ export default function Hub() {
         .cb-yt { color: #ff5b5b; border: 1px solid rgba(255,68,68,.5); }
         .cb-tt { color: #25F4EE; border: 1px solid rgba(37,244,238,.5); }
 
-        .banner { background: linear-gradient(120deg, rgba(74,132,250,.14), rgba(74,132,250,.04)); border: 1px solid rgba(74,132,250,.35); border-radius: 14px; padding: 24px 26px; margin-bottom: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-        .banner p { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
-        .banner strong { color: #fff; }
-        .banner a { background: var(--accent); color: #fff; font-weight: 800; font-size: 0.88rem; padding: 11px 22px; border-radius: 10px; box-shadow: 0 4px 16px rgba(74,132,250,.35); white-space: nowrap; }
-        .banner a:hover { background: var(--accent-2); opacity: 1; }
+        /* The bottom CTA: full width of the content column, same blue design
+           language as the cards' accent, with a hover lift and a focus ring that
+           is drawn rather than inherited — the UA default ring is nearly
+           invisible against a saturated blue fill. */
+        .follow-cta {
+          display: block; width: 100%; box-sizing: border-box;
+          background: var(--accent); color: #fff; text-align: center;
+          font-size: 1.12rem; font-weight: 800; letter-spacing: -.01em;
+          padding: 22px 28px; border-radius: 14px;
+          box-shadow: 0 6px 24px rgba(74,132,250,.35);
+          transition: background .15s, transform .15s, box-shadow .15s;
+        }
+        .follow-cta:hover { background: var(--accent-2); color: #fff; opacity: 1; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(74,132,250,.45); }
+        .follow-cta:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
-        /* socials — guns.lol style: centered icon row, hover lift */
-        .socials { text-align: center; padding-top: 6px; }
-        .socials-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; color: var(--dim); margin-bottom: 16px; }
-        .social-row { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
-        .social { width: 54px; height: 54px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; color: var(--text); transition: transform .15s, border-color .15s, box-shadow .15s; }
-        .social:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 8px 24px rgba(74,132,250,.25); opacity: 1; }
-
-        footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 20px 0 0; text-align: center; font-size: 0.76rem; color: var(--dim); }
+        footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 20px 0 0; text-align: center; font-size: 0.76rem; color: var(--dim); }
 
         @media (max-width: 620px) {
           .hero { padding-top: 48px; justify-content: center; text-align: center; }
           .hero-text p { max-width: none; }
           .tags { justify-content: center; }
+          .cards { grid-template-columns: 1fr; }
         }
-      `}</style>
+      ` }} />
 
       <div className="wrap">
         <div className="hero">
@@ -110,7 +137,10 @@ export default function Hub() {
         </div>
 
         <div className="cards">
-          <a className="card" href="/multichat">
+          {/* /multichat with no channel parameters is the generator. A card link
+              carries none, so these reach the generator directly with no
+              redirect hop. */}
+          <a className="card" href={CANONICAL_MULTICHAT_ROUTE}>
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
               <span className="cb cb-kick">Kick</span>
@@ -126,26 +156,35 @@ export default function Hub() {
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
+          {/* The counter is a panel in that same generator, so this is an anchor
+              into it rather than a separate route. */}
+          <a className="card" href={CANONICAL_COUNTER_ROUTE}>
+            <p className="card-kicker">Free tool</p>
+            <div className="card-badges">
+              <span className="cb cb-kick">Kick</span>
+              <span className="cb cb-tw">Twitch</span>
+              <span className="cb cb-yt">YouTube</span>
+              <span className="cb cb-tt">TikTok</span>
+            </div>
+            <h2>viewer counter — real-time counts</h2>
+            <p>
+              Create an OBS viewer-count overlay for Kick, Twitch, YouTube &amp;
+              TikTok. Real-time counts with offline platforms sliding out. Its own
+              browser source, generated alongside the chat overlay.
+            </p>
+            <span className="card-cta">Open the generator →</span>
+          </a>
         </div>
 
-        <div className="banner">
-          <p><strong>More tools are on the way.</strong> multichat is the first — follow me to catch what&rsquo;s next.</p>
-          <a href="https://guns.lol/gxufy" target="_blank" rel="noreferrer">Follow @Gxufy_</a>
-        </div>
-
-        <div className="socials">
-          <p className="socials-title">Socials &amp; contact</p>
-          <div className="social-row">
-            {SOCIALS.map(s => (
-              <a key={s.label} className="social" href={s.href} target="_blank" rel="noreferrer" title={s.label}>
-                {s.icon}
-              </a>
-            ))}
-          </div>
-        </div>
+        {/* One CTA, not an announcement card wrapped around a small button. The
+            per-network icon buttons are gone: they all led to profiles this link
+            hub already lists, so they were three ways to reach the same place. */}
+        <a className="follow-cta" href={FOLLOW_HREF} target="_blank" rel="noreferrer">
+          {FOLLOW_LABEL}
+        </a>
 
         <footer>
-          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href="/multichat">/multichat</a></p>
+          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href={CANONICAL_MULTICHAT_ROUTE}>{CANONICAL_MULTICHAT_ROUTE}</a></p>
         </footer>
       </div>
     </>

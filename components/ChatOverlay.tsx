@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import type { OverlayConfig } from '../pages/multichat';
+import type { MultichatConfig } from '../lib/multichatConfig';
 import type { ParsedMessage } from '../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../lib/render';
 import type { Platform } from '../lib/types';
+import { overlayFontCss } from '../lib/overlayFonts';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -11,14 +12,32 @@ export interface PinnedState {
 }
 
 interface Props {
-  config: OverlayConfig;
+  config: MultichatConfig;
   messages: ParsedMessage[];
   fadingIds: Set<string>;
   pinnedMessage: PinnedState | null;
   showLoader: boolean;
+  /**
+   * Whether `sourceTag=` was actually present in the URL.
+   *
+   * The parser defaults the field to 'icon', so the config alone cannot tell an
+   * explicit `sourceTag=icon` from an omitted parameter. Only the raw query can,
+   * and the distinction matters: an omitted parameter keeps the old
+   * single-platform behaviour of showing no marker, while an explicit value is
+   * always honoured. Defaults to false so existing callers are unaffected.
+   */
+  sourceTagExplicit?: boolean;
 }
 
-const FONT_FAMILIES: Record<string, string> = {
+/**
+ * `font=` value → CSS `font-family`, the overlay's own resolution.
+ *
+ * Exported because the generator's font picker previews each option in the face
+ * it names, and it must name the same faces the overlay will actually draw. It
+ * previously kept a third copy of this table, so a family could be renamed here
+ * and the picker would go on previewing the old one.
+ */
+export const FONT_FAMILIES: Record<string, string> = {
   default:     'inherit',
   baloo:       "'Baloo Tammudu 2', cursive",
   segoe:       "'Segoe UI', sans-serif",
@@ -152,22 +171,34 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
 
-export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader }: Props) {
-  const cfg = config as OverlayConfig & {
-    font?:string; stroke?:string; emoteScale?:number;
-    hideNames?:boolean;
-  };
+export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false }: Props) {
+  /* Fully typed by MultichatConfig — the schema already declares every field
+     read below, so no intersection or cast is needed. */
+  const cfg = config;
 
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
   const filterVal  = getShadowFilter(cfg.textShadow);
   const strokeVal  = getStroke(cfg.stroke ?? 'none');
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'default'] ?? 'inherit';
+  /* Naming a family does not load it. Only the selected face is requested, and
+     system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
+  const fontCss    = overlayFontCss(cfg.font);
   const emoteScale = cfg.emoteScale ?? 1;
   const emoteMaxH  = `${parseFloat(sz.emoteMaxH) * emoteScale}px`;
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
-  // source tags only matter when 2+ platforms are configured
+  /* Source tag mode.
+     An explicit sourceTag= always wins, for one platform or four. With no
+     parameter, the old behaviour stands: a single-platform overlay shows no
+     marker (nothing to disambiguate), a multi-platform one shows icons.
+
+     The bug this replaces ignored cfg.sourceTag entirely whenever fewer than two
+     platforms were configured, so dot, label, and icon were all unreachable from
+     a one-platform URL and every value rendered identically. */
   const multiPlatform = [cfg.kick || cfg.channel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length > 1;
+  const tagMode: SourceTagMode = sourceTagExplicit
+    ? cfg.sourceTag
+    : (multiPlatform ? 'icon' : 'none');
 
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most
@@ -215,7 +246,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={cfg.hideNames??false}
-        tagMode={multiPlatform ? (cfg.sourceTag ?? 'icon') : 'none'}
+        tagMode={tagMode}
         showAvatar={cfg.showAvatars ?? false} />
     </div>
   );
@@ -223,6 +254,22 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   return (
     <>
       <Head>
+        {/* The selected web font. Without this the overlay named a family it had
+            never fetched, so every Google face — including the generator's
+            default, Open Sans — fell back to generic sans-serif in OBS while the
+            generator preview, which loads them for its own UI, showed the real
+            face. `display=swap` keeps text visible while it loads. */}
+        {fontCss && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            {/* dangerouslySetInnerHTML, not a text child: React escapes the
+                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
+                inside a <style> raw-text element, so the @import would be an
+                invalid URL token and load nothing. */}
+            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
+          </>
+        )}
         <style>{`
           /* Exact chatis body reset from style.css
              Also reset #__next (Next.js wrapper) so it doesn't
@@ -233,7 +280,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             overflow: hidden !important;
             height: 100vh !important;
             position: relative !important;
-            background: ${(cfg as any).bgColor || 'transparent'} !important;
+            background: ${cfg.bgColor || 'transparent'} !important;
           }
           /* Next.js inserts #__next between <body> and our content.
              Make it invisible to layout so position:absolute;bottom:0
@@ -335,7 +382,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
           fontFamily={fontFamily} filterVal={filterVal} strokeVal={strokeVal}
-          hideNames={cfg.hideNames??false}
+          hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
 
@@ -355,9 +402,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         bottom:     0,
         overflow:   'hidden',
         background: 'transparent',
-        color:      (cfg as any).fontColor || 'white',
-        fontWeight: (cfg as any).msgBold === false ? 400 : 800,
-        textTransform: (cfg as any).msgCaps ? 'uppercase' as const : undefined,
+        color:      cfg.fontColor || 'white',
+        fontWeight: cfg.msgBold === false ? 400 : 800,
+        textTransform: cfg.msgCaps ? 'uppercase' as const : undefined,
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
@@ -375,27 +422,53 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   );
 }
 
-/* PinBanner — StreamNook-style persistent pin card.
- * Stays visible while pinned (no auto-hide); after 15s collapses to a
- * thin one-line bar (StreamNook's pinned_start_collapsed pattern).
- * Glassmorphism card with pin header and "Pinned by X" footer. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames }: {
+/* PinBanner — 5-second fade-out pin banner.
+ *
+ * Timing cycle (per msg.id):
+ *   0 ms    → rendered, opacity 1
+ *   4600 ms → opacity becomes 0 (400 ms fade)
+ *   5000 ms → unmounted (stop rendering)
+ *
+ * Two states: `opacity` (number 0/1) and `mounted` (boolean).
+ * Two timers: fade timer at 4600 ms, unmount timer at 5000 ms.
+ * A different msg.id restarts the complete cycle.
+ * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
+ * clears both timers in useEffect cleanup. */
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
   filterVal:string; strokeVal:string;
   hideNames:boolean;
+  /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
+     leaves no marker here either. */
+  tagMode:SourceTagMode;
 }) {
   const { msg, pinnedBy } = pinned;
-  const [collapsed, setCollapsed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const [opacity, setOpacity] = useState(1);
+  const [mounted, setMounted] = useState(true);
+  const timersRef = useRef<{ fade: ReturnType<typeof setTimeout>|null; unmount: ReturnType<typeof setTimeout>|null }>({ fade: null, unmount: null });
 
   useEffect(() => {
-    setCollapsed(false);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCollapsed(true), 15000);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    // Reset cycle on new msg.id or initial mount
+    setOpacity(1);
+    setMounted(true);
+
+    // Clear any previous timers (handles msg.id change + parent unmount)
+    if (timersRef.current.fade) clearTimeout(timersRef.current.fade);
+    if (timersRef.current.unmount) clearTimeout(timersRef.current.unmount);
+
+    timersRef.current.fade = setTimeout(() => setOpacity(0), 4600);
+    timersRef.current.unmount = setTimeout(() => setMounted(false), 5000);
+
+    return () => {
+      if (timersRef.current.fade) clearTimeout(timersRef.current.fade);
+      if (timersRef.current.unmount) clearTimeout(timersRef.current.unmount);
+    };
   }, [msg.id]);
 
+  /* Entry animation from the original banner + 400 ms opacity fade-out
+   * controlled by state. The 150 ms slide-in runs once on mount;
+   * opacity transitions from 1 → 0 over 400 ms starting at 4600 ms. */
   const shell: React.CSSProperties = {
     position:'absolute', top:0, left:0, right:0, zIndex:10,
     background:'rgba(12,12,16,0.72)',
@@ -407,22 +480,13 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
     color:'white',
     wordBreak:'break-word', overflowWrap:'break-word',
     overflow:'hidden',
+    opacity,
+    transition:'opacity 400ms ease-in-out',
     ...(filterVal ? { filter:filterVal } : {}),
     ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
   };
 
-  if (collapsed) {
-    // Thin bar: pin icon + name + truncated single-line text
-    return (
-      <div style={{ ...shell, padding:'4px 10px', fontSize:'0.55em', display:'flex', alignItems:'center', gap:6 }}>
-        <span style={{ opacity:0.7, flexShrink:0, display:'inline-flex' }}><PinSVG /></span>
-        <span style={{ color:msg.identity.color, flexShrink:0 }}>{msg.identity.username}</span>
-        <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', opacity:0.9, fontWeight:600, minWidth:0 }}>
-          {msg.message.map((node,i) => <Fragment key={i}>{node}</Fragment>)}
-        </span>
-      </div>
-    );
-  }
+  if (!mounted) return null;
 
   return (
     <div style={{ ...shell, padding:'6px 10px 8px', fontSize:sz.fontSize }}>
@@ -431,7 +495,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       </div>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode="icon" showAvatar={false} />
+        tagMode={tagMode} showAvatar={false} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}

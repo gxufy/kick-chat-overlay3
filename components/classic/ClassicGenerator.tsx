@@ -1,0 +1,1018 @@
+/* The multichat-gxufy generator: the original Classic page, revamped.
+ *
+ * This is the canonical generator, served at a channel-less /multichat. It keeps
+ * the Classic identity — centred branded header, platform badges, the dark
+ * gradient background, one polished card per section, compact platform inputs,
+ * the two-column control table, the pill switches — and replaces what used to sit
+ * underneath it.
+ *
+ * What changed underneath, and why it matters:
+ *
+ *   - Controls are rendered from the tool catalogs (24 MultiChat, 6 Counter)
+ *     rather than hand-written <select>s and hardcoded <option> lists. The
+ *     Classic page previously restated every label and option, so a catalog entry
+ *     could change without this page noticing. Now it cannot.
+ *   - `sourceTag` is the full four-value enum, not the legacy platformIcons
+ *     boolean that could only reach 'icon' and 'none'.
+ *   - Both previews are real overlays in iframes at the exact generated URLs, so
+ *     Preview, URL, Copy, and Open cannot disagree.
+ *   - The Viewer Counter is embedded as a companion panel driven by the same
+ *     counterTool descriptor — the same defaults, normalizer, serializer, and
+ *     preview frame as the standalone tool had. There is no second Counter.
+ *
+ * Layout, which is load-bearing rather than cosmetic: one column per tool. The
+ * chat and Counter outputs sit aligned beside each other in the first row, and
+ * each settings card sits directly beneath its own output in the second, with
+ * commands and OBS setup full width below. The DOM order is the stacked order —
+ * header, channels, chat preview and URL, chat settings, Counter preview and URL,
+ * Counter settings, commands, OBS setup — so a phone gets that sequence with no
+ * reordering, and the desktop arrangement is named grid areas over that same tree
+ * rather than a second one.
+ *
+ * Browser-safe: no server-only imports. The Twitch connection id is never
+ * rendered, logged, or placed in a query string — it reaches only the generated
+ * overlay URL's fragment, through the descriptor's own `context`.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Head from 'next/head';
+import Link from 'next/link';
+import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
+import ClassicSetting, { type SettingRange } from './ClassicSetting';
+import ClassicTwitchConnect from './ClassicTwitchConnect';
+import { CLASSIC_GENERATOR_CSS } from './classicStyles';
+import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
+import {
+  OVERLAY_FONT_SPECS,
+  UI_FONT_SPECS,
+  googleFontsImportCss,
+} from '@/lib/overlayFonts';
+import { FONT_FAMILIES } from '@/components/ChatOverlay';
+import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
+import { multichatTool } from '@/lib/tools/multichat/config';
+import { counterTool } from '@/lib/tools/counter/config';
+import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/multichat/runtime';
+import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
+import type { ViewerCounterStyle, ViewerPlatform } from '@/lib/viewerCounterConfig';
+import type { ToolChannels } from '@/lib/tools/registry';
+import type { CatalogAvailability, SettingValue } from '@/lib/tools/settingTypes';
+import {
+  colorSetting,
+  multiSelectSetting,
+  selectSetting,
+  textSetting,
+  toggleSetting,
+} from '@/lib/tools/settingTypes';
+import { buildOverlayUrl } from '@/lib/tools/toolContext';
+import { consumeWorkspaceDraft, writeWorkspaceDraft } from '@/lib/workspaceStorage';
+import { COUNTER_SECTION_ID } from '@/lib/multichatRouting';
+
+/* Every face this page needs: its own UI typography plus all overlay families,
+   because the font picker renders each option in the face it names. The overlay
+   routes deliberately request only the single family their URL selected.
+
+   An @import inside a <style>, never a stylesheet <link> — next/head warns about
+   the latter on every render, and a repo test greps for it. */
+const GENERATOR_FONT_CSS = googleFontsImportCss([
+  ...Object.values(UI_FONT_SPECS),
+  ...Object.values(OVERLAY_FONT_SPECS),
+]);
+
+/** How long the copied confirmation stays on a Copy button. */
+const COPIED_MS = 2000;
+
+/* The two catalogs, looked up once at module scope. Every lookup asserts the key
+   exists with the expected control type, so a catalog rename breaks the build
+   here rather than silently dropping a control from the page. */
+const MC = multichatTool.catalog;
+const VC = counterTool.catalog;
+
+const MC_TEXT_SIZE = selectSetting(MC, 'textSize');
+const MC_FONT = selectSetting(MC, 'font');
+const MC_STROKE = selectSetting(MC, 'stroke');
+const MC_TEXT_SHADOW = selectSetting(MC, 'textShadow');
+const MC_ANIMATION = selectSetting(MC, 'animation');
+const MC_EMOTE_SCALE = textSetting(MC, 'emoteScale');
+const MC_SOURCE_TAG = selectSetting(MC, 'sourceTag');
+const MC_SEVENTV_EMOTES = toggleSetting(MC, 'sevenTVEmotesEnabled');
+const MC_SEVENTV_COSMETICS = toggleSetting(MC, 'sevenTVCosmeticsEnabled');
+const MC_PAINT_SHADOWS = toggleSetting(MC, 'paintShadows');
+const MC_FADE_ENABLED = toggleSetting(MC, 'fadeEnabled');
+const MC_FADE = textSetting(MC, 'fade');
+const MC_MSG_BOLD = toggleSetting(MC, 'msgBold');
+const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
+const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
+const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
+const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
+const MC_SHOW_PIN = toggleSetting(MC, 'showPinEnabled');
+const MC_PIN_PLATFORMS = multiSelectSetting(MC, 'pinPlatforms');
+const MC_BG_COLOR = colorSetting(MC, 'bgColor');
+const MC_FONT_COLOR = colorSetting(MC, 'fontColor');
+const MC_BOT_NAMES = textSetting(MC, 'botNames');
+const MC_USER_BL = textSetting(MC, 'userBL');
+const MC_PREFIX_BL = textSetting(MC, 'prefixBL');
+
+const VC_COMBINED = toggleSetting(VC, 'combined');
+const VC_ICONS = toggleSetting(VC, 'icons');
+const VC_BG = toggleSetting(VC, 'bg');
+const VC_ALIGN = selectSetting(VC, 'align');
+const VC_TEXT_SHADOW = selectSetting(VC, 'textShadow');
+const VC_STROKE = selectSetting(VC, 'stroke');
+
+/* The two settings that are genuinely numeric, drawn as sliders.
+   Bounds are the ones the overlay's own parser accepts, not new limits: the fade
+   parser is parseInt on a seconds value, and emoteScale is documented in its own
+   label as 0–3. Both keep their blank state, which suppresses the parameter — a
+   slider alone cannot express that, hence the button. */
+const FADE_RANGE: SettingRange = {
+  min: 1,
+  max: 120,
+  step: 1,
+  unit: 's',
+  blankLabel: 'Never',
+};
+
+const EMOTE_SCALE_RANGE: SettingRange = {
+  min: 0.5,
+  max: 3,
+  step: 0.1,
+  unit: '×',
+  blankLabel: 'Default',
+};
+
+/* Platform chip classes, matching the Classic tag colours. */
+const PLATFORM_TAG: Record<string, string> = {
+  kick: 'kick-tag',
+  twitch: 'tw-tag',
+  youtube: 'yt-tag',
+  tiktok: 'tt-tag',
+};
+
+export default function ClassicGenerator({
+  /** True when the visitor arrived asking to start at the Viewer Counter. */
+  focusCounter = false,
+}: {
+  focusCounter?: boolean;
+}) {
+  /* ---------------------------------------------------------------- */
+  /* State                                                            */
+  /* ---------------------------------------------------------------- */
+
+  const [chatStyle, setChatStyle] = useState<MultichatWorkspaceStyle>(
+    multichatTool.defaults,
+  );
+  const [counterStyle, setCounterStyle] = useState<ViewerCounterStyle>(
+    counterTool.defaults,
+  );
+  /* One channel map, shared by both tools. The Classic page has always had a
+     single set of platform inputs feeding chat and the counter alike, and that is
+     the point of the embedded panel — you fill in your channels once. The two
+     tools' styles stay completely separate objects, so restyling chat cannot
+     alter an already-generated counter URL. */
+  const [channels, setChannels] = useState<ToolChannels<string>>({});
+  const [runtime, setRuntime] = useState<MultichatRuntime>(EMPTY_MULTICHAT_RUNTIME);
+  const [previewWhite, setPreviewWhite] = useState(false);
+  const [counterPreviewWhite, setCounterPreviewWhite] = useState(false);
+  const [baseUrl, setBaseUrl] = useState('https://multichat-gxufy.com');
+  const [copiedChat, setCopiedChat] = useState(false);
+  const [copiedCounter, setCopiedCounter] = useState(false);
+
+  /* Rendered origin. Kept out of the initial state so the server-rendered markup
+     and the first client render agree; the effect corrects it immediately. */
+  useEffect(() => {
+    setBaseUrl(window.location.origin);
+  }, []);
+
+  /* Arrived from the retired /tools/counter route, or with ?tab=counter from an
+     old bookmark. The Counter panel is a real anchor target, so the browser
+     handles a plain `#viewer-counter` itself — but `?tab=counter` has no
+     fragment to act on, and a fragment that arrives before hydration can be
+     scrolled past as the rest of the page mounts. Scrolling here covers both. */
+  useEffect(() => {
+    if (!focusCounter) return;
+    document.getElementById(COUNTER_SECTION_ID)?.scrollIntoView({ block: 'start' });
+  }, [focusCounter]);
+
+  /* ---------------------------------------------------------------- */
+  /* Change handlers                                                  */
+  /* ---------------------------------------------------------------- */
+
+  const changeChat = useCallback((key: keyof MultichatWorkspaceStyle & string, next: SettingValue) => {
+    setChatStyle((current) => multichatTool.normalize({ ...current, [key]: next }));
+  }, []);
+
+  const changeCounter = useCallback((key: keyof ViewerCounterStyle & string, next: SettingValue) => {
+    setCounterStyle((current) => counterTool.normalize({ ...current, [key]: next }));
+  }, []);
+
+  const changeChannel = useCallback((platform: string, raw: string) => {
+    setChannels((current) => ({ ...current, [platform]: raw }));
+  }, []);
+
+  /* ---------------------------------------------------------------- */
+  /* Runtime reconciliation                                           */
+  /* ---------------------------------------------------------------- */
+
+  /* Mirror the typed Twitch channel into runtime, so the pin gating rule can be
+     evaluated. Keyed on `channels` rather than done in the change handler, so
+     every path that sets a channel — typing, draft restore, Use connected
+     channel — folds through the same rule. */
+  useEffect(() => {
+    const fromChannels = multichatTool.runtime?.fromChannels;
+    if (!fromChannels) return;
+    setRuntime((current) => {
+      const next = fromChannels(current, channels as ToolChannels<MultichatPlatform>);
+      /* Bail out when nothing changed, so this cannot loop. */
+      return next === current ? current : next;
+    });
+  }, [channels]);
+
+  /* A runtime change can invalidate a style choice — a selected pin platform
+     whose capability just disappeared. The descriptor reconciles that in `sync`.
+     An effect on `runtime` rather than logic in a handler, so connecting,
+     disconnecting, and editing the channel until it stops matching are all
+     covered by one rule and no ordering leaves a stale selection behind. */
+  useEffect(() => {
+    const sync = multichatTool.runtime?.sync;
+    if (!sync) return;
+    setChatStyle((current) => {
+      const next = sync(current, runtime);
+      return next === current ? current : multichatTool.normalize(next);
+    });
+  }, [runtime]);
+
+  /* ---------------------------------------------------------------- */
+  /* Draft persistence across OAuth                                   */
+  /* ---------------------------------------------------------------- */
+
+  /* Live state for the draft write. A ref rather than dependencies, so
+     `persistDraft` keeps a stable identity — it is handed to the connection
+     panel, and a new function on every keystroke would re-render it for nothing. */
+  const live = useRef({ chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite });
+  live.current = { chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite };
+
+  /* Both tools' drafts, written immediately before the OAuth navigation.
+     Two keys, because the storage is keyed per tool and the two styles are
+     different shapes — and because the Counter's settings must survive an OAuth
+     round trip the chat side initiated, which is the whole reason this writes
+     twice rather than once. */
+  const persistDraft = useCallback(() => {
+    const l = live.current;
+    writeWorkspaceDraft(multichatTool.id, {
+      style: l.chatStyle,
+      channels: l.channels,
+      background: l.previewWhite ? 'light' : 'checker',
+    });
+    writeWorkspaceDraft(counterTool.id, {
+      style: l.counterStyle,
+      channels: l.channels,
+      background: l.counterPreviewWhite ? 'light' : 'checker',
+    });
+  }, []);
+
+  /* Restore on mount, and only on mount. Each draft is consumed as it is read,
+     so a second effect run — Strict Mode double-invokes in development — finds
+     nothing and leaves whatever the user has since typed alone.
+
+     Everything restored goes through a tool's own normalizer, so a hand-edited
+     sessionStorage entry can produce defaults but not invalid state. */
+  useEffect(() => {
+    const chatDraft = consumeWorkspaceDraft(multichatTool.id);
+    const counterDraft = consumeWorkspaceDraft(counterTool.id);
+
+    if (chatDraft) {
+      setChatStyle(multichatTool.normalize(chatDraft.style as Partial<MultichatWorkspaceStyle>));
+      if (chatDraft.background === 'light') setPreviewWhite(true);
+    }
+    if (counterDraft) {
+      setCounterStyle(counterTool.normalize(counterDraft.style as Partial<ViewerCounterStyle>));
+      if (counterDraft.background === 'light') setCounterPreviewWhite(true);
+    }
+
+    /* Channels are shared, so they are restored from whichever draft has them —
+       chat first, since that is the side that initiates OAuth. Keys are filtered
+       to platforms this page actually has a field for, so a draft written by a
+       different version cannot introduce a channel key that would then be
+       serialized into an overlay URL. */
+    const source = chatDraft ?? counterDraft;
+    if (source) {
+      const allowed = new Set<string>([
+        ...multichatTool.platforms.map((p) => p.key),
+        ...counterTool.platforms.map((p) => p.key),
+      ]);
+      const restored: ToolChannels<string> = {};
+      for (const [key, value] of Object.entries(source.channels)) {
+        if (allowed.has(key)) restored[key] = value;
+      }
+      setChannels(restored);
+    }
+  }, []);
+
+  /* ---------------------------------------------------------------- */
+  /* Derived URLs                                                     */
+  /* ---------------------------------------------------------------- */
+
+  /* Which pin options the descriptor currently considers unavailable.
+     Recomputed from runtime, so an option can become available while the page is
+     open — connecting an account does not need a reload. */
+  const availability: CatalogAvailability = useMemo(
+    () => (multichatTool.runtime?.optionAvailability?.(runtime) ?? {}) as CatalogAvailability,
+    [runtime],
+  );
+
+  /* The descriptor's own serializer. Not a second implementation: this is the
+     same call the retired workspace made and the same one the overlay parses, so
+     a URL from this page is byte-identical for the same state. */
+  const chatQuery = useMemo(
+    () => multichatTool.serialize(channels as ToolChannels<MultichatPlatform>, chatStyle),
+    [channels, chatStyle],
+  );
+
+  /* One string for the preview, the readonly field, Copy, and Open — so those
+     four cannot disagree. The connection id enters only here, only as a fragment,
+     and only when the descriptor's `context` says it is genuinely usable. */
+  const chatUrl = useMemo(
+    () =>
+      buildOverlayUrl({
+        baseUrl,
+        route: multichatTool.overlayRoute,
+        query: chatQuery,
+        context: multichatTool.context?.(chatStyle, runtime),
+      }),
+    [baseUrl, chatQuery, chatStyle, runtime],
+  );
+
+  const counterQuery = useMemo(
+    () => counterTool.serialize(channels as ToolChannels<ViewerPlatform>, counterStyle),
+    [channels, counterStyle],
+  );
+
+  /* No context, so no fragment: the Counter never carries a connection id, and
+     the serializer's own normalization is what keeps 'undefined' out of it. */
+  const counterUrl = useMemo(
+    () =>
+      buildOverlayUrl({
+        baseUrl,
+        route: counterTool.overlayRoute,
+        query: counterQuery,
+      }),
+    [baseUrl, counterQuery],
+  );
+
+  /* Each tool decides for itself what counts as configured — MultiChat accepts
+     anything typed, the Counter validates against its own normalizer — so a name
+     that is valid for chat but not for the counter shows one preview, not two. */
+  const chatConfigured =
+    multichatTool.configuredPlatforms(channels as ToolChannels<MultichatPlatform>).length > 0;
+  const counterConfigured =
+    counterTool.configuredPlatforms(channels as ToolChannels<ViewerPlatform>).length > 0;
+
+  /* Whether the URL actually carries a connection fragment. Drives the warning
+     beside Copy — the fragment is a live credential, so the user is told before
+     they paste it anywhere other than their own OBS. */
+  const chatHasFragment = chatUrl.includes('#');
+
+  const copyChat = () => {
+    void navigator.clipboard?.writeText(chatUrl);
+    setCopiedChat(true);
+    setTimeout(() => setCopiedChat(false), COPIED_MS);
+  };
+
+  const copyCounter = () => {
+    void navigator.clipboard?.writeText(counterUrl);
+    setCopiedCounter(true);
+    setTimeout(() => setCopiedCounter(false), COPIED_MS);
+  };
+
+  /* The face the picker previews itself in, and each option in. Read from the
+     overlay's own table, so the picker cannot advertise a family the overlay
+     resolves differently. */
+  const fontStack = FONT_FAMILIES[chatStyle.font];
+
+  return (
+    <>
+      <Head>
+        <title>multichat-gxufy | Kick · Twitch · YouTube · TikTok Chat Overlay</title>
+        <meta
+          name="description"
+          content="Free multi-platform chat overlay for OBS by gxufy — Kick, Twitch, YouTube & TikTok in one browser source. 7TV/BTTV/FFZ emotes, real badges, name-paints, pins, and a live viewer counter. No login required."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* dangerouslySetInnerHTML because React would escape `&` and `'`, and a
+            <style> element does not decode entities — escaped, the sheet's
+            `&family=` separators would collapse to a single family. */}
+        <style dangerouslySetInnerHTML={{ __html: GENERATOR_FONT_CSS }} />
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              '@font-face{font-family:Alsina;src:url(https://chatis.is2511.com/v2/styles/Alsina_Ultrajada.ttf);}',
+          }}
+        />
+      </Head>
+
+      <style dangerouslySetInnerHTML={{ __html: CLASSIC_GENERATOR_CSS }} />
+
+      {/* Skip link: the header and four channel fields come before the settings,
+          so a keyboard or screen-reader user otherwise tabs through all of it. */}
+      <a href="#generator-main" className="skip-link">
+        Skip to the generator
+      </a>
+
+      <div className="page">
+        {classicHeader()}
+
+        <main id="generator-main" tabIndex={-1}>
+          {/* The page's only h1. Visually hidden: the branded wordmark above is
+              the visual title, but a screen reader needs one heading that says
+              what this page is before the section headings under it. */}
+          <h1 className="sr-only">
+            multichat-gxufy — chat overlay and viewer counter generator for OBS
+          </h1>
+
+          {/* Called as functions, not rendered as <Component /> elements. A
+              component declared inside this body is a new type on every render,
+              which would unmount and remount its whole subtree on every
+              keystroke — losing focus in the field being typed into. Calling
+              them just splices their JSX into this tree. */}
+          {channelCard()}
+
+          {/* One grid, six children, named areas. DOM order is the mobile order —
+              chat output, chat settings, counter output, counter settings, then
+              the two full-width cards — so the phone stack is this tree unchanged
+              and no control is duplicated per breakpoint.
+
+              Desktop places them into:
+                "chat-output    counter-output"
+                "chat-settings  counter-settings"
+                "commands       commands"
+                "obs            obs"
+              so the two previews stay aligned beside each other and each settings
+              card sits directly beneath the output it belongs to. Grid placement
+              only — the reading and tab order is always the DOM order above. */}
+          <div className="tool-grid">
+            {chatOutputPanel()}
+            {chatSettingsPanel()}
+            {counterOutputPanel()}
+            {counterSettingsPanel()}
+            {commandsCard()}
+            {obsSetupCard()}
+          </div>
+        </main>
+      </div>
+
+      {classicFooter()}
+    </>
+  );
+
+  /* ---------------------------------------------------------------- */
+  /* Sections                                                         */
+  /* ---------------------------------------------------------------- */
+
+  function classicHeader() {
+    return (
+      /* The original compact strip: logo, wordmark, tagline, platform chips. */
+      <header className="header-strip">
+        <Link href="/" className="home-link" title="Back to homepage">
+          ← Home
+        </Link>
+        <Link href="/" aria-label="multichat-gxufy home">
+          <img src="/tpl.webp" alt="" className="header-logo" />
+        </Link>
+        <div className="header-copy">
+          <p className="header-title">multichat-gxufy</p>
+          <p className="header-sub">Every chat. One overlay. No login.</p>
+          <div className="platform-row">
+            <span className="platform-chip kick-tag">Kick</span>
+            <span className="platform-chip tw-tag">Twitch</span>
+            <span className="platform-chip yt-tag">YouTube</span>
+            <span className="platform-chip tt-tag">TikTok</span>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  /** The shared platform inputs, plus the inline Twitch connection. */
+  function channelCard() {
+    return (
+      <section className="card hero" aria-labelledby="channels-heading">
+        <h2 id="channels-heading" className="section-title">
+          Your channels
+        </h2>
+
+        <div className="platform-inputs">
+          {multichatTool.platforms.map((platform) => {
+            const inputId = `channel-${platform.key}`;
+            return (
+              <div className="platform-input" key={platform.key}>
+                <label
+                  htmlFor={inputId}
+                  className={`platform-tag ${PLATFORM_TAG[platform.key] ?? ''}`}
+                >
+                  {platform.label}
+                </label>
+                <input
+                  id={inputId}
+                  type="text"
+                  name={platform.key}
+                  placeholder={platform.placeholder}
+                  value={channels[platform.key] ?? ''}
+                  onChange={(e) => changeChannel(platform.key, e.target.value)}
+                />
+                {/* Only Twitch has a connection: it is the one platform whose
+                    native pins need authorization. */}
+                {platform.key === 'twitch' ? (
+                  <ClassicTwitchConnect
+                    runtime={runtime}
+                    onRuntimeChange={setRuntime}
+                    onUseConnectedChannel={(login) => changeChannel('twitch', login)}
+                    onBeforeLeave={persistDraft}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="platform-hint">
+          Fill in any one — or combine platforms into a single overlay. These
+          channels feed both the chat overlay and the viewer counter. No login
+          needed.
+        </p>
+      </section>
+    );
+  }
+
+  /** Chat preview, generated URL, Copy, Open. */
+  function chatOutputPanel() {
+    return (
+      <section
+        className="card panel-chat-output"
+        aria-labelledby="chat-output-heading"
+      >
+        <h2 id="chat-output-heading" className="section-title">
+          Chat overlay
+        </h2>
+
+        <div className="preview-label">
+          <span>Preview</span>
+          <button
+            type="button"
+            onClick={() => setPreviewWhite((p) => !p)}
+            aria-pressed={previewWhite}
+          >
+            {previewWhite ? 'Light background' : 'Transparent background'}
+          </button>
+        </div>
+
+        {/* The backdrop is on the wrapper, never inside the overlay document and
+            never in the URL: it exists to eyeball transparency, and it cannot
+            reach OBS. */}
+        <div
+          className={`preview-surface ${previewWhite ? 'white' : 'checkered'}`}
+          style={chatStyle.bgColor ? { background: chatStyle.bgColor } : undefined}
+        >
+          {chatConfigured ? (
+            /* The real overlay at the exact URL below, so the preview and the
+               copied URL cannot disagree. No iframe exists until a channel is
+               configured, so nothing connects or polls before then. */
+            <OverlayPreviewFrame
+              url={chatUrl}
+              configured={chatConfigured}
+              title="Live chat overlay preview"
+              height={MULTICHAT_OBS_SIZE.height}
+            />
+          ) : (
+            <p className="preview-empty">
+              Enter a channel above to see the live overlay here.
+            </p>
+          )}
+        </div>
+
+        <p className="card-note">{multichatTool.previewNote}</p>
+
+        <div className="url-box">
+          <div className="url-code" aria-label="Generated MultiChat overlay URL">
+            {chatUrl}
+          </div>
+          {/* Both actions in one group, so a URL that wraps to three lines makes
+              the field taller and leaves the buttons their own height. */}
+          <div className="url-actions">
+            <button
+              type="button"
+              onClick={copyChat}
+              className={`url-copy${copiedChat ? ' ok' : ''}`}
+            >
+              {copiedChat ? '✓ Copied' : 'Copy'}
+            </button>
+            <a
+              className="url-open"
+              href={chatUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open
+            </a>
+          </div>
+          {/* Announced, not just shown: the URL gains a fragment while the page
+              is open, and the fragment is a live credential. */}
+          <p className="url-warn" role="status">
+            {chatHasFragment
+              ? 'This URL ends in a private connection key for your Twitch pins. Paste it into your own OBS only — do not share it or post it publicly.'
+              : ''}
+          </p>
+        </div>
+        {/* Copy status, for assistive tech — the button's own label change is
+            visual only. */}
+        <p className="sr-only" role="status">
+          {copiedChat ? 'MultiChat overlay URL copied to the clipboard.' : ''}
+        </p>
+      </section>
+    );
+  }
+
+  /** Counter preview, generated URL, Copy, Open. */
+  function counterOutputPanel() {
+    return (
+      <section
+        className="card panel-counter-output"
+        id={COUNTER_SECTION_ID}
+        aria-labelledby="counter-output-heading"
+      >
+        <h2 id="counter-output-heading" className="section-title">
+          Viewer counter
+        </h2>
+
+        <div className="preview-label">
+          <span>Preview</span>
+          {/* Independent of the chat preview's background: they are separate
+              browser sources and may be checked against different scenes. */}
+          <button
+            type="button"
+            onClick={() => setCounterPreviewWhite((p) => !p)}
+            aria-pressed={counterPreviewWhite}
+          >
+            {counterPreviewWhite ? 'Light background' : 'Transparent background'}
+          </button>
+        </div>
+
+        <div
+          className={`preview-surface ${counterPreviewWhite ? 'white' : 'checkered'}`}
+        >
+          {counterConfigured ? (
+            <OverlayPreviewFrame
+              url={counterUrl}
+              configured={counterConfigured}
+              title="Live viewer counter preview"
+              height={counterTool.obs.height}
+            />
+          ) : (
+            <p className="preview-empty">
+              Enter a channel above to see the live counter here.
+            </p>
+          )}
+        </div>
+
+        <p className="card-note">{counterTool.previewNote}</p>
+
+        <div className="url-box">
+          <div className="url-code" aria-label="Generated viewer counter URL">
+            {counterUrl}
+          </div>
+          {/* The same output row as the chat panel, class for class. */}
+          <div className="url-actions">
+            <button
+              type="button"
+              onClick={copyCounter}
+              className={`url-copy${copiedCounter ? ' ok' : ''}`}
+            >
+              {copiedCounter ? '✓ Copied' : 'Copy'}
+            </button>
+            <a
+              className="url-open"
+              href={counterUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open
+            </a>
+          </div>
+        </div>
+        <p className="sr-only" role="status">
+          {copiedCounter ? 'Viewer counter URL copied to the clipboard.' : ''}
+        </p>
+      </section>
+    );
+  }
+
+  /** All 24 MultiChat settings, in the Classic multi-column arrangement. */
+  function chatSettingsPanel() {
+    const chat = (
+      setting: Parameters<typeof ClassicSetting<MultichatWorkspaceStyle>>[0]['setting'],
+      extra?: {
+        optionStyle?: (v: string) => React.CSSProperties | undefined;
+        controlStyle?: React.CSSProperties;
+        segmented?: boolean;
+        range?: SettingRange;
+      },
+    ) => (
+      <ClassicSetting
+        key={setting.key}
+        setting={setting}
+        value={chatStyle[setting.key] as SettingValue}
+        onChange={changeChat}
+        availability={availability[setting.key]}
+        idPrefix="mc"
+        optionStyle={extra?.optionStyle}
+        controlStyle={extra?.controlStyle}
+        segmented={extra?.segmented}
+        range={extra?.range}
+      />
+    );
+
+    return (
+      <section
+        className="card panel-chat-settings"
+        aria-labelledby="chat-settings-heading"
+      >
+        <h2 id="chat-settings-heading" className="section-title">
+          Chat settings
+        </h2>
+
+        {/* Two columns once the settings half is wide enough for them, one below
+            that — grid tracks over one unchanged tree, so reading and tab order
+            follow this DOM order at every width and no control exists twice.
+            Two rather than three: this panel is one column of the grid rather
+            than the page's full width, and a third track put two words per line
+            on the longer labels. */}
+        <div className="form_table cols-2">
+          {/* How it is drawn. */}
+          <div className="form_col">
+            <p className="col-heading">Text</p>
+            {chat(MC_TEXT_SIZE, { segmented: true })}
+            {/* Each option in the face it names, and the closed control in the
+                selected one — the reason this page loads every overlay family.
+                Twelve faces, so this stays a dropdown: as pills it would be four
+                rows of unreadably small type. */}
+            {chat(MC_FONT, {
+              controlStyle: fontStack ? { fontFamily: fontStack } : undefined,
+              optionStyle: (v) =>
+                FONT_FAMILIES[v] ? { fontFamily: FONT_FAMILIES[v] } : undefined,
+            })}
+            {chat(MC_STROKE, { segmented: true })}
+            {chat(MC_TEXT_SHADOW, { segmented: true })}
+            {chat(MC_FONT_COLOR)}
+            {chat(MC_BG_COLOR)}
+          </div>
+
+          {/* How it moves and marks. */}
+          <div className="form_col">
+            <p className="col-heading">Appearance</p>
+            {chat(MC_ANIMATION, { segmented: true })}
+            {chat(MC_SOURCE_TAG, { segmented: true })}
+            {chat(MC_EMOTE_SCALE, { range: EMOTE_SCALE_RANGE })}
+            {chat(MC_FADE_ENABLED)}
+            {/* Only meaningful while fading is on, so it is only rendered then —
+                the toggle's own description states that emission depends on it. */}
+            {chatStyle.fadeEnabled ? chat(MC_FADE, { range: FADE_RANGE }) : null}
+          </div>
+
+          {/* What it shows. */}
+          <div className="form_col">
+            <p className="col-heading">Behaviour</p>
+            {chat(MC_SEVENTV_EMOTES)}
+            {chat(MC_SEVENTV_COSMETICS)}
+            {chat(MC_PAINT_SHADOWS)}
+            {chat(MC_MSG_BOLD)}
+            {chat(MC_MSG_CAPS)}
+            {chat(MC_HIDE_NAMES)}
+            {chat(MC_MENTION_COLOR)}
+            {chat(MC_MOD_ACTION)}
+            {chat(MC_SHOW_PIN)}
+            {chatStyle.showPinEnabled ? chat(MC_PIN_PLATFORMS) : null}
+          </div>
+        </div>
+
+        {/* Filters: three free-text lists, each needing the width of a line, so
+            they take the same two tracks rather than three narrow ones. */}
+        <div className="form_table cols-2">
+          <div className="form_col">
+            <p className="col-heading">Filters</p>
+            {chat(MC_BOT_NAMES)}
+            {chat(MC_PREFIX_BL)}
+          </div>
+          <div className="form_col">
+            <p className="col-heading" aria-hidden="true">
+              &nbsp;
+            </p>
+            {chat(MC_USER_BL)}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  /** All six Viewer Counter settings. */
+  function counterSettingsPanel() {
+    const vc = (
+      setting: Parameters<typeof ClassicSetting<ViewerCounterStyle>>[0]['setting'],
+      extra?: { segmented?: boolean },
+    ) => (
+      <ClassicSetting
+        key={setting.key}
+        setting={setting}
+        value={counterStyle[setting.key] as SettingValue}
+        onChange={changeCounter}
+        idPrefix="vc"
+        segmented={extra?.segmented}
+      />
+    );
+
+    return (
+      <section
+        className="card panel-counter-settings"
+        aria-labelledby="counter-settings-heading"
+      >
+        <h2 id="counter-settings-heading" className="section-title">
+          Counter settings
+        </h2>
+
+        <div className="form_table cols-2">
+          <div className="form_col">
+            <p className="col-heading">Layout</p>
+            {vc(VC_ALIGN, { segmented: true })}
+            {vc(VC_TEXT_SHADOW, { segmented: true })}
+            {vc(VC_STROKE, { segmented: true })}
+          </div>
+          <div className="form_col">
+            <p className="col-heading">Display</p>
+            {vc(VC_COMBINED)}
+            {vc(VC_ICONS)}
+            {vc(VC_BG)}
+          </div>
+        </div>
+
+        <p className="card-note">
+          The counter has its own fixed typography and never follows the chat
+          font, size, shadow, or outline — restyling chat cannot change a counter
+          URL you have already put in OBS.
+        </p>
+      </section>
+    );
+  }
+
+  /** Commands, from the parser's own metadata. */
+  function commandsCard() {
+    return (
+      <section className="card panel-commands" aria-labelledby="commands-heading">
+        <h2 id="commands-heading" className="section-title">
+          Commands &amp; help
+        </h2>
+
+        {/* Rows come from MULTICHAT_COMMANDS, which is derived from the parser's
+            own command metadata — so this table cannot document a command the
+            overlay does not implement. */}
+        <div className="cmd-table-wrap">
+          <table className="cmd-table">
+            <caption className="sr-only">
+              Chat commands the MultiChat overlay implements
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Command</th>
+                <th scope="col">What it does</th>
+                <th scope="col">Who can use it</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MULTICHAT_COMMANDS.map((command) => (
+                <tr key={command.name}>
+                  <td>{command.syntax}</td>
+                  <td>
+                    {command.detail
+                      ? `${command.summary} ${command.detail}`
+                      : command.summary}
+                  </td>
+                  <td>Moderators and the broadcaster</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="card-note">
+          Type these in any connected platform&rsquo;s chat — they act on the
+          overlay itself, so they work from Kick, Twitch, YouTube, or TikTok.
+          The overlay ignores them from everyone else.{' '}
+          <code>{MULTICHAT_COMMAND_ALIAS}</code> works as an alias for{' '}
+          <code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above. These
+          commands apply to the chat overlay only; the viewer counter has none.
+        </p>
+      </section>
+    );
+  }
+
+  /** OBS setup, for two independent browser sources. */
+  function obsSetupCard() {
+    return (
+      <section className="card panel-obs" aria-labelledby="obs-heading">
+        <h2 id="obs-heading" className="section-title">
+          OBS setup
+        </h2>
+
+        <p className="card-note" style={{ margin: '0 0 14px' }}>
+          The chat overlay and the viewer counter are two separate browser
+          sources with two different URLs. Add whichever you want — neither needs
+          the other, and they can go in different scenes, at different sizes, or
+          only one at a time.
+        </p>
+
+        {/* Two independent procedures, so they sit side by side on a wide screen
+            rather than stacking into twice the height. */}
+        <div className="setup-cols">
+        <div>
+        <p className="setup-sub">Chat overlay</p>
+        <ol className="steps">
+          <li>
+            Copy the <strong>chat overlay URL</strong> above.
+          </li>
+          <li>
+            In OBS: <strong>Add Source → Browser</strong>, then paste it into{' '}
+            <strong>URL</strong>.
+          </li>
+          <li>
+            Size it{' '}
+            <strong>
+              {MULTICHAT_OBS_SIZE.width} × {MULTICHAT_OBS_SIZE.height}
+            </strong>
+            . {MULTICHAT_OBS_ALTERNATE.width} × {MULTICHAT_OBS_ALTERNATE.height}{' '}
+            is a wider, shorter alternative that shows fewer messages.
+          </li>
+          <li>
+            Leave <strong>Shutdown source when not visible</strong> off — the
+            overlay reconnects on load, so toggling it drops recent messages.
+          </li>
+        </ol>
+        </div>
+
+        <div>
+        <p className="setup-sub">Viewer counter</p>
+        <ol className="steps">
+          <li>
+            Copy the <strong>viewer counter URL</strong> above — it is a
+            different URL, not a setting on the overlay.
+          </li>
+          <li>
+            Add a <strong>second Browser source</strong> and paste it in.
+          </li>
+          <li>
+            Size it{' '}
+            <strong>
+              {counterTool.obs.width} × {counterTool.obs.height}
+            </strong>
+            .
+          </li>
+        </ol>
+        </div>
+        </div>
+
+        <p className="card-note">
+          Both backgrounds are already transparent, so no custom CSS is needed.
+          The preview background buttons on this page only change this page —
+          they are never part of either URL and never reach OBS.
+        </p>
+      </section>
+    );
+  }
+
+  function classicFooter() {
+    return (
+      <footer>
+        <p>
+          multichat-gxufy with 🕊️ —{' '}
+          <a href="https://guns.lol/gxufy" target="_blank" rel="noreferrer">
+            https://guns.lol/gxufy
+          </a>
+        </p>
+        <p>
+          Not affiliated with{' '}
+          <a href="https://kick.com" target="_blank" rel="noreferrer">
+            Kick
+          </a>
+          ,{' '}
+          <a href="https://twitch.tv" target="_blank" rel="noreferrer">
+            Twitch
+          </a>
+          ,{' '}
+          <a href="https://youtube.com" target="_blank" rel="noreferrer">
+            YouTube
+          </a>
+          , or{' '}
+          <a href="https://tiktok.com" target="_blank" rel="noreferrer">
+            TikTok
+          </a>
+        </p>
+      </footer>
+    );
+  }
+}

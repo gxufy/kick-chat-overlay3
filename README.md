@@ -16,7 +16,7 @@ A multi-platform chat overlay for OBS and streaming software — **Kick · Twitc
 - **Real platform badges** — full Kick set, all Twitch badge sets (sub tiers, bits, events) + FFZ room overrides, YouTube member/mod/verified with owner gold-pill, TikTok top-gifter/fan-club/sub art
 - **Platform source tags** — official brand icon (default), dot, label, or none per message
 - **Event cards** — subs, gift subs, raids/hosts, cheers/Kicks, Super Chats/Stickers, memberships, TikTok gifts (with art + diamonds), follows & shares
-- **Pinned messages** — Kick, YouTube, and TikTok pins in a StreamNook-style card that collapses to a thin bar
+- **Pinned messages** — Kick, YouTube, and TikTok pins in a StreamNook-style card that collapses to a thin bar. Twitch pins too, with an optional connected account (Twitch's own pins are not readable over anonymous IRC)
 - Batched slide / fade animations (chatis-exact 200ms loop — no stutter on fast chat)
 - Stroke, shadow, font options (12 fonts including Alsina)
 - Bot filtering — ignore known bots + custom list
@@ -24,7 +24,14 @@ A multi-platform chat overlay for OBS and streaming software — **Kick · Twitc
 
 ## Chat Commands
 
-Work from any connected platform's chat. Broadcaster has full access; mods have access to most. `!kickchat` still works as an alias.
+Work from any connected platform's chat — Kick, Twitch, YouTube, and TikTok reach
+the same dispatcher, and the tests drive every command through each platform's real
+connector rather than through the parser alone. Every command needs the same level,
+moderator or above, so the broadcaster and mods can run all of them equally.
+`!kickchat` still works as an alias.
+
+The trigger has to be the message's **first word**. `!multichats stop` and "type
+`!multichat hide` to hide it" are ordinary chat messages and run nothing.
 
 | Command | Description | Access |
 |---|---|---|
@@ -37,12 +44,105 @@ Work from any connected platform's chat. Broadcaster has full access; mods have 
 | `!multichat yt [url or preset] -t [sec] -m` | Plays YouTube video/sound. Presets: `bruh` `vine-boom` `dc-ping` `rickroll` `win-error` | Mod+ |
 | `!multichat tts [message]` | Text-to-speech via StreamElements | Mod+ |
 
+Every command needs the same level, so the table above has no per-command access
+distinction to make. The generator's **Commands & help** section is built from the
+parser's own command list, so it documents these nine and nothing else. The viewer
+counter has no commands of its own.
+
+**How access is decided.** From the badges on the message: a broadcaster or owner
+badge, or an author name matching the channel you configured, counts as
+broadcaster; a moderator badge counts as moderator; anything else is 0, which is
+below the gate. It fails closed — a message whose role metadata is missing or
+unrecognised runs nothing. The name fallback exists because TikTok sends no
+broadcaster badge at all, so without it a streamer could not use their own commands
+in their own chat.
+
+**Behaviour worth knowing.** `hide` hides the container without disconnecting, so
+messages keep arriving behind it and `show` restores a live chat rather than an
+empty box; both are idempotent. `stop` clears every overlay *and* silences speech.
+`reload` ignores a second call within 15 seconds — a replayed message from
+YouTube's continuation or TikTok's buffer could otherwise reload the source in a
+loop. `img` accepts `http` and `https` only, so a `javascript:` or `data:` URL from
+chat does nothing. One chat message runs one command, even if a platform delivers
+it twice.
+
 ## OBS Setup
 
-1. Open the landing page, fill in your channel name(s) — any one platform or all four — and configure options
-2. Click **Generate & Copy**
-3. In OBS: **Add Source → Browser Source**, paste the URL
-4. Recommended size: **830 × 230**
+The chat overlay and the viewer counter are **two independent browser sources with
+two different URLs**. Add either, both, or neither — neither needs the other.
+
+Open **[`/multichat`](https://multichat-gxufy.com/multichat)** — with no channel
+parameters, that is the generator. Fill in your channel name(s) once (any one
+platform or all four); they feed both tools.
+
+The page is one column of sections: the shared **channel** fields, then a row per
+tool, then **Commands & help**, then **OBS setup**. Each tool row puts its output on
+the left — heading, live preview, generated URL, Copy and Open — and that tool's
+settings on the right, side by side on a desktop. On a narrow screen each row
+stacks, so the order becomes chat preview, chat settings, counter preview, counter
+settings.
+
+**Chat overlay**
+
+1. Configure the chat settings. The preview is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet.
+2. Click **Copy** under the chat overlay URL.
+3. In OBS: **Add Source → Browser**, paste the URL.
+4. Size it **680 × 280**. **830 × 230** is a wider, shorter alternative that shows fewer messages.
+5. Leave **Shutdown source when not visible** off — the overlay reconnects on load, so toggling it drops recent messages.
+
+**Viewer counter**
+
+1. The **Viewer counter** row sits below the chat row, with its own six settings beside its own preview and URL.
+2. Click its **Copy**, add a **second Browser source**, and paste it in.
+3. Size it **400 × 80**.
+
+It polls each platform's viewer count and shows what it measured. A measured zero
+is shown, because zero viewers on a live stream is a fact; a request that failed is
+not turned into a zero. A brief outage keeps the last known number for a bounded
+window and then shows an em-dash rather than continuing to assert a count it can no
+longer confirm. Nothing renders until the first poll has settled, so no fabricated
+number ever flashes on stream. The counter carries no connection key and opens no
+sockets — it is polling only.
+
+The preview-background buttons on the generator change that page only. They are
+never part of either URL and never reach OBS.
+
+The generator is optional — the overlay URL is just query parameters, so a
+hand-written one works fine.
+
+> Connecting a Twitch account is optional and only enables Twitch's own **pinned
+> messages**, which anonymous IRC cannot read. Everything else works with no
+> login. The connected account must be the same account as the Twitch channel you
+> typed — connecting as a moderator of someone else's channel authorizes fine but
+> leaves the pin option disabled, with the reason shown next to the connection.
+> See [DEPLOY.md](DEPLOY.md) for the environment variables that feature needs.
+
+### Routes
+
+`/multichat` is both, decided by whether the URL names a channel:
+
+| URL | What it serves |
+|---|---|
+| `/multichat?kick=…` (any channel parameter) | **The overlay.** Existing OBS URLs keep working unchanged and always will. |
+| `/multichat` (no channel) | **The generator** — chat overlay and embedded viewer counter. |
+| `/counter?twitch=…` | The viewer counter overlay, a separate browser source. |
+| `/classic/multichat` | Redirects to `/multichat`, carrying a Twitch OAuth return fragment across. |
+| `/tools/multichat` | Redirects to `/multichat`. No longer a generator page. |
+| `/tools/counter` | Redirects to `/multichat#viewer-counter`. No longer a generator page. |
+| `/?kick=…` | Legacy root overlay URLs still forward to `/multichat`. |
+
+The generator has no demo or test mode: every preview is the real overlay at the
+real URL, so it is empty when the configured channels are.
+
+### Fonts
+
+The overlay only fetches the one Google font your `font=` value names
+(`lib/overlayFonts.ts`), not the whole set — so OBS never downloads faces it
+will not render. The homepage and the generator each load their own UI and
+font-picker faces the same way, via a `@import` inside `next/head`'s `<style>`
+rather than a `<link rel="stylesheet">`, which is what Next.js's Pages Router
+warns against outside `pages/_document.tsx`. `segoe`, `impact`, and `default`
+need no network request at all, and `alsina` is self-hosted.
 
 ## Hosting
 

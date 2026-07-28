@@ -1,9 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import { z } from 'zod';
+import {
+  hasConfiguredMultichatChannel,
+  multichatKickChannel,
+  multichatPlatformCount,
+  safeParseMultichatConfig,
+  type MultichatConfig,
+} from '../lib/multichatConfig';
 import {
   getSevenTVGlobalEmotes,
   getSevenTVChannelEmotes,
@@ -23,84 +29,136 @@ import { createTikTokConnector } from '../lib/connectors/tiktok';
 import { renderMessageText, renderBadges, fallbackColor, readableColor, isYouTubeOwner } from '../lib/render';
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
-import LandingPage from '../components/LandingPage';
+import { startTwitchPinPoller } from '../lib/twitchPinPoller';
+import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
+import {
+  resolveMultichatRoute,
+  wantsCounterSection,
+} from '../lib/multichatRouting';
+import {
+  RELOAD_STAMP_KEY,
+  createMultichatCommandRunner,
+} from '../lib/multichatCommandRuntime';
 import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
+import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
 
-const QuerySchema = z.object({
-  /** legacy param — same as kick= */
-  channel: z.string().optional(),
-  kick: z.string().optional(),
-  twitch: z.string().optional(),
-  youtube: z.string().optional(),
-  tiktok: z.string().optional(),
-  sevenTVCosmeticsEnabled: z.string().optional().transform(v => v !== 'false'),
-  sevenTVEmotesEnabled: z.string().optional().transform(v => v !== 'false'),
-  textShadow: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'small','3':'medium','4':'large'};
-    return map[v??''] ?? (['none','small','medium','large'].includes(v??'') ? v! : 'large');
-  }),
-  textSize: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'small','2':'medium','3':'large'};
-    return map[v??''] ?? (['small','medium','large'].includes(v??'') ? v! : 'medium');
-  }),
-  animation: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'slide','3':'fade'};
-    return map[v??''] ?? (['none','slide','fade'].includes(v??'') ? v! : 'slide');
-  }),
-  showPinEnabled: z.string().optional().transform(v => v === 'true'),
-  showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
-  /* UChat-style colorable mentions — default ON (mentionColor=false to disable) */
-  mentionColor: z.string().optional().transform(v => v !== 'false'),
-  /* chat background: 'transparent' (default) or a hex color like 191919 */
-  bgColor: z.string().optional().transform(v =>
-    /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  /* channel-point redeems (kick/twitch highlighted messages) */
-  showRedeems: z.string().optional().transform(v => v !== 'false'),
-  /* StreamNook sourceTag: none | dot | label | icon (default icon —
-     official brand marks, same art Streamlabs uses) */
-  sourceTag: z.string().optional().transform(v =>
-    (['none','dot','label','icon'].includes(v ?? '') ? v! : 'icon') as 'none'|'dot'|'label'|'icon'),
-  /* profile pictures (yt/tiktok) — off by default */
-  showAvatars: z.string().optional().transform(v => v === 'true'),
-  font: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'baloo','2':'segoe','3':'roboto','4':'lato','5':'noto','6':'sourcecode','7':'impact','8':'comfortaa','9':'dancing','10':'indieflower','11':'opensans','12':'alsina'};
-    return map[v??''] ?? v ?? 'opensans';
-  }),
-  stroke: z.string().optional().transform(v => {
-    const map: Record<string,string> = {'1':'none','2':'thin','3':'medium','4':'thick','5':'thicker'};
-    return map[v??''] ?? (['none','thin','medium','thick','thicker'].includes(v??'') ? v! : 'none');
-  }),
-  emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
-  fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
-  /* ── UChat-ported settings ── */
-  msgBold: z.string().optional().transform(v => v !== 'false'),
-  msgCaps: z.string().optional().transform(v => v === 'true'),
-  fontColor: z.string().optional().transform(v =>
-    /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  paintShadows: z.string().optional().transform(v => v !== 'false'),
-  modAction: z.string().optional().transform(v => v !== 'false'),
-  userBL: z.string().optional().transform(v => v ?? ''),
-  prefixBL: z.string().optional().transform(v => v ?? ''),
-  /* per-platform pins: CSV of kick,youtube,tiktok
-   * - absent → default to all three (backward compat)
-   * - present but empty → [] (no pins at all)
-   * - valid names → only those; invalid ignored, duplicates removed */
-  pinPlatforms: z.string().optional().transform(v => {
-    const all = ['kick', 'youtube', 'tiktok'];
-    if (v === undefined) return all;       // param absent → default
-    if (v === '') return [];                // param explicitly empty → none
-    const picked = [...new Set(v.split(',').map(s => s.trim().toLowerCase()).filter(s => all.includes(s)))];
-    return picked.length ? picked : all;    // no valid names → fallback to all
-  }),
-  hideNames: z.string().optional().transform(v => v === 'true'),
-  botNames: z.string().optional().transform(v => v ?? ''),
-  ttsEnabled: z.string().optional().transform(v => v !== 'false'),
-});
+/* Twitch pin polling: the generator appends an opaque connection id as a
+ * URL fragment. Validated here, never rewritten, never logged. */
+const TWITCH_CONN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type OverlayConfig = z.infer<typeof QuerySchema>;
+/** Delay between successful pin polls. 5s is the poller's own floor
+ *  (MIN_INTERVAL_MS), so this is the fastest cadence it will honour. */
+const TWITCH_PIN_INTERVAL_MS = 5_000;
 
+/**
+ * How long a displayed Twitch pin may go unconfirmed before it is dropped.
+ *
+ * Transient lookup failures are retried with backoff and deliberately not shown
+ * to the viewer, but a pin on screen is a claim that something is pinned *now*.
+ * If the API stops answering after a pin is displayed, that claim goes
+ * unverifiable — and if the streamer unpins during the outage, the overlay would
+ * otherwise keep showing it for the rest of the stream.
+ *
+ * 60s is a deliberate trade. Showing a pin the streamer deliberately removed is
+ * worse than briefly dropping one that is still up: the removed pin may be a
+ * stale link or a correction, and a still-pinned message reappears on the next
+ * successful poll a few seconds later. The window is long enough that ordinary
+ * blips and a redeploy never clear anything.
+ */
+const TWITCH_PIN_STALE_AFTER_MS = 60_000;
+
+/** True when *value* looks like a Twitch connection id. */
+function isTwitchConnectionId(value: string): boolean {
+  return TWITCH_CONN_RE.test(value);
+}
+
+/** TwitchPinApiMessage → UnifiedPin, using only fields the pins API returns.
+ *  The id carries updatedAt so an edited pin becomes a distinct message. */
+function toUnifiedTwitchPin(pin: TwitchPinApiMessage): UnifiedPin {
+  return {
+    message: {
+      platform: 'twitch',
+      id: `${pin.messageId}:${pin.updatedAt}`,
+      senderId: pin.senderUserId,  // real Twitch id — keys 7TV entitlements
+      username: pin.senderUserName,
+      color: pin.color,    // '' → fallbackColor()
+      badges: [],
+      text: pin.text,
+      emotes: [],          // no native emote offsets in the payload
+      timestamp: Date.parse(pin.startsAt) || Date.now(),
+      kind: 'chat',
+    },
+    pinnedBy: pin.pinnedByUserName,
+  };
+}
+
+/* The query schema, defaults, aliases, and serializer now live in
+ * lib/multichatConfig.ts. OverlayConfig is kept as an alias so the many
+ * references below (and ChatOverlay's own typing) read unchanged. */
+export type OverlayConfig = MultichatConfig;
+
+/**
+ * `/multichat` — the overlay OBS loads, and the generator that produces its URL.
+ *
+ * One route serves both, decided by whether the URL names a channel. That is not
+ * a convenience: every scene collection anybody has ever configured points a
+ * browser source at this path with channel parameters, and those files are not
+ * going to be edited. So a channel-carrying URL renders the overlay, permanently,
+ * and nothing about it redirects.
+ *
+ * A visit with no channel is somebody opening the site rather than a browser
+ * source starting up, so it renders the generator. `/tools/multichat`,
+ * `/tools/counter`, and `/classic/multichat` all redirect here.
+ *
+ * The two are separate components rather than branches inside one, because the
+ * overlay's effects — IRC connections, cosmetics fetches, the pin poller — must
+ * not run on a generator visit. Not rendering the component is what guarantees
+ * that, rather than a growing set of early returns inside each effect.
+ */
 export default function Page() {
+  const router = useRouter();
+
+  /* The URL fragment, captured once on the client.
+   *
+   * Fragments are never sent to the server and never appear in `router.query`,
+   * so this is the only way anything here can see one. Held in state and set
+   * from an effect rather than read during render: reading
+   * `window.location.hash` while rendering would differ between the server pass
+   * (no window) and the client pass, which is exactly the hydration mismatch
+   * this page cannot afford. `null` means "not looked yet". */
+  const [hash, setHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    /* Effects are client-only, so window is available here and only here. */
+    setHash(window.location.hash);
+  }, []);
+
+  /* Overlay or generator, by one pure rule (lib/multichatRouting). Channel
+     parameters are checked first and always win. */
+  const route = resolveMultichatRoute(router.isReady ? router.query : {});
+
+  /* Nothing is decided until the query is parsed. Rendering the generator here
+     would mount it for a split second on every overlay load in OBS. */
+  if (!router.isReady) return null;
+
+  if (route.kind === 'generator') {
+    /* Waiting for the fragment read, so a visitor returning from OAuth is not
+       shown the generator before the connection in the fragment can be adopted.
+       One client render, not a network round trip. */
+    if (hash === null) return null;
+    return (
+      <ClassicGenerator
+        focusCounter={wantsCounterSection(router.query, hash)}
+      />
+    );
+  }
+
+  return <MultichatOverlay />;
+}
+
+/** The overlay itself. Mounted only for a channel-carrying URL. */
+function MultichatOverlay() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [config, setConfig] = useState<OverlayConfig | null>(null);
@@ -109,6 +167,32 @@ export default function Page() {
   const [showLoader, setShowLoader] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<PinnedState | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /* ── Twitch pin polling state ──
+   * pinHandlerRef bridges to the main effect's handlePin so buildParsed
+   * (and all cosmetics/emote logic) is reused rather than duplicated. */
+  const pinHandlerRef = useRef<((pin: UnifiedPin | null) => void) | null>(null);
+  /** Bridge to the main effect's cosmetics fetcher — pin authors may never chat. */
+  const cosmeticsWantRef = useRef<((platform: 'kick' | 'twitch', senderId: string) => void) | null>(null);
+  /** msg.id of the pin this poller installed, or '' when it owns none. */
+  const twitchPinIdRef = useRef('');
+  /** messageId:updatedAt of the last pin handed to the pin handler. */
+  const twitchPinKeyRef = useRef('');
+
+  /**
+   * Clear the pinned message only when this poller still owns it.
+   *
+   * Uses a functional update so the decision is made against live state:
+   * a newer Kick / YouTube / TikTok pin is never removed.
+   */
+  const clearOwnedTwitchPin = useCallback(() => {
+    const installed = twitchPinIdRef.current;
+    twitchPinIdRef.current = '';
+    twitchPinKeyRef.current = '';
+    if (!installed) return;
+    setPinnedMessage(prev =>
+      prev && prev.msg.platform === 'twitch' && prev.msg.id === installed ? null : prev);
+  }, []);
 
   // Mutable state that doesn't trigger rerenders
   const stateRef = useRef<{
@@ -133,12 +217,12 @@ export default function Page() {
     if (!router.isReady) return;
     setReady(true);
 
-    const parsed = QuerySchema.safeParse(router.query);
+    const parsed = safeParseMultichatConfig(router.query);
     if (!parsed.success) return;
     const cfg = parsed.data;
-    const kickChannel = cfg.kick || cfg.channel || '';
-    const platformCount = [kickChannel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length;
-    if (platformCount === 0) return;
+    const kickChannel = multichatKickChannel(cfg);
+    const platformCount = multichatPlatformCount(cfg);
+    if (!hasConfiguredMultichatChannel(cfg)) return;
 
     setConfig(cfg);
     stateRef.current.config = cfg;
@@ -165,6 +249,19 @@ export default function Page() {
           return { ...buildParsed(m.raw as UnifiedMessage), timestamp: m.timestamp };
         });
         if (touched) dirty = true;
+        /* Repaint the visible Twitch pin too: pin authors are queued
+           separately and their cosmetics usually land after the banner
+           was built. Reuses msg.id, so PinBanner's cycle never restarts. */
+        setPinnedMessage(prev => {
+          if (!prev) return prev;
+          const { platform, senderId, raw } = prev.msg;
+          if (platform !== 'twitch' || !senderId || !raw) return prev;
+          if (!keySet.has(`twitch:${senderId}`)) return prev;
+          return {
+            ...prev,
+            msg: { ...buildParsed(raw as UnifiedMessage), id: prev.msg.id, timestamp: prev.msg.timestamp },
+          };
+        });
       },
     );
     cleanups.push(() => cosmeticsFetcher.stop());
@@ -327,6 +424,18 @@ export default function Page() {
       setPinnedMessage(pin ? { msg: buildParsed(pin.message), pinnedBy: pin.pinnedBy } : null);
     }
 
+    /* Expose the pin pipeline to the Twitch polling effect below, so
+       polled pins reuse buildParsed instead of duplicating it. */
+    pinHandlerRef.current = handlePin;
+    cleanups.push(() => { pinHandlerRef.current = null; });
+
+    /* Same bridge for cosmetics: pin authors are queued explicitly because
+       they may never send a chat message during this session. */
+    cosmeticsWantRef.current = (platform, senderId) => {
+      if (cfg.sevenTVCosmeticsEnabled) cosmeticsFetcher.want(platform, senderId);
+    };
+    cleanups.push(() => { cosmeticsWantRef.current = null; });
+
     /* ── Kick (incl. 7TV emotes/cosmetics) ── */
     if (kickChannel) {
       const kick = createKickConnector({
@@ -421,26 +530,6 @@ export default function Page() {
       }));
     }
 
-    /* ── !multichat command handler — works from ANY platform's chat.
-       Access via unified badges: broadcaster/owner = 1000, mod = 500.
-       (!kickchat kept as a legacy alias.) ── */
-    function getAccessLevel(um: UnifiedMessage): number {
-      for (const b of um.badges) {
-        if (b.type === 'broadcaster' || b.type === 'owner') return 1000;
-      }
-      // broadcaster fallback by name — TikTok has no broadcaster badge
-      const uname = um.username.toLowerCase();
-      if (
-        (um.platform === 'kick' && uname === kickChannel.toLowerCase()) ||
-        (um.platform === 'twitch' && uname === (cfg.twitch ?? '').toLowerCase()) ||
-        (um.platform === 'tiktok' && uname === (cfg.tiktok ?? '').replace(/^@/, '').toLowerCase())
-      ) return 1000;
-      for (const b of um.badges) {
-        if (b.type === 'moderator') return 500;
-      }
-      return 0;
-    }
-
     const floats: { [id: number]: { el: HTMLElement; timer: ReturnType<typeof setTimeout> | null } } = {};
     function showFloat(id: number, msg: string, timeoutMs = 5000, alpha = 0.3) {
       removeFloat(id);
@@ -469,111 +558,121 @@ export default function Page() {
       if (el) el.style.display = v ? '' : 'none';
     }
 
-    function handleCommand(um: UnifiedMessage) {
-      const text: string = um.text ?? '';
-      const trigger = text.toLowerCase().startsWith('!multichat') ? '!multichat'
-        : text.toLowerCase().startsWith('!kickchat') ? '!kickchat' : null;
-      if (!trigger) return;
-      if (getAccessLevel(um) < 500) return;
-      const args = text.trim().split(/\s+/);
-      const cmd = (args[1] ?? '').toLowerCase();
-      switch (cmd) {
-        case 'ping': showFloat(1, 'Pong!\nmultichat-gxufy', 3000); break;
-        case 'reload': window.location.reload(); break;
-        case 'stop': removeAllFloats(); break;
-        case 'show': setChatVisible(true); break;
-        case 'hide': setChatVisible(false); break;
-        case 'refresh':
-          if (!args[2] || args[2] === 'emotes') {
-            showFloat(9, '🔄 Reloading emotes...', 10000, 0.7);
-            (async () => {
-              try {
-                const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
-                const ch = s.channel;
-                if (ch) {
-                  const { emotes: ce } = await getSevenTVChannelEmotes(ch.user_id.toString());
-                  fresh.push(...ce);
-                }
-                // Twitch FFZ/BTTV/7TV stack too (roomId captured on connect)
-                if (twitchRoomId) {
-                  const te = await loadTwitchEmotes(twitchRoomId);
-                  const have = new Set(fresh.map(e => e.name));
-                  fresh.push(...te.filter(e => !have.has(e.name)));
-                }
-                s.emotes = fresh;
-                showFloat(9, '✅ Emotes reloaded!', 2000, 0.7);
-              } catch (_) {
-                showFloat(9, '❌ Emote reload failed', 2000, 0.7);
-              }
-            })();
-          }
-          break;
-        case 'img': {
-          if (args[2] === 'clear') { removeFloat(4); break; }
-          const urlMatch = text.match(/https?:\/\/\S+/);
-          const emoteName = args[2] ?? '';
-          const link = urlMatch ? urlMatch[0] : s.emotes.find(e => e.name === emoteName)?.image ?? null;
-          if (!link) break;
-          const timeout = (parseFloat((text.match(/-t\s+([\d.]+)/) || [])[1] ?? '') || 5) * 1000;
-          const opacity = parseFloat((text.match(/-o\s+([\d.]+)/) || [])[1] ?? '') || 1;
-          const el = document.createElement('div');
-          el.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9998;pointer-events:none;';
-          el.innerHTML = `<img src="${link}" style="width:100%;height:100%;object-fit:fill;opacity:${opacity};" />`;
-          document.body.appendChild(el);
-          floats[4] = { el, timer: setTimeout(() => removeFloat(4), timeout) };
-          break;
-        }
-        case 'yt': {
-          const ytPresets: Record<string, string> = {
-            'bruh': '2ZIpFytCSVc', 'vine-boom': '_vBVGjFdwk4', 'dc-ping': 'jiWj1zZlRjQ',
-            'rickroll': 'dQw4w9WgXcQ', 'win-error': 'v76-ChTSLJk',
-          };
-          const urlMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/watch\?v=)([\w\-]+)/);
-          const ytId = urlMatch ? urlMatch[1] : ytPresets[args[2]] ?? null;
-          if (!ytId) break;
-          const timeout = (parseFloat((text.match(/-t\s+([\d.]+)/) || [])[1] ?? '') || 5) * 1000;
-          const mute = text.includes('-m');
-          const el = document.createElement('div');
-          el.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9998;pointer-events:none;';
-          el.innerHTML = `<iframe src="https://www.youtube.com/embed/${ytId}?autoplay=1${mute ? '&mute=1' : ''}&rel=0"
-            width="100%" height="100%" frameborder="0" allow="autoplay" style="display:block;"></iframe>`;
-          document.body.appendChild(el);
-          floats[5] = { el, timer: setTimeout(() => removeFloat(5), timeout) };
-          break;
-        }
-        case 'tts': {
-          const ttsText = text.replace(/^!(?:multichat|kickchat)\s+tts\s*/i, '').trim();
-          if (!ttsText) break;
-          const speakFallback = (t: string) => {
-            if (!window.speechSynthesis) return;
-            window.speechSynthesis.cancel();
-            const utt = new SpeechSynthesisUtterance(t);
-            utt.volume = 1.0;
-            const go = () => {
-              const voices = window.speechSynthesis.getVoices();
-              const v = voices.find(v => v.name === 'Google UK English Male')
-                || voices.find(v => v.lang === 'en-GB')
-                || voices.find(v => v.lang.startsWith('en')) || null;
-              if (v) utt.voice = v;
-              window.speechSynthesis.speak(utt);
-            };
-            window.speechSynthesis.getVoices().length ? go() : window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
-          };
-          fetch(`/api/tts?voice=Brian&text=${encodeURIComponent(ttsText)}`)
-            .then(r => { if (!r.ok) throw new Error('proxy failed'); return r.blob(); })
-            .then(blob => {
-              const url = URL.createObjectURL(blob);
-              const audio = new Audio(url);
-              audio.volume = 1.0;
-              audio.addEventListener('canplaythrough', () => audio.play().catch(() => {}));
-              audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-              audio.load();
-            })
-            .catch(() => speakFallback(ttsText));
-          break;
-        }
+    /* ── !multichat commands ──
+       The dispatcher is lib/multichatCommandRuntime: platform-neutral, and driven
+       in tests through the real connectors. Everything platform-specific or
+       effect-local is supplied here as the host.
+
+       Audio and speech are tracked so `stop`, a further `tts`, and unmount can all
+       silence them. Previously each `tts` created an Audio nobody held a reference
+       to, so two commands talked over each other and neither stopped. */
+    let activeAudio: HTMLAudioElement | null = null;
+    let activeAudioUrl = '';
+
+    function stopSpeaking() {
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio.src = '';
+        activeAudio = null;
       }
+      if (activeAudioUrl) {
+        URL.revokeObjectURL(activeAudioUrl);
+        activeAudioUrl = '';
+      }
+      window.speechSynthesis?.cancel();
     }
+    cleanups.push(stopSpeaking);
+
+    /** Browser voice, used when the server proxy fails. */
+    function speakFallback(t: string) {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(t);
+      utt.volume = 1.0;
+      const go = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const v = voices.find(v => v.name === 'Google UK English Male')
+          || voices.find(v => v.lang === 'en-GB')
+          || voices.find(v => v.lang.startsWith('en')) || null;
+        if (v) utt.voice = v;
+        window.speechSynthesis.speak(utt);
+      };
+      window.speechSynthesis.getVoices().length
+        ? go()
+        : window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
+    }
+
+    const commandRunner = createMultichatCommandRunner({
+      channels: {
+        kick: kickChannel,
+        twitch: cfg.twitch ?? '',
+        youtube: cfg.youtube ?? '',
+        tiktok: cfg.tiktok ?? '',
+      },
+      showFloat,
+      removeFloat,
+      removeAllFloats,
+      mountFloat(slot, el, timeoutMs) {
+        removeFloat(slot);
+        document.body.appendChild(el);
+        floats[slot] = { el, timer: setTimeout(() => removeFloat(slot), timeoutMs) };
+      },
+      createElement: (tag) => document.createElement(tag),
+      setChatVisible,
+      reload: () => window.location.reload(),
+      async refreshEmotes() {
+        const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
+        const ch = s.channel;
+        if (ch) {
+          const { emotes: ce } = await getSevenTVChannelEmotes(ch.user_id.toString());
+          fresh.push(...ce);
+        }
+        // Twitch FFZ/BTTV/7TV stack too (roomId captured on connect)
+        if (twitchRoomId) {
+          const te = await loadTwitchEmotes(twitchRoomId);
+          const have = new Set(fresh.map(e => e.name));
+          fresh.push(...te.filter(e => !have.has(e.name)));
+        }
+        s.emotes = fresh;
+      },
+      findEmoteUrl: (name) => (name ? s.emotes.find(e => e.name === name)?.image ?? null : null),
+      speak(t) {
+        stopSpeaking();
+        fetch(`/api/tts?voice=Brian&text=${encodeURIComponent(t)}`)
+          .then(r => { if (!r.ok) throw new Error('proxy failed'); return r.blob(); })
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.volume = 1.0;
+            activeAudio = audio;
+            activeAudioUrl = url;
+            audio.addEventListener('canplaythrough', () => audio.play().catch(() => {}));
+            audio.addEventListener('ended', () => {
+              if (activeAudio === audio) stopSpeaking();
+            });
+            audio.load();
+          })
+          .catch(() => speakFallback(t));
+      },
+      stopSpeaking,
+      readReloadStamp() {
+        const raw = window.sessionStorage?.getItem(RELOAD_STAMP_KEY);
+        const at = raw === null || raw === undefined ? NaN : Number(raw);
+        return Number.isFinite(at) ? at : null;
+      },
+      writeReloadStamp(at) {
+        try { window.sessionStorage?.setItem(RELOAD_STAMP_KEY, String(at)); }
+        catch { /* private mode: the cooldown degrades, the command still works */ }
+      },
+      now: () => Date.now(),
+    });
+
+    function handleCommand(um: UnifiedMessage) {
+      commandRunner.handle(um);
+    }
+
+    /** Everything on screen or in the speakers, gone on unmount. */
+    cleanups.push(removeAllFloats);
 
     /* handle7TVDispatch — ChatIS-v2 handleDispatchEvent (script.js:700).
        platform: which connection namespace the entitlements belong to;
@@ -738,17 +837,76 @@ export default function Page() {
     };
   }, [router.isReady]);
 
-  if (!ready) return null;
+  /* Twitch pins need an authorized poll — anonymous IRC carries no pin
+     events (see lib/connectors/twitch.ts). Kept as its own effect so a
+     pin-config change never tears down the chat connectors. */
+  const twitchPinLogin = config?.twitch ? config.twitch.trim().toLowerCase().replace(/^@/, '') : '';
+  const twitchPinsEnabled = !!config?.showPinEnabled && !!config?.pinPlatforms.includes('twitch');
 
-  const hasChannel = !!(router.query.channel || router.query.kick || router.query.twitch || router.query.youtube || router.query.tiktok);
-  if (!hasChannel) {
-    return (
-      <>
-        <SunsetBanner variant="landing" />
-        <LandingPage />
-      </>
-    );
-  }
+  useEffect(() => {
+    if (!twitchPinsEnabled || !twitchPinLogin) return;
+    if (!pinHandlerRef.current) return;
+
+    // Effects are client-only, so window is available. The fragment is
+    // read without being rewritten or exposed.
+    const connectionId = new URLSearchParams(window.location.hash.slice(1)).get('twitchConnectionId') ?? '';
+    if (!isTwitchConnectionId(connectionId)) return;
+
+    /* When the pins API last answered. Scoped to this effect run, so a
+       reconnect or a config change starts the staleness clock fresh rather than
+       inheriting a deadline from a previous poller. */
+    let lastPinConfirmedAt = Date.now();
+
+    const stopPolling = startTwitchPinPoller({
+      connectionId,
+      login: twitchPinLogin,
+      intervalMs: TWITCH_PIN_INTERVAL_MS,
+      onPin: pin => {
+        /* Any answer confirms the API is reachable — including "nothing is
+           pinned", which is what clears a pin on an ordinary unpin. */
+        lastPinConfirmedAt = Date.now();
+        if (pin === null) {
+          clearOwnedTwitchPin();
+          return;
+        }
+        // Unchanged pin — skip so the banner's hide cycle isn't restarted.
+        const key = `${pin.messageId}:${pin.updatedAt}`;
+        if (twitchPinKeyRef.current === key) return;
+        const unified = toUnifiedTwitchPin(pin);
+        // Queue the author for 7TV cosmetics. Past the dedupe guard, so this
+        // runs once per distinct pin; the fetcher dedupes by key as well.
+        if (unified.message.senderId) {
+          cosmeticsWantRef.current?.('twitch', unified.message.senderId);
+        }
+        pinHandlerRef.current?.(unified);
+        // Refs track ownership only after the handler has run.
+        twitchPinKeyRef.current = key;
+        twitchPinIdRef.current = `twitch:${unified.message.id}`;
+      },
+      onError: (_error, fatal) => {
+        // The fatal branch can fire at most once per poller.
+        if (fatal) {
+          console.warn('Twitch pin polling stopped.');
+          clearOwnedTwitchPin();
+          return;
+        }
+        /* lookup-failed is retried with backoff and stays silent — a viewer
+           should not see transport noise. But a pin we are still showing has now
+           gone unconfirmed, so once the outage passes the staleness window, drop
+           it rather than assert indefinitely that it is still pinned. */
+        if (Date.now() - lastPinConfirmedAt > TWITCH_PIN_STALE_AFTER_MS) {
+          clearOwnedTwitchPin();
+        }
+      },
+    });
+
+    return () => {
+      stopPolling();
+      clearOwnedTwitchPin();
+    };
+  }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
+
+  if (!ready) return null;
 
   if (error) {
     return (
@@ -776,6 +934,9 @@ export default function Page() {
         fadingIds={fadingIds}
         pinnedMessage={pinnedMessage}
         showLoader={showLoader}
+        /* The parser defaults sourceTag to 'icon', so only the raw query can say
+           whether the user actually asked for a mode. */
+        sourceTagExplicit={router.query.sourceTag !== undefined}
       />
     </>
   );

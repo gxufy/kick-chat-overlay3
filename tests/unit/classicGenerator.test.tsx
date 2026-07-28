@@ -745,12 +745,20 @@ describe('the two authoritative URLs', () => {
   });
 
   it('shows no preview iframe until a channel is configured', () => {
-    /* No iframe means no overlay mounts, so nothing connects or polls on a page
-       a visitor is only looking at. */
+    /* No iframe means no overlay document loads, so nothing connects, polls, or
+       authenticates on a page a visitor is only looking at. The chat panel is
+       populated from fixtures instead, which is a pure render — this assertion is
+       what keeps that true, because an iframe would reintroduce the sockets. */
     mount();
     settle();
     expect(document.querySelectorAll('iframe')).toHaveLength(0);
-    expect(screen.getAllByText(/Enter a channel above/).length).toBe(2);
+    /* The chat side no longer waits for a channel: fixtures render immediately
+       through the production overlay. */
+    expect(
+      within(panel('.panel-chat-output')).getByTestId('chat-fixture-preview'),
+    ).toBeTruthy();
+    /* The counter side still states its empty case, and only one panel does. */
+    expect(screen.getAllByText(/Enter a channel above/).length).toBe(1);
   });
 
   it('previews both overlays at exactly their generated URLs', () => {
@@ -1013,9 +1021,28 @@ describe('the Demo interface is gone', () => {
     }
   });
 
-  it('states the honest empty case rather than fabricating messages', () => {
+  it('labels the built-in chat samples as preview data', () => {
+    /* This assertion replaced one requiring the chat panel to say "Enter a
+       channel above". That empty state was honest but useless: it showed nothing
+       about styling, which is the only reason to be on this page. Fixtures are
+       now rendered instead — so the requirement becomes that they are *marked*
+       as fixtures rather than passed off as somebody's live chat. The retired
+       Demo interface is still gone; this is a labelled preview, not a mode. */
     mount();
-    expect(screen.getAllByText(/Enter a channel above/).length).toBe(2);
+    const chat = panel('.panel-chat-output');
+    expect(within(chat).getByTestId('chat-fixture-preview')).toBeTruthy();
+    expect(within(chat).getByText('Preview data')).toBeTruthy();
+    /* No mode switch came back with it: nothing toggles between live and sample
+       content, because a configured channel decides that on its own. */
+    expect(chat.textContent ?? '').not.toMatch(/\bdemo\b/i);
+  });
+
+  it('states the honest empty case where there is genuinely nothing to show', () => {
+    /* The counter panel keeps its empty state until its own fixtures land. */
+    mount();
+    expect(
+      within(panel('.panel-counter-output')).getByText(/Enter a channel above/),
+    ).toBeTruthy();
   });
 });
 

@@ -37,6 +37,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
+import ClassicChatPreview from './ClassicChatPreview';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
@@ -49,6 +50,7 @@ import {
 import { FONT_FAMILIES } from '@/components/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { multichatTool } from '@/lib/tools/multichat/config';
+import { sampleMessages } from '@/lib/tools/multichat/samples';
 import { counterTool } from '@/lib/tools/counter/config';
 import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/multichat/runtime';
 import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
@@ -79,6 +81,13 @@ const GENERATOR_FONT_CSS = googleFontsImportCss([
 
 /** How long the copied confirmation stays on a Copy button. */
 const COPIED_MS = 2000;
+
+/* The built-in chat fixtures, resolved once at module scope.
+   `sampleMessages()` returns a fresh array per call, so calling it inline would
+   hand the preview a new array identity on every keystroke and re-convert every
+   message for nothing. The list is never mutated — custom messages are appended
+   into a new array — so one shared frozen-in-practice value is correct. */
+const SAMPLE_CHAT_MESSAGES = sampleMessages();
 
 /* The two catalogs, looked up once at module scope. Every lookup asserts the key
    exists with the expected control type, so a catalog rename breaks the build
@@ -556,6 +565,11 @@ export default function ClassicGenerator({
 
         <div className="preview-label">
           <span>Preview</span>
+          {/* Says what is on screen, for anyone who can see it — the preview's own
+              aria-label says the same thing to a screen reader. Without this the
+              samples read as somebody's real chat, and a visitor could reasonably
+              wonder whose. Unobtrusive by design: it is a marker, not a warning. */}
+          {!chatConfigured && <span className="preview-badge">Preview data</span>}
           <button
             type="button"
             onClick={() => setPreviewWhite((p) => !p)}
@@ -583,9 +597,16 @@ export default function ClassicGenerator({
               height={MULTICHAT_OBS_SIZE.height}
             />
           ) : (
-            <p className="preview-empty">
-              Enter a channel above to see the live overlay here.
-            </p>
+            /* No channel yet, so there is no live overlay to show — and an empty
+               frame says nothing about styling, which is the whole reason someone
+               is on this page. Fixtures go through the production renderer
+               instead, so all twenty-four settings are visible immediately. No
+               iframe, so nothing connects, polls, or authenticates. */
+            <ClassicChatPreview
+              query={chatQuery}
+              messages={SAMPLE_CHAT_MESSAGES}
+              height={MULTICHAT_OBS_SIZE.height}
+            />
           )}
         </div>
 

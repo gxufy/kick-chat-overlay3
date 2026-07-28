@@ -287,6 +287,10 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-surface.white { background: #46464e; }
 .preview-surface.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
 .preview-empty { display: flex; align-items: center; justify-content: center; padding: 20px 16px; color: var(--dim); font-size: 0.77rem; text-align: center; line-height: 1.45; }
+/* "Preview data" marker, shown while a preview is showing fixtures rather than a
+   real overlay. Deliberately quiet — it sits in the label row at the same size as
+   the row's own text, states a fact, and is not styled as a warning. */
+.preview-badge { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 0.66rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
 
 /* URL result.
    The field takes the row and the two actions sit beside it at their natural

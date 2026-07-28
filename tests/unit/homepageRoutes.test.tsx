@@ -187,6 +187,16 @@ describe('homepage bottom section', () => {
     expect(footer.textContent).toMatch(/©/);
     expect(footer.querySelectorAll('a')).toHaveLength(1);
   });
+
+  it('mentions no unbuilt product', () => {
+    /* MultiAlert is planned and its banner copy is drafted, but it lives in
+       TODO.md until the thing exists. Announcing a tool that cannot be opened
+       turns the homepage into a promise, which is what the "more tools are on
+       the way" card was and why it was removed. */
+    render(<HomePage />);
+    expect(document.body.textContent).not.toMatch(/multialert/i);
+    expect(hrefs().some((href) => /alert/i.test(href ?? ''))).toBe(false);
+  });
 });
 
 /* The homepage keeps its own overlay forward: a /?kick=name link is an overlay

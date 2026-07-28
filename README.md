@@ -84,7 +84,7 @@ settings.
 
 **Chat overlay**
 
-1. Configure the chat settings. The preview is a real overlay at the exact URL you are about to copy, so it stays empty while those channels are offline or quiet.
+1. Configure the chat settings. Before you enter a channel the preview holds a fixed set of sample messages, marked **Preview data**, so every setting is visible immediately. Enter a channel and it becomes a real overlay at the exact URL you are about to copy — which then stays empty while those channels are offline or quiet.
 2. Click **Copy** under the chat overlay URL.
 3. In OBS: **Add Source → Browser**, paste the URL.
 4. Size it **680 × 280**. **830 × 230** is a wider, shorter alternative that shows fewer messages.
@@ -92,17 +92,21 @@ settings.
 
 **Viewer counter**
 
-1. The **Viewer counter** row sits below the chat row, with its own six settings beside its own preview and URL.
+1. The **Viewer counter** row sits below the chat row, with its own six settings beside its own preview and URL. Before you enter a channel it shows sample counts, marked **Preview data**, and you can edit them or click **Restore sample counts**.
 2. Click its **Copy**, add a **second Browser source**, and paste it in.
 3. Size it **400 × 80**.
 
-It polls each platform's viewer count and shows what it measured. A measured zero
-is shown, because zero viewers on a live stream is a fact; a request that failed is
-not turned into a zero. A brief outage keeps the last known number for a bounded
-window and then shows an em-dash rather than continuing to assert a count it can no
-longer confirm. Nothing renders until the first poll has settled, so no fabricated
-number ever flashes on stream. The counter carries no connection key and opens no
-sockets — it is polling only.
+In OBS it polls each platform's viewer count and shows what it measured. A measured
+zero is shown, because zero viewers on a live stream is a fact; a request that
+failed is not turned into a zero. A brief outage keeps the last known number for a
+bounded window and then shows an em-dash rather than continuing to assert a count it
+can no longer confirm. Nothing renders until the first poll has settled, so no
+fabricated number ever flashes on stream. The counter carries no connection key and
+opens no sockets — it is polling only.
+
+The generator's sample counts are the one exception to that, and only there: they
+are typed in, never fetched, never saved, and never part of the URL, so the overlay
+OBS loads still shows nothing until it has measured something.
 
 The preview-background buttons on the generator change that page only. They are
 never part of either URL and never reach OBS.
@@ -116,6 +120,10 @@ hand-written one works fine.
 > typed — connecting as a moderator of someone else's channel authorizes fine but
 > leaves the pin option disabled, with the reason shown next to the connection.
 > See [DEPLOY.md](DEPLOY.md) for the environment variables that feature needs.
+>
+> If **Connect Twitch** returns `{"error":"oauth_not_configured"}`, the deployment
+> is missing one or more of those six variables. The server log names which ones.
+> Everything except native Twitch pins keeps working meanwhile.
 
 ### Routes
 
@@ -131,8 +139,12 @@ hand-written one works fine.
 | `/tools/counter` | Redirects to `/multichat#viewer-counter`. No longer a generator page. |
 | `/?kick=…` | Legacy root overlay URLs still forward to `/multichat`. |
 
-The generator has no demo or test mode: every preview is the real overlay at the
-real URL, so it is empty when the configured channels are.
+There is still no demo or test mode, and no separate testing page. With a channel
+configured, every preview is the real overlay at the real URL, so it is empty when
+those channels are. With no channel yet, both previews show fixed sample data —
+marked **Preview data** — through those same overlay components, so the settings
+are visible before you have typed anything. The samples are generator-only: they
+open no sockets, poll nothing, and never appear in a URL or in OBS.
 
 ### Fonts
 

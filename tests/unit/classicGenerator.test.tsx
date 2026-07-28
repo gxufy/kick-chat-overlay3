@@ -1000,17 +1000,40 @@ describe('OBS setup', () => {
 });
 
 describe('the Demo interface is gone', () => {
-  it('offers no Live/Demo switch, sample messages, or test tools', () => {
+  it('offers no Live/Demo switch, message creator, or test tools', () => {
     mount();
     const text = document.body.textContent ?? '';
-    for (const gone of [
-      /demo/i,
-      /sample message/i,
-      /message creator/i,
-      /command simulator/i,
-      /test tools/i,
-    ]) {
+    for (const gone of [/demo/i, /message creator/i, /command simulator/i, /test tools/i]) {
       expect(text).not.toMatch(gone);
+    }
+  });
+
+  it('names no control that switches the previews between live and sample content', () => {
+    /* This replaced a /sample message/i scan of the whole page. That pattern was
+       standing in for the retired Demo panel's own heading, and it stopped
+       distinguishing anything once labelled fixtures became a requirement: the
+       captions now say "sample messages" precisely so nobody mistakes invented
+       chat for a real stream, and a text scan cannot tell that caption from the
+       panel it was written to detect.
+
+       What actually has to stay gone is the *switch* — a control the user picks
+       live or sample content with. Fixtures are not a mode: they are what a panel
+       with no channel shows, and typing a channel is the only thing that ends
+       them. So the assertion is structural, over every interactive control on the
+       page, which is what the old regex was a weak proxy for. */
+    mount();
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>('button, input, select, [role="switch"], [role="tab"]'),
+    );
+    for (const control of controls) {
+      const name = [
+        control.textContent ?? '',
+        control.getAttribute('aria-label') ?? '',
+        control.getAttribute('value') ?? '',
+        document.querySelector(`label[for="${control.id}"]`)?.textContent ?? '',
+      ].join(' ');
+      expect(name).not.toMatch(/\bdemo\b/i);
+      expect(name).not.toMatch(/\blive\b/i);
     }
   });
 

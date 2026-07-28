@@ -201,15 +201,23 @@ export type OverlayTool<S, P extends string = string, R = undefined> = {
  * rendered sample messages instead of a live feed, plus a message creator and a
  * command simulator behind it.
  *
- * It is gone, along with the Live/Demo switch and the Test Tools section. The
- * generator's previews are real overlays at the exact generated URLs, and an
- * empty preview for an offline channel is the honest answer rather than a gap to
- * paper over with fabricated messages: a sample feed shows how the styling looks
- * on messages the overlay did not produce, which is a different question from the
- * one a user is asking when they look at their own preview.
+ * It is gone, and stays gone: there is no Live/Demo switch, no Test Tools
+ * section, and no command simulator. A preview is not a mode.
+ *
+ * What replaced it is narrower. With a channel configured, a preview is the real
+ * overlay at the exact generated URL, exactly as before — and empty is the honest
+ * answer for an offline channel. With no channel there is no URL worth running,
+ * and the empty frame that used to sit there answered nothing about styling,
+ * which is the only reason to be on the page. So that one state draws fixtures
+ * instead, labelled "Preview data", through the production renderer.
+ *
+ * The distinction from the retired `demo` field is that fixtures are not an
+ * alternative to the live feed the user could select. They are what the panel
+ * shows before a live feed exists, and a configured channel ends them.
  *
  * The production ChatOverlay renderer and the authoritative command help are
- * unaffected — they were never part of the demo.
+ * unaffected — they were never part of the demo, and the fixtures feed that same
+ * renderer rather than a second one.
  */
 
 /**

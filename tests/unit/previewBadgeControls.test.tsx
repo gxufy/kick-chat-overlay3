@@ -520,15 +520,20 @@ describe('the picker inside the generator', () => {
 
   it('reports the enabled count once rather than announcing every chip', () => {
     render(<ClassicGenerator />);
-    const status = document.querySelector('.preview-feed-status[role="status"]')!;
+    const feed = document.querySelector('.preview-chat-feed')!;
+    const status = feed.querySelector('.preview-feed-status[role="status"]')!;
     expect(status.textContent).toContain(`${PREVIEW_SOURCES.length} of ${PREVIEW_SOURCES.length}`);
     act(() => void fireEvent.click(screen.getByRole('button', { name: 'Disable all' })));
-    /* One live region for the feed, carrying one summary line — nine separate
+    /* One live region for the chat feed, carrying one summary line — nine separate
        announcements while someone works through the picker would be noise rather
        than information. The picker itself contributes no live region of its own,
        which is the part that matters; the generator has others for unrelated
-       things, so they are not counted. */
-    expect(document.querySelectorAll('.preview-feed-status[role="status"]')).toHaveLength(1);
+       things, so they are not counted.
+
+       Scoped to the chat feed rather than to the document: the Viewer counter card
+       is a second preview control surface with a status line of its own, and its
+       existence is not a regression in this one. */
+    expect(feed.querySelectorAll('.preview-feed-status[role="status"]')).toHaveLength(1);
     expect(
       document.querySelector('.preview-feed-sources')!.querySelectorAll(
         '[role="status"], [role="alert"], [aria-live]',

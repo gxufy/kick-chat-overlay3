@@ -61,8 +61,13 @@ export default function ClassicPreviewFeedControls({
   /** The badge and cosmetic picker, rendered between speed and the status line. */
   children?: ReactNode;
 }) {
+  /* `preview-chat-feed` carries no styling of its own — it names which of the two
+     preview control surfaces this is, so a test asserting "this feed has exactly
+     one live region" can say which feed it means. Without it the only available
+     selector is page-wide, and the Viewer counter card's own status line counts
+     against the chat feed's total. */
   return (
-    <div className="preview-feed">
+    <div className="preview-feed preview-chat-feed">
       <div className="preview-feed-row">
         {/* The Classic pill switch, same markup as every catalog toggle. */}
         <div className="toggle-wrap">

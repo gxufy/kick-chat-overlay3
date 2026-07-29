@@ -339,6 +339,24 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-scale .preview-feed-actions { margin-top: 5px; }
 .preview-feed-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 
+/* Badge & cosmetic library. A sibling of the source picker, borrowing
+   .preview-feed-seg's legend and .classic-conn-btn's button so it reads as the
+   same kind of surface; only the gallery itself is particular. Browse-only: a
+   provider label above a wrapping grid of art, one caption per badge. */
+.preview-badge-library { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
+.preview-badge-library .classic-help { margin: 0 0 6px; }
+.preview-badge-rows { display: flex; flex-direction: column; gap: 8px; }
+.preview-badge-provider { font-size: 0.66rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin: 0 0 4px; }
+.preview-badge-grid { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; }
+/* Fixed-width cells so ragged captions do not misalign the art above them. */
+.preview-badge-item { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px; text-align: center; }
+.preview-badge-art { width: 28px; height: 28px; object-fit: contain; }
+.preview-badge-name { font-size: 0.6rem; color: var(--dim); line-height: 1.2; word-break: break-word; }
+.preview-badge-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.preview-badge-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+.preview-badge-status { font-size: 0.7rem; color: var(--dim); margin: 6px 0 0; }
+.preview-badge-status[data-status="error"] { color: var(--warn, #e0685a); }
+
 /* Counter simulation controls, inside the Counter output card. Reuses
    .preview-feed for the card itself so the two preview control surfaces read as
    the same kind of thing; only the manual section below is particular to it. */

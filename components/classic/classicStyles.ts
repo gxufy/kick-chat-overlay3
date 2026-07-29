@@ -319,7 +319,17 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
    stretching, so a wrapped row does not leave a full-width Pause. */
 .preview-feed-row .toggle-wrap { flex: 0 0 auto; gap: 8px; }
 .preview-feed-seg { margin: 7px 0 0; }
-.preview-feed-seg legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 5px; }
+.preview-feed-seg legend, .preview-feed-sources legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 5px; }
+/* The fixture chips wrap; they are the only part of this card that can grow, and
+   they grow downward rather than pushing the row's buttons around. */
+.preview-feed-sources { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
+.preview-feed-sources .classic-help { margin: 0 0 6px; }
+/* Left-aligned, unlike .classic-chip-row: these are a wrapping set rather than
+   a right-hand control for a settings row, and a ragged right edge on nine
+   chips reads as broken. */
+.preview-feed-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-start; }
+.preview-feed-chip .classic-chip-label { font-size: 0.66rem; padding: 3px 8px; }
+.preview-feed-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 7px; }
 .preview-feed-status { font-size: 0.7rem; color: var(--dim); margin: 6px 0 0; }
 .preview-feed-row button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 

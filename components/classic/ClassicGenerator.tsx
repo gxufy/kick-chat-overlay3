@@ -43,7 +43,9 @@ import ClassicPreviewComposer from './ClassicPreviewComposer';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
+import ClassicPreviewBadgePicker from './ClassicPreviewBadgePicker';
 import { useChatPreviewSimulator } from './useChatPreviewSimulator';
+import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
 import {
@@ -226,6 +228,11 @@ export default function ClassicGenerator({
      and nothing it produces is serialized. The hook owns its own timer; see its
      header for why it sits here rather than inside the preview. */
   const feed = useChatPreviewSimulator();
+
+  /* Summarised for the feed's live region rather than announced per chip: the
+     count is what changes meaningfully, and nine separate announcements while
+     someone works through the picker would be noise. */
+  const enabledSourceCount = PREVIEW_SOURCES.filter((source) => feed.sources[source]).length;
 
   /* What the fixture preview renders: the samples, then anything composed, then
      whatever the feed has generated. A new array only when one of those three
@@ -741,7 +748,17 @@ export default function ClassicGenerator({
             onTogglePaused={feed.togglePaused}
             onSpeedChange={feed.setSpeed}
             onReset={feed.reset}
-          />
+            statusDetail={`${enabledSourceCount} of ${PREVIEW_SOURCES.length} fixture sources on.`}
+          >
+            <ClassicPreviewBadgePicker
+              sources={feed.sources}
+              onToggleSource={feed.toggleSource}
+              onEnableAll={feed.enableAllSources}
+              onDisableAll={feed.disableAllSources}
+              onRandomize={feed.randomizeSources}
+              onReset={feed.resetSources}
+            />
+          </ClassicPreviewFeedControls>
         )}
 
         {!chatConfigured && (

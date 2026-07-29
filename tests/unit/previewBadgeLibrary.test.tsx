@@ -214,28 +214,33 @@ describe('the badge library inside the generator', () => {
       screen.getByLabelText('Generated MultiChat overlay URL').textContent) ??
     '';
 
-  it('appears on the bare generator, beside the source picker not inside it', () => {
+  it('shows one compact refresh control, not a browsable gallery', () => {
     vi.stubGlobal('fetch', vi.fn());
     render(<ClassicGenerator />);
-    const library = document.querySelector('.preview-badge-library');
-    expect(library).toBeTruthy();
-    /* Its own fieldset, outside the picker's — so the picker's checkbox count and
+    /* The gallery grid is gone; a single action and its status line remain. */
+    expect(document.querySelector('.preview-badge-library')).toBeNull();
+    expect(document.querySelector('.preview-badge-grid')).toBeNull();
+    const refresh = document.querySelector('.preview-badge-refresh');
+    expect(refresh).toBeTruthy();
+    /* Outside the picker's fieldset — the picker's checkbox count and its
        single-live-region contracts are untouched. */
-    expect(library!.closest('.preview-feed-sources')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Load more badges' })).toBeTruthy();
+    expect(refresh!.closest('.preview-feed-sources')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refresh preview badges' })).toBeTruthy();
   });
 
-  it('opens no request until Load more badges is clicked', async () => {
+  it('opens no request until the refresh action is clicked', async () => {
     const fetchMock = okFetch(GOOD_BODY);
     vi.stubGlobal('fetch', fetchMock);
     render(<ClassicGenerator />);
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Load more badges' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh preview badges' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Badge library loaded' })).toBeTruthy(),
+      expect(document.querySelector('.preview-badge-status')?.getAttribute('data-status')).toBe(
+        'success',
+      ),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    /* The only request went to 7TV; nothing else was opened by the library. */
+    /* The only request went to 7TV; nothing else was opened by the loader. */
     expect(String(fetchMock.mock.calls[0][0])).toContain('7tv.io');
   });
 
@@ -243,9 +248,11 @@ describe('the badge library inside the generator', () => {
     vi.stubGlobal('fetch', okFetch(GOOD_BODY));
     render(<ClassicGenerator />);
     const before = chatUrl();
-    fireEvent.click(screen.getByRole('button', { name: 'Load more badges' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh preview badges' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Badge library loaded' })).toBeTruthy(),
+      expect(document.querySelector('.preview-badge-status')?.getAttribute('data-status')).toBe(
+        'success',
+      ),
     );
     /* The generated URL is unmoved, and no badge id leaked into it. */
     expect(chatUrl()).toBe(before);

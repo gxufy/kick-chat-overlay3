@@ -44,7 +44,7 @@ import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
 import ClassicPreviewBadgePicker from './ClassicPreviewBadgePicker';
-import ClassicPreviewBadgeLibrary from './ClassicPreviewBadgeLibrary';
+import ClassicPreviewBadgeRefresh from './ClassicPreviewBadgeRefresh';
 import ClassicPreviewScaleControl from './ClassicPreviewScaleControl';
 import ClassicPreviewBackgroundControl, {
   DEFAULT_PREVIEW_CUSTOM_COLOR,
@@ -251,12 +251,13 @@ export default function ClassicGenerator({
      header for why it sits here rather than inside the preview. */
   const feed = useChatPreviewSimulator();
 
-  /* The badge & cosmetic library. Generator-only in the same strict sense as the
-     feed: it owns a browsable catalog of preview badge art and the one request
-     that extends it, and nothing it holds is serialized or written to the draft.
-     The real overlay never imports its loader, so opening the library opens a
-     request OBS never makes. See the hook header for the no-fetch-on-mount and
-     never-clear-on-failure guarantees. */
+  /* The preview badge catalog. Generator-only in the same strict sense as the
+     feed: it owns the catalog of preview badge art and the one request that
+     extends it, and nothing it holds is serialized or written to the draft. The
+     real overlay never imports its loader, so refreshing badges opens a request
+     OBS never makes. See the hook header for the no-fetch-on-mount and
+     never-clear-on-failure guarantees. The badges are drawn beside usernames in
+     the feed; the compact refresh control only asks the loader for the full set. */
   const badgeLibrary = usePreviewBadgeLibrary();
 
   /* The preview-only zoom. Generator-only state in the strictest sense: it is
@@ -877,12 +878,13 @@ export default function ClassicGenerator({
               onRandomize={feed.randomizeSources}
               onReset={feed.resetSources}
             />
-            {/* The badge library sits beside the source picker, never inside it:
+            {/* The badge refresh sits beside the source picker, never inside it:
                 the picker's fieldset owns the fixture-source chips and its own
                 live region, and folding a second control into it would break the
-                one-status-line contract that suite asserts. This is a browse-only
-                gallery — it composes no message and reaches no URL. */}
-            <ClassicPreviewBadgeLibrary library={badgeLibrary} />
+                one-status-line contract that suite asserts. One action and one
+                status line — it composes no message and reaches no URL; the
+                loaded badges appear in the feed beside usernames, not here. */}
+            <ClassicPreviewBadgeRefresh library={badgeLibrary} />
             {/* Reset lives inside the control, which already returns to the
                 default through this same setter — a second path would be one
                 more thing to keep in agreement. */}

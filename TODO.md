@@ -1189,3 +1189,108 @@ resilience fix on the emote path or generator-only preview state.
 Documented in `DEPLOY.md`'s build/verification section. The check confirms only
 that the configuration contract is satisfied; whether a real authorization round
 trip completes still needs a human, exactly as the `curl` check already notes.
+
+## 13. Compact preview, behind-the-scenes badges, and a local OAuth verifier (implemented)
+
+The bare generator at `/multichat` became a compact, continuous preview surface,
+and the process-only OAuth check gained a local companion. No route, URL, default,
+overlay behaviour, or backend changed; every addition is generator-only preview
+state or a new read-only script.
+
+### Preview badges moved off the page and into the chat
+
+- [x] **The visible badge-library gallery is gone.** A stream's badges belong
+      beside the usernames in the preview, not in a reference grid nobody was
+      choosing from. `ClassicPreviewBadgeRefresh` is all that remains of the
+      library's surface: one button and one scoped live-region status line.
+      (`b09528e`)
+- [x] Loaded badges appear **in the simulated feed, beside usernames**, through
+      the production renderer's 7TV entitlement path — not a decorative component.
+      `lib/tools/multichat/previewCosmetics.ts` entitles the simulator's reserved
+      badge senders (`PREVIEW_BADGE_SENDERS`) to concrete badge ids, so a loaded
+      badge attaches through the same `ck-badge-img` path the live overlay emits.
+      Before the fetch, each slot falls back to the sample 7TV badge and still
+      renders a real badge. (`4ec5d65`)
+- [x] `usePreviewBadgeLibrary` keeps the earlier guarantees: **at most one fetch
+      per session**, shared under Strict Mode, cached on success, aborted on
+      unmount, and grow-only so a failed or aborted refresh never clears the
+      badges already shown. Nothing fetches on mount, and no configured OBS overlay
+      (a `/multichat?channels=…` URL or `/counter`) ever makes the request.
+- [x] No badge id, catalog entry, or preview cosmetic is serialized into an
+      overlay URL or an OAuth draft.
+
+### The chat preview runs continuously
+
+- [x] `useChatPreviewSimulator` + `lib/tools/multichat/previewSimulator.ts` stream
+      realistic fake messages through the production `ChatOverlay` over fixtures.
+      Speed band (Slow / Normal / Fast), Pause/Resume, Reset, and per-source
+      badge/platform toggles are all generator-only. (`5f3572a`, and the
+      continuous counter simulator alongside it.)
+- [x] The simulator is injectable and seeded — a `RandomSource` parameter defaults
+      to `Math.random` but tests pass a deterministic source. No in-place
+      `Array.sort()` on shared arrays. The feed pauses while the tab is hidden and
+      re-arms a single `setTimeout` chain, so a settings keystroke never restarts
+      the cadence.
+- [x] The feed and its controls appear **only before a channel is configured**.
+      With a channel typed, the panel is the real overlay at the exact copied URL,
+      and the fixture controls are hidden — a composed line would have nowhere to
+      appear.
+- [x] The message composer (`composePreviewMessage`) hands back a plain
+      `UnifiedMessage`, so a composed line goes through `buildParsedMessage` like a
+      fixture and all twenty-four settings reach it. Ids come from a counter, not a
+      clock; hostile markup renders as text; nothing composed is serialized.
+
+### Compact layout
+
+- [x] The Chat Preview card is materially shorter: header row, an isolated
+      680 × 280 production overlay frame at 75% default zoom, then compact control
+      rows. The Viewer Counter stays beside it at desktop widths. (`fa81672`)
+- [x] All twenty-four Chat Settings stay reachable and compact: one column on
+      mobile, two at ≥ 1360px, three at ≥ 1600px, with the existing catalog groups,
+      segmented pills for short enums, sliders for numerics, and a font select. No
+      setting was removed or hidden; schema values stay byte-compatible. (`e8b4989`)
+
+### A safe local OAuth verifier
+
+- [x] `npm run verify:oauth:local` (`scripts/verify-oauth-local.mts`) loads
+      `.env.local` through `@next/env`'s `loadEnvConfig` — the same loader
+      `next dev` uses — then runs the shared report. It prints only the **names**
+      of the files it loaded, never their contents, and never modifies or commits
+      anything. (`cadd44e`)
+- [x] `verify:oauth` and `verify:oauth:local` share one report body
+      (`scripts/oauthConfigReport.mts`) and the one authoritative variable list
+      (`lib/server/oauthConfig.ts`), so their verdicts cannot drift. The
+      `MODULE_TYPELESS_PACKAGE_JSON` warning is suppressed with
+      `node --disable-warning=…`, not a repo-wide `"type": "module"`.
+- [x] `tests/unit/oauthConfigReport.test.ts` drives both scripts as subprocesses,
+      asserting exit codes, the per-variable MISSING lines, both public callback
+      URLs, the "does not confirm credentials" caveat, that a distinctive secret
+      marker never leaks to stdout, and that the local loader reads a `.env.local`
+      written into a temp dir. (`e11d064`)
+
+### Documentation
+
+- [x] `README.md` — the Quick start now describes the continuous simulated
+      preview, and a new "What the preview shows" subsection documents
+      behind-the-scenes badges, the Refresh action, preview-only backgrounds/zoom,
+      and that no secret is read in the browser.
+- [x] `DEPLOY.md` — the build/verification section now documents **both** verifier
+      commands and their exact difference (process env vs. Next's dotenv loader),
+      which to run on the VPS/PM2/CI versus in local development, and that neither
+      proves the credentials work.
+
+### Verification still outstanding (human eyes required)
+
+Nothing below was observed; no visual, screen-reader, OBS, or live-provider check
+is claimed.
+
+- [ ] Visual pass on the compact `/multichat` generator at 1920 × 1080,
+      1600 × 900, 1024 × 768, and 390 × 844: the shorter preview card, the
+      three/two/one settings-column ladder, chat preview and counter side by side,
+      no horizontal overflow, and touch-friendly targets.
+- [ ] Keyboard and screen-reader pass over the feed controls, badge refresh,
+      source picker, and composer. No automated accessibility tooling is installed.
+- [ ] A real `npm run verify:oauth:local` against a populated `.env.local`, and
+      `npm run verify:oauth` on the VPS after `pm2 restart multichat --update-env`.
+- [ ] Confirmation in a browser that **Refresh preview badges** loads the 7TV set
+      once and that the loaded badges appear beside usernames in the feed.

@@ -324,25 +324,42 @@ npm run build        # production build
 modified (`git restore -- next-env.d.ts`).
 
 Before the connect flow, confirm the six variables are all present and the
-redirect path is well-formed:
+redirect path is well-formed. There are two commands for this, differing only in
+**where they read the variables from**:
 
 ```bash
-npm run verify:oauth
+npm run verify:oauth         # reads process.env only
+npm run verify:oauth:local   # loads .env.local through Next's own loader first
 ```
 
-It reads `process.env` only — never `.env.local` — and prints each variable name
-with a present/MISSING verdict and never its value, then the two public callback
-URLs. Exit `0` means every variable is set and `TWITCH_REDIRECT_URI` ends in
-`/api/twitch/oauth/callback`; a missing variable or a wrong path exits `1`. To
-check a dotenv file, opt in explicitly — the script never reads one on its own:
+Both print the identical report — each variable name with a present/MISSING
+verdict and **never its value**, the two public callback URLs, and a warning if
+`TWITCH_REDIRECT_URI` does not end in `/api/twitch/oauth/callback`. Both exit `0`
+only when all six are set and the redirect path is well-formed, and `1` otherwise.
+They share one report body (`scripts/oauthConfigReport.mts`) and the one
+authoritative variable list (`lib/server/oauthConfig.ts`), so their verdicts
+cannot drift.
 
-```bash
-node --env-file=.env.local scripts/verify-oauth-config.mts
-```
+The difference is the environment each inspects:
 
-A `0` here means the configuration contract is satisfied; whether a real
-authorization round trip completes still depends on the console entry matching
-`TWITCH_REDIRECT_URI` byte for byte, which only the connect flow below proves.
+- **`verify:oauth`** reads `process.env` exactly as the process already has it. It
+  never opens `.env.local`. This is the one to run on the **VPS, under PM2, or in
+  CI**, where the variables come from `ecosystem.config.js` or the platform's
+  secret store — it checks what the running process will actually see. Because
+  PM2 caches the environment, run it after `pm2 restart multichat --update-env`,
+  not before.
+- **`verify:oauth:local`** loads `.env.local` (and the other Next dotenv files)
+  through `@next/env`'s `loadEnvConfig` — the **same loader `next dev` uses** —
+  then runs the same report. This is the one to run **in local development**, to
+  confirm the file `next dev` will read actually satisfies the contract. It prints
+  only the **names** of the files it loaded, never their contents, and never
+  modifies or commits anything.
+
+Neither command reads, prints, or exposes a secret value, and neither proves the
+credentials work. A `0` means only that the configuration contract is satisfied;
+whether a real authorization round trip completes still depends on the console
+entry matching `TWITCH_REDIRECT_URI` byte for byte, which only the connect flow
+below proves.
 
 Connect flow — open the generator at `/multichat` (no channel parameter), enter
 your Twitch channel, click **Connect Twitch**, approve on Twitch. You should

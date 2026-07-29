@@ -49,9 +49,11 @@ two different URLs**. Add either, both, or neither.
 1. Open **[`/multichat`](https://multichat-gxufy.com/multichat)** with no channel
    in the URL — that is the generator. Enter your channel name(s) once; they feed
    both tools.
-2. Style each tool. Before you enter a channel, both previews show fixed sample
-   data marked **Preview data** so every setting is visible immediately. Enter a
-   channel and each preview becomes the real overlay at the exact URL you copy.
+2. Style each tool. Before you enter a channel, both previews run continuously on
+   sample data marked **Preview data** so every setting is visible immediately —
+   the chat preview streams fake messages through the production renderer, and the
+   counter preview rolls through sample counts. Enter a channel and each preview
+   becomes the real overlay at the exact URL you copy.
 
 **Chat overlay**
 
@@ -71,6 +73,29 @@ two different URLs**. Add either, both, or neither.
 The generator is optional: the overlay URL is just query parameters, so a
 hand-written one works fine. Preview backgrounds and sample counts change the
 generator page only — they are never part of a URL and never reach OBS.
+
+### What the preview shows
+
+The chat preview is the **production overlay renderer** over sample messages, not
+a mock-up, so every one of the twenty-four chat settings behaves exactly as it
+will in OBS. Its config is round-tripped through the overlay route's own parser,
+so the preview and the URL you copy can never disagree.
+
+- **Badges load behind the scenes.** There is no badge gallery to browse. The
+  sample chatters wear real platform and 7TV badges beside their names, through
+  the same entitlement path the live overlay uses. **Refresh preview badges**
+  fetches the full 7TV set once per session; a failed refresh leaves the badges
+  already shown untouched. A configured OBS overlay never makes this request, and
+  no badge ever reaches a generated URL.
+- **Preview-only, always.** The preview background (Transparent / Dark / Light /
+  Custom hex), the zoom, the sample feed speed, and the badge catalog are
+  generator page state. None of them is serialized into an overlay URL or reaches
+  OBS. They persist across the Twitch OAuth round trip through a session draft,
+  not through the URL.
+- **Native Twitch pins** are previewed through the same pin card the overlay
+  renders. In OBS they need a connected Twitch account whose login matches the
+  channel you typed — see [DEPLOY.md](DEPLOY.md). No secret is ever read in the
+  browser; token handling is entirely server-side.
 
 ## Commands
 

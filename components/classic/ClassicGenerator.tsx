@@ -44,6 +44,11 @@ import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
 import ClassicPreviewBadgePicker from './ClassicPreviewBadgePicker';
+import ClassicPreviewScaleControl from './ClassicPreviewScaleControl';
+import {
+  PREVIEW_SCALE_DEFAULT,
+  type PreviewScale,
+} from './IsolatedPreviewFrame';
 import { useChatPreviewSimulator } from './useChatPreviewSimulator';
 import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
@@ -228,6 +233,16 @@ export default function ClassicGenerator({
      and nothing it produces is serialized. The hook owns its own timer; see its
      header for why it sits here rather than inside the preview. */
   const feed = useChatPreviewSimulator();
+
+  /* The preview-only zoom. Generator-only state in the strictest sense: it is
+     not in `chatStyle`, so the serializer never sees it, it is not in the draft,
+     and `textSize` is untouched — the overlay's own size setting still means
+     what it meant. All this decides is how large the preview *surface* is drawn.
+
+     Held here rather than inside the preview so the control and the frame agree
+     without the preview needing state of its own, which two suites assert it has
+     none of. */
+  const [previewScale, setPreviewScale] = useState<PreviewScale>(PREVIEW_SCALE_DEFAULT);
 
   /* Summarised for the feed's live region rather than announced per chip: the
      count is what changes meaningfully, and nine separate announcements while
@@ -728,6 +743,10 @@ export default function ClassicGenerator({
               messages={previewMessages}
               width={MULTICHAT_OBS_SIZE.width}
               height={MULTICHAT_OBS_SIZE.height}
+              /* Not part of `chatQuery`, and that is the whole point: the zoom
+                 reaches the frame while the renderer's config comes only from
+                 the serialized URL above. */
+              scale={previewScale}
             />
           )}
         </div>
@@ -757,6 +776,13 @@ export default function ClassicGenerator({
               onDisableAll={feed.disableAllSources}
               onRandomize={feed.randomizeSources}
               onReset={feed.resetSources}
+            />
+            {/* Reset lives inside the control, which already returns to the
+                default through this same setter — a second path would be one
+                more thing to keep in agreement. */}
+            <ClassicPreviewScaleControl
+              scale={previewScale}
+              onScaleChange={setPreviewScale}
             />
           </ClassicPreviewFeedControls>
         )}

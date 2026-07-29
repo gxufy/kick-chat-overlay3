@@ -332,6 +332,12 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-feed-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 7px; }
 .preview-feed-status { font-size: 0.7rem; color: var(--dim); margin: 6px 0 0; }
 .preview-feed-row button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+/* Preview scale. Borrows .preview-feed-seg for its legend and row, so only what
+   differs is here: the caveat paragraph sits under the row rather than above it,
+   and Reset goes flat once there is nothing left to reset. */
+.preview-scale .classic-help { margin: 5px 0 0; }
+.preview-scale .preview-feed-actions { margin-top: 5px; }
+.preview-feed-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 
 /* Preview counts, inside the Counter output card.
    Shorter than the chat composer because it has less to hold: four small numeric

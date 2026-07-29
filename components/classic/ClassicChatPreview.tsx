@@ -34,7 +34,9 @@
  */
 import { useMemo } from 'react';
 import ChatOverlay, { type PinnedState } from '@/components/ChatOverlay';
-import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
+import IsolatedPreviewFrame, {
+  PREVIEW_SCALE_DEFAULT,
+} from '@/components/classic/IsolatedPreviewFrame';
 import { safeParseMultichatConfig } from '@/lib/multichatConfig';
 import {
   buildMessageFilter,
@@ -63,6 +65,7 @@ export default function ClassicChatPreview({
   cosmetics = SAMPLE_COSMETICS,
   width,
   height,
+  scale = PREVIEW_SCALE_DEFAULT,
 }: {
   /** The overlay query string, from the tool's own serializer. */
   query: string;
@@ -74,6 +77,12 @@ export default function ClassicChatPreview({
   width: number;
   /** Canonical OBS height the tool declares, for the frame's aspect ratio. */
   height: number;
+  /**
+   * Preview-only zoom, as a percentage. Passed straight to the frame and never
+   * to the overlay: `config` is built from the serialized query and this is not
+   * part of it, so nothing the renderer receives changes with the zoom.
+   */
+  scale?: number;
 }) {
   const config = useMemo(() => configFromQuery(query), [query]);
 
@@ -162,6 +171,7 @@ export default function ClassicChatPreview({
         title="MultiChat sample preview"
         width={width}
         height={height}
+        scale={scale}
         testId="chat-preview-frame"
       >
         <ChatOverlay

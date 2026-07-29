@@ -78,10 +78,34 @@ function frameSkeleton(origin: string): string {
   );
 }
 
+/**
+ * The preview-only zoom steps, as percentages.
+ *
+ * These belong to the frame rather than to any tool's settings, because that is
+ * exactly what they are: a property of how large the preview *surface* is drawn,
+ * with no counterpart in the overlay configuration and no route to a generated
+ * URL. Nothing here is serialized, and `textSize` is untouched — a visitor who
+ * wants smaller text in OBS still has the real setting for it.
+ */
+export const PREVIEW_SCALES = [65, 75, 85, 100] as const;
+
+export type PreviewScale = (typeof PREVIEW_SCALES)[number];
+
+/**
+ * 75%, deliberately not 100%.
+ *
+ * At full size the canonical 680×280 chat source fits very few lines, so the
+ * preview showed a handful of messages and told a visitor little about density,
+ * filters, or how a long backlog actually reads. Three quarters fits roughly
+ * twice as many while staying legible.
+ */
+export const PREVIEW_SCALE_DEFAULT: PreviewScale = 75;
+
 export default function IsolatedPreviewFrame({
   title,
   width,
   height,
+  scale = 100,
   children,
   testId,
 }: {
@@ -91,11 +115,23 @@ export default function IsolatedPreviewFrame({
   width: number;
   /** Canonical OBS height, used for the aspect ratio only. */
   height: number;
+  /**
+   * Preview-only zoom, as a percentage. 100 draws the surface at the ratio's own
+   * size; anything smaller enlarges the frame's internal viewport and scales it
+   * back down, so more content fits without the renderer being told anything.
+   */
+  scale?: number;
   /** The production renderer to mount inside the frame. */
   children: ReactNode;
   testId?: string;
 }) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  /* The zoom as a multiplier, clamped. Clamped rather than trusted because a
+     stray 0 would divide by zero into an infinite width, and a value above 1
+     would make the frame smaller than its box and leave a gap — neither is worth
+     a runtime surprise for a prop only this file's own control ever sets. */
+  const factor = Math.min(1, Math.max(0.25, scale / 100));
 
   /* The frame's document nodes, once written. Null until then, which is why the
      portals below are conditional: there is no document to portal into on the
@@ -174,8 +210,23 @@ export default function IsolatedPreviewFrame({
         sandbox="allow-same-origin"
         style={{
           display: 'block',
-          width: '100%',
-          height: '100%',
+          /* The zoom, and the whole of it.
+             The frame is made 1/factor larger than its box and then scaled back
+             down by the same factor, so it occupies exactly the box again while
+             its *internal viewport* is proportionally bigger. Nothing inside is
+             told anything: the renderer lays out against a larger viewport and
+             the result is drawn smaller, which is why text, badges, emotes,
+             source markers, event cards and the pin card all shrink together and
+             stay in proportion. A font-size override could not do that — it
+             would leave every px dimension in the overlay's CSS behind.
+             Percentages rather than pixels keep the card in charge of the width. */
+          width: `${(100 / factor).toFixed(4)}%`,
+          height: `${(100 / factor).toFixed(4)}%`,
+          transform: factor === 1 ? undefined : `scale(${factor})`,
+          /* Top-left, so the scaled box still starts at the corner of its
+             container. Scaling about the centre would pull the surface up and
+             left by half the overflow and clip the top of the pin card. */
+          transformOrigin: '0 0',
           border: 'none',
           background: 'transparent',
         }}

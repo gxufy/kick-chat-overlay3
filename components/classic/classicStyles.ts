@@ -286,8 +286,9 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-label button { background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 0.72rem; padding: 3px 9px; cursor: pointer; transition: all .15s; text-transform: none; letter-spacing: 0; font-weight: 600; font-family: inherit; }
 .preview-label button:hover { border-color: var(--accent); color: var(--accent); }
 .preview-surface { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: inset 0 2px 12px rgba(0,0,0,.3); min-height: 90px; }
-.preview-surface.white { background: #46464e; }
 .preview-surface.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
+.preview-surface.dark { background: #141414; }
+.preview-surface.light { background: #f4f4f5; }
 .preview-empty { display: flex; align-items: center; justify-content: center; padding: 20px 16px; color: var(--dim); font-size: 0.77rem; text-align: center; line-height: 1.45; }
 /* "Preview data" marker, shown while a preview is showing fixtures rather than a
    real overlay. Deliberately quiet — it sits in the label row at the same size as
@@ -338,6 +339,15 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-scale .classic-help { margin: 5px 0 0; }
 .preview-scale .preview-feed-actions { margin-top: 5px; }
 .preview-feed-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+
+/* Preview background. Borrows .classic-seg for its legend and radio row; only the
+   custom-colour field and the caveat paragraph's spacing are particular. The
+   backdrop it sets is preview-only — see the surface rules above. */
+.preview-bg { margin: 8px 0 0; }
+.preview-bg .classic-help { margin: 5px 0 0; }
+.preview-bg-custom { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.preview-bg-custom label { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.preview-bg-custom input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
 
 /* Badge & cosmetic library. A sibling of the source picker, borrowing
    .preview-feed-seg's legend and .classic-conn-btn's button so it reads as the

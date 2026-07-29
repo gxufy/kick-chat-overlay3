@@ -130,22 +130,28 @@ describe('radio groups stay independent', () => {
   });
 
   it('gives each preview its own background control, named by tool', () => {
-    /* Each preview has one background toggle, and there are two previews. These
-       are buttons rather than a radio group — the workspace's radio-based
-       PreviewBackground is not used here — so the independence question is about
-       two separate buttons, each carrying its own accessible name. */
+    /* Each preview owns a four-way radio group — Transparent, Dark, Light,
+       Custom — rather than the two-state button it replaced. The independence
+       question is whether the two groups' `name`s differ (a shared name would
+       make picking the chat backdrop move the counter's), so each region's
+       Transparent radio is read by its own id and their names compared. */
     mount();
-    const buttons = ['.panel-chat-output', '.panel-counter-output'].map(
-      (region) =>
-        within(document.querySelector<HTMLElement>(region)!).getByRole('button', {
-          name: /background$/,
-        }),
+    const transparent = ['chat', 'counter'].map(
+      (tool) =>
+        document.getElementById(`${tool}-preview-bg-checker`) as HTMLInputElement,
     );
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]).not.toBe(buttons[1]);
-    /* Both start transparent, and each says so in its own label rather than
-       relying on a visual state a screen reader cannot see. */
-    for (const button of buttons) expect(button.textContent).toContain('Transparent background');
+    expect(transparent.every(Boolean)).toBe(true);
+    /* Each Transparent radio lives inside its tool's output panel. */
+    expect(
+      document.querySelector('.panel-chat-output')!.contains(transparent[0]),
+    ).toBe(true);
+    expect(
+      document.querySelector('.panel-counter-output')!.contains(transparent[1]),
+    ).toBe(true);
+    /* Distinct group names, so the two backdrops never couple. */
+    expect(transparent[0].name).not.toBe(transparent[1].name);
+    /* Both previews start on their Transparent default. */
+    for (const radio of transparent) expect(radio.checked).toBe(true);
   });
 });
 

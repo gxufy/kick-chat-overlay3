@@ -856,28 +856,60 @@ describe('Copy and Open hand over the displayed URL', () => {
 });
 
 describe('preview backgrounds are page-only and independent', () => {
-  const toggleIn = (region: string) =>
-    within(panel(region)).getByRole('button', { name: /background$/ });
+  /* Each preview's backdrop is a four-way radio group — Transparent, Dark, Light,
+     Custom — rather than the two-state button it replaced. The independence
+     question is now whether the two groups share a radio `name` (they must not,
+     or picking the chat backdrop would move the counter's), so these read each
+     group's radios by their own ids. The id prefix (`chat`/`counter`) is the
+     region, so an id lookup already scopes to the right group without a query. */
+  const bgRadio = (region: 'chat' | 'counter', option: string) =>
+    document.getElementById(`${region}-preview-bg-${option}`) as HTMLInputElement;
+  const colorField = (region: 'chat' | 'counter') =>
+    document.getElementById(`${region}-preview-bg-color`) as HTMLInputElement | null;
 
   it('starts both previews transparent', () => {
     mount();
-    expect(toggleIn('.panel-chat-output').getAttribute('aria-pressed')).toBe('false');
-    expect(toggleIn('.panel-counter-output').getAttribute('aria-pressed')).toBe('false');
+    expect(bgRadio('chat', 'checker').checked).toBe(true);
+    expect(bgRadio('counter', 'checker').checked).toBe(true);
   });
 
   it('changes one preview background without touching the other', () => {
     mount();
-    fireEvent.click(toggleIn('.panel-chat-output'));
-    expect(toggleIn('.panel-chat-output').getAttribute('aria-pressed')).toBe('true');
-    expect(toggleIn('.panel-counter-output').getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(bgRadio('chat', 'dark'));
+    expect(bgRadio('chat', 'dark').checked).toBe(true);
+    expect(bgRadio('chat', 'checker').checked).toBe(false);
+    /* The counter group is untouched — a shared radio name would have moved it. */
+    expect(bgRadio('counter', 'checker').checked).toBe(true);
+    expect(bgRadio('counter', 'dark').checked).toBe(false);
+  });
+
+  it('reveals a colour field only under Custom, and drives the surface with it', () => {
+    mount();
+    const surface = () =>
+      panel('.panel-chat-output').querySelector<HTMLElement>('.preview-surface')!;
+    /* No colour input until Custom is the mode — a field that did nothing would
+       be worse than no field. */
+    expect(colorField('chat')).toBeNull();
+    fireEvent.click(bgRadio('chat', 'custom'));
+    const color = colorField('chat')!;
+    expect(color.type).toBe('color');
+    fireEvent.change(color, { target: { value: '#123456' } });
+    /* The backdrop is inline on the wrapper, never a class and never a URL. */
+    expect(surface().style.background).toContain('rgb(18, 52, 86)');
+    /* Leaving Custom hides the field again but must not lose the chosen colour. */
+    fireEvent.click(bgRadio('chat', 'dark'));
+    expect(colorField('chat')).toBeNull();
+    fireEvent.click(bgRadio('chat', 'custom'));
+    expect(colorField('chat')!.value).toBe('#123456');
   });
 
   it('never puts a preview background in either URL', () => {
     mount();
     typeChannel('kick', 'somechannel');
     const before = [chatUrl(), counterUrl()];
-    fireEvent.click(toggleIn('.panel-chat-output'));
-    fireEvent.click(toggleIn('.panel-counter-output'));
+    fireEvent.click(bgRadio('chat', 'custom'));
+    fireEvent.change(colorField('chat')!, { target: { value: '#abcdef' } });
+    fireEvent.click(bgRadio('counter', 'dark'));
     expect([chatUrl(), counterUrl()]).toEqual(before);
   });
 });
@@ -931,23 +963,44 @@ describe('OAuth preserves both tools', () => {
   });
 
   it('restores each preview background independently', () => {
+    /* Each preview owns a four-way radio group; the two are kept independent by
+       distinct ids and radio `name`s, so picking Dark for the counter must leave
+       the chat preview on its Transparent default across the round trip. */
     mount();
-    fireEvent.click(
-      within(panel('.panel-counter-output')).getByRole('button', { name: /background$/ }),
-    );
+    fireEvent.click(document.getElementById('counter-preview-bg-dark')!);
     leave();
     cleanup();
     mount();
     expect(
-      within(panel('.panel-chat-output'))
-        .getByRole('button', { name: /background$/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('false');
+      (document.getElementById('chat-preview-bg-checker') as HTMLInputElement).checked,
+    ).toBe(true);
     expect(
-      within(panel('.panel-counter-output'))
-        .getByRole('button', { name: /background$/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+      (document.getElementById('counter-preview-bg-dark') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (document.getElementById('chat-preview-bg-dark') as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it('round-trips a custom preview colour through the draft', () => {
+    /* Custom is the one mode whose value is not a fixed id: the chosen hex is
+       what persists, so restoring must land back on Custom with that colour and
+       not fall through to Transparent. The colour reaches no URL — a separate
+       test in this file asserts the background never enters either output. */
+    mount();
+    fireEvent.click(document.getElementById('chat-preview-bg-custom')!);
+    fireEvent.change(document.getElementById('chat-preview-bg-color') as HTMLInputElement, {
+      target: { value: '#123456' },
+    });
+    leave();
+    cleanup();
+    mount();
+    expect(
+      (document.getElementById('chat-preview-bg-custom') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (document.getElementById('chat-preview-bg-color') as HTMLInputElement).value,
+    ).toBe('#123456');
   });
 
   it('consumes each draft once, so a remount does not overwrite new input', () => {

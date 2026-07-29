@@ -46,6 +46,13 @@ import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
 import ClassicPreviewBadgePicker from './ClassicPreviewBadgePicker';
 import ClassicPreviewBadgeLibrary from './ClassicPreviewBadgeLibrary';
 import ClassicPreviewScaleControl from './ClassicPreviewScaleControl';
+import ClassicPreviewBackgroundControl, {
+  DEFAULT_PREVIEW_CUSTOM_COLOR,
+  effectivePreviewBackground,
+  previewBackgroundFromDraft,
+  previewSurfaceClass,
+  type PreviewBgMode,
+} from './ClassicPreviewBackgroundControl';
 import {
   PREVIEW_SCALE_DEFAULT,
   type PreviewScale,
@@ -221,8 +228,14 @@ export default function ClassicGenerator({
      alter an already-generated counter URL. */
   const [channels, setChannels] = useState<ToolChannels<string>>({});
   const [runtime, setRuntime] = useState<MultichatRuntime>(EMPTY_MULTICHAT_RUNTIME);
-  const [previewWhite, setPreviewWhite] = useState(false);
-  const [counterPreviewWhite, setCounterPreviewWhite] = useState(false);
+  /* The preview-only backdrop, one mode per preview so the two are independent
+     browser sources judged against different scenes. Custom carries its own
+     remembered colour, so a detour through another mode and back restores it.
+     None of this is serialized — see ClassicPreviewBackgroundControl. */
+  const [chatBgMode, setChatBgMode] = useState<PreviewBgMode>('checker');
+  const [chatBgColor, setChatBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
+  const [counterBgMode, setCounterBgMode] = useState<PreviewBgMode>('checker');
+  const [counterBgColor, setCounterBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
   const [baseUrl, setBaseUrl] = useState('https://multichat-gxufy.com');
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedCounter, setCopiedCounter] = useState(false);
@@ -438,25 +451,46 @@ export default function ClassicGenerator({
   /* Live state for the draft write. A ref rather than dependencies, so
      `persistDraft` keeps a stable identity — it is handed to the connection
      panel, and a new function on every keystroke would re-render it for nothing. */
-  const live = useRef({ chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite });
-  live.current = { chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite };
+  const live = useRef({
+    chatStyle,
+    counterStyle,
+    channels,
+    chatBgMode,
+    chatBgColor,
+    counterBgMode,
+    counterBgColor,
+  });
+  live.current = {
+    chatStyle,
+    counterStyle,
+    channels,
+    chatBgMode,
+    chatBgColor,
+    counterBgMode,
+    counterBgColor,
+  };
 
   /* Both tools' drafts, written immediately before the OAuth navigation.
      Two keys, because the storage is keyed per tool and the two styles are
      different shapes — and because the Counter's settings must survive an OAuth
      round trip the chat side initiated, which is the whole reason this writes
-     twice rather than once. */
+     twice rather than once.
+
+     The background is the mode's own value — a named id for the three fixed
+     backdrops, the hex string itself for Custom — so a chosen colour survives
+     the round trip too. Still preview-only: `background` is never read into a
+     tool's style and never serialized into an overlay URL. */
   const persistDraft = useCallback(() => {
     const l = live.current;
     writeWorkspaceDraft(multichatTool.id, {
       style: l.chatStyle,
       channels: l.channels,
-      background: l.previewWhite ? 'light' : 'checker',
+      background: effectivePreviewBackground(l.chatBgMode, l.chatBgColor),
     });
     writeWorkspaceDraft(counterTool.id, {
       style: l.counterStyle,
       channels: l.channels,
-      background: l.counterPreviewWhite ? 'light' : 'checker',
+      background: effectivePreviewBackground(l.counterBgMode, l.counterBgColor),
     });
   }, []);
 
@@ -472,11 +506,18 @@ export default function ClassicGenerator({
 
     if (chatDraft) {
       setChatStyle(multichatTool.normalize(chatDraft.style as Partial<MultichatWorkspaceStyle>));
-      if (chatDraft.background === 'light') setPreviewWhite(true);
+      /* The backdrop is preview-only, so it is restored into its own state and
+         never handed to the tool's normalizer. An unknown string falls back to
+         Transparent rather than throwing — see previewBackgroundFromDraft. */
+      const chatBg = previewBackgroundFromDraft(chatDraft.background);
+      setChatBgMode(chatBg.mode);
+      setChatBgColor(chatBg.customColor);
     }
     if (counterDraft) {
       setCounterStyle(counterTool.normalize(counterDraft.style as Partial<ViewerCounterStyle>));
-      if (counterDraft.background === 'light') setCounterPreviewWhite(true);
+      const counterBg = previewBackgroundFromDraft(counterDraft.background);
+      setCounterBgMode(counterBg.mode);
+      setCounterBgColor(counterBg.customColor);
     }
 
     /* Channels are shared, so they are restored from whichever draft has them —
@@ -752,21 +793,21 @@ export default function ClassicGenerator({
               samples read as somebody's real chat, and a visitor could reasonably
               wonder whose. Unobtrusive by design: it is a marker, not a warning. */}
           {!chatConfigured && <span className="preview-badge">Preview data</span>}
-          <button
-            type="button"
-            onClick={() => setPreviewWhite((p) => !p)}
-            aria-pressed={previewWhite}
-          >
-            {previewWhite ? 'Light background' : 'Transparent background'}
-          </button>
         </div>
 
         {/* The backdrop is on the wrapper, never inside the overlay document and
             never in the URL: it exists to eyeball transparency, and it cannot
-            reach OBS. */}
+            reach OBS. The overlay's own bgColor, when set, wins — the surface then
+            shows what OBS will actually paint rather than a backdrop behind it. */}
         <div
-          className={`preview-surface ${previewWhite ? 'white' : 'checkered'}`}
-          style={chatStyle.bgColor ? { background: chatStyle.bgColor } : undefined}
+          className={`preview-surface ${previewSurfaceClass(chatBgMode)}`}
+          style={
+            chatStyle.bgColor
+              ? { background: chatStyle.bgColor }
+              : chatBgMode === 'custom'
+                ? { background: chatBgColor }
+                : undefined
+          }
         >
           {chatConfigured ? (
             /* The real overlay at the exact URL below, so the preview and the
@@ -797,6 +838,18 @@ export default function ClassicGenerator({
             />
           )}
         </div>
+
+        {/* Offered whether or not a channel is configured: the backdrop sits
+            behind the live overlay iframe just as it does behind the fixtures, so
+            judging transparency against a scene colour is useful in both states. */}
+        <ClassicPreviewBackgroundControl
+          idPrefix="chat"
+          legend="Preview background"
+          mode={chatBgMode}
+          customColor={chatBgColor}
+          onModeChange={setChatBgMode}
+          onCustomColorChange={setChatBgColor}
+        />
 
         {/* Paired with the fixture preview, because it composes lines *for* that
             preview. With a channel configured the panel above is the real overlay
@@ -909,19 +962,13 @@ export default function ClassicGenerator({
               plausible numbers with nothing saying otherwise read as a real
               audience. */}
           {!counterConfigured && <span className="preview-badge">Preview data</span>}
-          {/* Independent of the chat preview's background: they are separate
-              browser sources and may be checked against different scenes. */}
-          <button
-            type="button"
-            onClick={() => setCounterPreviewWhite((p) => !p)}
-            aria-pressed={counterPreviewWhite}
-          >
-            {counterPreviewWhite ? 'Light background' : 'Transparent background'}
-          </button>
         </div>
 
         <div
-          className={`preview-surface ${counterPreviewWhite ? 'white' : 'checkered'}`}
+          className={`preview-surface ${previewSurfaceClass(counterBgMode)}`}
+          style={
+            counterBgMode === 'custom' ? { background: counterBgColor } : undefined
+          }
         >
           {counterConfigured ? (
             <OverlayPreviewFrame
@@ -944,6 +991,18 @@ export default function ClassicGenerator({
             />
           )}
         </div>
+
+        {/* Offered in both states for the same reason as the chat backdrop: the
+            colour sits behind the live counter iframe just as it does behind the
+            sample counts. */}
+        <ClassicPreviewBackgroundControl
+          idPrefix="counter"
+          legend="Preview background"
+          mode={counterBgMode}
+          customColor={counterBgColor}
+          onModeChange={setCounterBgMode}
+          onCustomColorChange={setCounterBgColor}
+        />
 
         {/* Paired with the fixture preview, because this is what feeds it. With a
             channel configured the panel above is the real overlay showing real

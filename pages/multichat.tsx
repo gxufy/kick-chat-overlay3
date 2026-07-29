@@ -31,6 +31,7 @@ import { fallbackColor } from '../lib/render';
    blacklists identically. */
 import { buildMessageFilter, buildParsedMessage } from '../lib/multichatMessageModel';
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
+import { clearSevenTVEmoteSetCache } from '../lib/sevenTVEmoteSetCache';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
@@ -549,6 +550,10 @@ function MultichatOverlay() {
       setChatVisible,
       reload: () => window.location.reload(),
       async refreshEmotes() {
+        // A manual refresh means "go get the current sets now", so drop the
+        // by-id cache first — otherwise a set fetched under the TTL would be
+        // served from memory and the command would be a silent no-op.
+        clearSevenTVEmoteSetCache();
         const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
         const ch = s.channel;
         if (ch) {

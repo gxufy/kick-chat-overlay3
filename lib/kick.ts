@@ -1,3 +1,10 @@
+/* The by-id cache imports fetchSevenTVEmoteSet from here, and this module
+   calls resolveSevenTVEmoteSet from there — a deliberate cycle. It is safe
+   because neither side touches the other at module-evaluation time; both
+   references are dereferenced only inside functions, by which point both
+   modules have finished initializing. */
+import { resolveSevenTVEmoteSet } from './sevenTVEmoteSetCache';
+
 export interface KickChannel {
   id: number;
   user_id: number;
@@ -115,18 +122,41 @@ export async function getSevenTVGlobalEmotes(): Promise<SevenTVEmote[]> {
   }
 }
 
+/* The outcome of a by-id set fetch, kept richer than SevenTVEmote[] so a
+   cache can tell the three cases apart. Swallowing every failure into [] (as
+   the callers below still do for their own use) loses the distinction between
+   "the set is genuinely empty", "the set does not exist", and "the request
+   failed transiently" — and a cache that can't tell those apart either
+   poisons itself on a blip or retries forever on a 404. */
+export type EmoteSetOutcome =
+  /** HTTP 200 — emotes is authoritative, even when empty. */
+  | { status: 'ok'; emotes: SevenTVEmote[] }
+  /** HTTP 404 — the set id does not resolve. Safe to cache negatively. */
+  | { status: 'missing' }
+  /** Network error, abort, 429, or 5xx — transient; must not be cached. */
+  | { status: 'error' };
+
 /* Fetch a 7TV emote set by id — the v3 follow-up request. 7TV's documented
    "Adapt to upcoming 7TV API change" makes GET /v3/users/:platform/:id able
    to return emote_set: null while emote_set_id is still populated; the full
-   set then comes from GET /v3/emote-sets/:id. */
-export async function getSevenTVEmoteSet(setId: string): Promise<SevenTVEmote[]> {
+   set then comes from GET /v3/emote-sets/:id. Returns a discriminated outcome
+   so the cache layer can decide what is safe to remember. */
+export async function fetchSevenTVEmoteSet(setId: string, signal?: AbortSignal): Promise<EmoteSetOutcome> {
   try {
-    const res = await fetch(`https://7tv.io/v3/emote-sets/${setId}`);
-    if (!res.ok) return [];
-    return mapEmoteSet(await res.json());
+    const res = await fetch(`https://7tv.io/v3/emote-sets/${setId}`, signal ? { signal } : undefined);
+    if (res.status === 404) return { status: 'missing' };
+    if (!res.ok) return { status: 'error' }; // 429 / 5xx / anything else transient
+    return { status: 'ok', emotes: mapEmoteSet(await res.json()) };
   } catch {
-    return [];
+    return { status: 'error' }; // network failure or abort
   }
+}
+
+/* Thin wrapper preserving the SevenTVEmote[] contract for direct callers that
+   only care about the emote list; every non-ok outcome degrades to empty. */
+export async function getSevenTVEmoteSet(setId: string): Promise<SevenTVEmote[]> {
+  const outcome = await fetchSevenTVEmoteSet(setId);
+  return outcome.status === 'ok' ? outcome.emotes : [];
 }
 
 export async function getSevenTVChannelEmotes(userId: string, platform: 'kick' | 'twitch' = 'kick'): Promise<{ emotes: SevenTVEmote[]; setId: string | null; stvUserId: string | null }> {
@@ -147,8 +177,10 @@ export async function getSevenTVChannelEmotes(userId: string, platform: 'kick' |
     const inline = mapEmoteSet(emoteSet);
     if (inline.length) return { emotes: inline, setId, stvUserId };
 
-    // v3 path: no inline emotes, but a set id — fetch the full set.
-    if (setId) return { emotes: await getSevenTVEmoteSet(setId), setId, stvUserId };
+    // v3 path: no inline emotes, but a set id — fetch the full set through the
+    // by-id cache so a refresh, or a set shared across connectors, dedupes to
+    // one request rather than refetching the whole set each time.
+    if (setId) return { emotes: await resolveSevenTVEmoteSet(setId), setId, stvUserId };
 
     // Unregistered user, or a connection with no set at all.
     return { emotes: [], setId, stvUserId };

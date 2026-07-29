@@ -310,6 +310,19 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-compose-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 .preview-compose-status { font-size: 0.7rem; color: var(--dim); }
 
+/* Live preview feed controls, inside the chat output card.
+   Same card furniture as the composer beneath it — one border, one radius, one
+   tint — because they are two controls on one preview rather than two panels. */
+.preview-feed { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+.preview-feed-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* The switch keeps its natural width; the buttons sit beside it rather than
+   stretching, so a wrapped row does not leave a full-width Pause. */
+.preview-feed-row .toggle-wrap { flex: 0 0 auto; gap: 8px; }
+.preview-feed-seg { margin: 7px 0 0; }
+.preview-feed-seg legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 5px; }
+.preview-feed-status { font-size: 0.7rem; color: var(--dim); margin: 6px 0 0; }
+.preview-feed-row button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+
 /* Preview counts, inside the Counter output card.
    Shorter than the chat composer because it has less to hold: four small numeric
    fields on one wrapping row, then one action. The counter preview surface is

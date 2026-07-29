@@ -42,6 +42,8 @@ import ClassicCounterPreview from './ClassicCounterPreview';
 import ClassicPreviewComposer from './ClassicPreviewComposer';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
+import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
+import { useChatPreviewSimulator } from './useChatPreviewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
 import {
@@ -52,7 +54,7 @@ import {
 import { FONT_FAMILIES } from '@/components/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { multichatTool } from '@/lib/tools/multichat/config';
-import { sampleMessages } from '@/lib/tools/multichat/samples';
+import { SAMPLE_PIN_ID, sampleMessages } from '@/lib/tools/multichat/samples';
 import { counterTool } from '@/lib/tools/counter/config';
 import {
   COUNTER_COUNT_MAX,
@@ -218,16 +220,31 @@ export default function ClassicGenerator({
      the saved draft, and gone when the tab closes. */
   const [customMessages, setCustomMessages] = useState<readonly UnifiedMessage[]>([]);
 
-  /* What the fixture preview renders: the samples, then anything composed. A new
-     array only when the composed list actually changes, so typing in a settings
-     field does not re-convert every message. */
-  const previewMessages = useMemo(
-    () =>
-      customMessages.length === 0
-        ? SAMPLE_CHAT_MESSAGES
-        : [...SAMPLE_CHAT_MESSAGES, ...customMessages],
-    [customMessages],
-  );
+  /* The live preview feed. Generator-only, exactly like the composed messages:
+     it produces `UnifiedMessage` values and hands them to the same preview
+     component the static fixtures go through. No socket, no pin poll, no fetch,
+     and nothing it produces is serialized. The hook owns its own timer; see its
+     header for why it sits here rather than inside the preview. */
+  const feed = useChatPreviewSimulator();
+
+  /* What the fixture preview renders: the samples, then anything composed, then
+     whatever the feed has generated. A new array only when one of those three
+     actually changes, so typing in a settings field does not re-convert every
+     message.
+
+     The pin fixture is held out while the feed says the pin is not currently
+     offered. That is the whole pin mechanism: `ClassicChatPreview` decides
+     whether to pin by looking for SAMPLE_PIN_ID in this array, so removing the
+     fixture retires the banner and returning it brings a fresh one — with no
+     clock or random source inside the preview, which two existing suites assert
+     it has none of. */
+  const previewMessages = useMemo(() => {
+    const fixtures = feed.pinVisible
+      ? SAMPLE_CHAT_MESSAGES
+      : SAMPLE_CHAT_MESSAGES.filter((message) => message.id !== SAMPLE_PIN_ID);
+    if (customMessages.length === 0 && feed.messages.length === 0) return fixtures;
+    return [...fixtures, ...customMessages, ...feed.messages];
+  }, [customMessages, feed.messages, feed.pinVisible]);
 
   /* Appends rather than replaces, and never mutates: the fixture list is shared at
      module scope, and the preview compares message arrays by identity. */
@@ -713,6 +730,20 @@ export default function ClassicGenerator({
             showing real chat, and a composed message would have nowhere to
             appear — a control that visibly did nothing would be worse than no
             control. */}
+        {!chatConfigured && (
+          <ClassicPreviewFeedControls
+            enabled={feed.enabled}
+            paused={feed.paused}
+            speed={feed.speed}
+            running={feed.running}
+            messageCount={feed.messages.length}
+            onEnabledChange={feed.setEnabled}
+            onTogglePaused={feed.togglePaused}
+            onSpeedChange={feed.setSpeed}
+            onReset={feed.reset}
+          />
+        )}
+
         {!chatConfigured && (
           <ClassicPreviewComposer
             onAdd={addCustomMessage}

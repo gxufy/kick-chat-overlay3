@@ -1032,8 +1032,26 @@ describe('the Demo interface is gone', () => {
        live or sample content with. Fixtures are not a mode: they are what a panel
        with no channel shows, and typing a channel is the only thing that ends
        them. So the assertion is structural, over every interactive control on the
-       page, which is what the old regex was a weak proxy for. */
+       page, which is what the old regex was a weak proxy for.
+
+       The pattern is about that pairing rather than about the bare word "live",
+       and the distinction now carries weight: the preview feed's controls are
+       named "Live preview feed" and "Live counter simulation", where "live" means
+       the fixtures are moving rather than frozen. Neither offers a choice of
+       content source — both animate the samples that a channel-less panel was
+       already showing, and typing a channel still replaces the whole panel with
+       the real overlay. A bare /\blive\b/ could not tell those apart from the
+       mode switch this test exists to keep out, so it matched the honest label
+       and would have forced it to be renamed to something less accurate. What
+       identifies the retired control is that it named both sides of a choice, or
+       named a mode outright. */
     mount();
+    const modeSwitch = [
+      /\blive\b[^.]*\b(sample|fixture|demo|test)\b/i,
+      /\b(sample|fixture|demo|test)\b[^.]*\blive\b/i,
+      /\b(live|sample|fixture|demo|test)\s+mode\b/i,
+      /\bswitch to (live|sample|demo)\b/i,
+    ];
     const controls = Array.from(
       document.querySelectorAll<HTMLElement>('button, input, select, [role="switch"], [role="tab"]'),
     );
@@ -1045,7 +1063,7 @@ describe('the Demo interface is gone', () => {
         document.querySelector(`label[for="${control.id}"]`)?.textContent ?? '',
       ].join(' ');
       expect(name).not.toMatch(/\bdemo\b/i);
-      expect(name).not.toMatch(/\blive\b/i);
+      for (const pattern of modeSwitch) expect(name, name).not.toMatch(pattern);
     }
   });
 

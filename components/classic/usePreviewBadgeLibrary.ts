@@ -35,6 +35,11 @@ export type BadgeLibraryStatus = 'idle' | 'loading' | 'success' | 'error';
 export type PreviewBadgeLibraryState = {
   /** Assets currently shown, grouped by provider. Only ever grows. */
   readonly rows: readonly BadgeProviderRow[];
+  /** The same assets, flat and ungrouped, for building preview cosmetics from.
+      Only ever grows, exactly as `rows` does — the generator entitles the feed's
+      reserved badge senders to these, so a successful load flows straight into the
+      chat preview without the card needing to know the grouping. */
+  readonly assets: readonly PreviewBadgeAsset[];
   /** Flat asset count, for a status line that need not know the grouping. */
   readonly count: number;
   readonly status: BadgeLibraryStatus;
@@ -124,6 +129,7 @@ export function usePreviewBadgeLibrary(): PreviewBadgeLibraryState {
 
   return {
     rows: groupByProvider(assets),
+    assets,
     count: assets.length,
     status,
     loaded: status === 'success',

@@ -213,6 +213,12 @@ type PoolEntry = {
   readonly category?: UnifiedMessage['category'];
   /** Entitled to the 7TV paint fixture, via the shared senderId. */
   readonly painted?: boolean;
+  /**
+   * Claims a reserved loaded-badge sender slot (an index into
+   * {@link PREVIEW_BADGE_SENDERS}), so a badge from the loaded catalog attaches
+   * through the entitlement path rather than being drawn as a native badge.
+   */
+  readonly badgeSlot?: number;
   /** FFZ override art on the first badge. */
   readonly ffz?: 'moderator' | 'vip';
 };
@@ -222,6 +228,32 @@ type PoolEntry = {
    `${platform}:${senderId}`, so a painted generated message must claim the same
    identity the fixture entitlement names or the paint silently will not attach. */
 const PAINTED_SENDER = 'sample-paint-sender';
+
+/**
+ * Reserved sender identities for the loaded preview-badge catalog.
+ *
+ * Like {@link PAINTED_SENDER}, these are stable ids a generated line claims so
+ * that a loaded catalog badge can be attached to it through the production
+ * entitlement path — `buildParsedMessage` finds an entitlement keyed
+ * `${platform}:${senderId}` and renders the badge exactly as the live overlay
+ * would, never a decorative component beside the name. The mapping from a slot to
+ * a concrete loaded badge id lives in `lib/tools/multichat/previewCosmetics.ts`,
+ * because only the generator knows which badges have loaded; the simulator stays
+ * a pure function that merely stamps the identity.
+ *
+ * Every entry claiming a slot is a Twitch line, so the entitlement the cosmetics
+ * builder writes is keyed on {@link PREVIEW_BADGE_SENDER_PLATFORM}. 7TV cosmetics
+ * attach for Kick and Twitch alike; Twitch is the platform the entitled paint
+ * sample already uses, so the two demonstrations sit on the same footing.
+ */
+export const PREVIEW_BADGE_SENDERS = [
+  'sample-badge-sender-1',
+  'sample-badge-sender-2',
+  'sample-badge-sender-3',
+] as const;
+
+/** The platform the badge-slot entitlements are keyed under. */
+export const PREVIEW_BADGE_SENDER_PLATFORM: Platform = 'twitch';
 
 /* Names are ordinary invented handles. Nothing is taken from another overlay's
    fixtures, and no real chatter is named. */
@@ -424,6 +456,36 @@ const POOL: readonly PoolEntry[] = [
     painted: true,
   },
 
+  /* Loaded-catalog 7TV badges, attached through the entitlement path. Each claims
+     a reserved sender slot the cosmetics builder entitles to a concrete loaded
+     badge id; before any catalog has loaded the slot resolves to the sample 7TV
+     badge, so these render a real 7TV badge either way. Gated on 7TV cosmetics,
+     the same setting that gates every other 7TV badge. */
+  {
+    platform: PREVIEW_BADGE_SENDER_PLATFORM,
+    username: 'catalogcarl',
+    color: '#8ce6ff',
+    text: 'that new badge in the set looks sharp',
+    needs: ['sevenTVCosmetics'],
+    badgeSlot: 0,
+  },
+  {
+    platform: PREVIEW_BADGE_SENDER_PLATFORM,
+    username: 'badgebecca',
+    color: '#ffd39b',
+    text: 'picked up the badge earlier today',
+    needs: ['sevenTVCosmetics'],
+    badgeSlot: 1,
+  },
+  {
+    platform: PREVIEW_BADGE_SENDER_PLATFORM,
+    username: 'setsienna',
+    color: '#c8a2ff',
+    text: 'love how the whole set turned out',
+    needs: ['sevenTVCosmetics'],
+    badgeSlot: 2,
+  },
+
   /* Event cards. Categories are the ones the connectors really emit. */
   { platform: 'twitch', username: 'subsam', color: '#a970ff', text: 'subsam subscribed at Tier 1', category: 'subscription' },
   { platform: 'youtube', username: 'SuperChatSue', color: '', text: 'SuperChatSue sent a $10.00 Super Chat', category: 'cheer' },
@@ -464,9 +526,16 @@ export function generateMessage(
       url: entry.ffz === 'moderator' ? FFZ_MOD_BADGE : FFZ_VIP_BADGE,
     };
   }
-  /* A painted entry must claim the entitled senderId; everything else gets its
-     own, so the fallback colour palette stays varied. */
-  const senderId = entry.painted ? PAINTED_SENDER : `sim-${sequence}-sender`;
+  /* A painted entry claims the entitled paint senderId, and a badge-slot entry
+     claims its reserved slot sender so the cosmetics builder's entitlement
+     attaches a loaded badge; everything else gets its own id, so the fallback
+     colour palette stays varied. */
+  const senderId =
+    entry.painted
+      ? PAINTED_SENDER
+      : entry.badgeSlot !== undefined
+        ? PREVIEW_BADGE_SENDERS[entry.badgeSlot]
+        : `sim-${sequence}-sender`;
   return {
     platform: entry.platform,
     id: `sim-${sequence}`,

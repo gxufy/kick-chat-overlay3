@@ -60,6 +60,7 @@ import {
 import ClassicCounterFeedControls from './ClassicCounterFeedControls';
 import { useChatPreviewSimulator } from './useChatPreviewSimulator';
 import { usePreviewBadgeLibrary } from './usePreviewBadgeLibrary';
+import { buildPreviewCosmetics } from '@/lib/tools/multichat/previewCosmetics';
 import { useCounterPreviewSimulator } from './useCounterPreviewSimulator';
 import { combinationLabel } from '@/lib/tools/counter/previewSimulator';
 import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
@@ -259,6 +260,17 @@ export default function ClassicGenerator({
      never-clear-on-failure guarantees. The badges are drawn beside usernames in
      the feed; the compact refresh control only asks the loader for the full set. */
   const badgeLibrary = usePreviewBadgeLibrary();
+
+  /* The cosmetics the fixture preview draws on. Built from the loaded badge
+     catalog so the feed's reserved badge senders are entitled to real 7TV badges
+     — before any load they fall back to the sample badge, and a successful
+     refresh flows its assets straight into the chat preview beside usernames,
+     through the production entitlement path. Memoized on the asset list alone, so
+     it changes only when the catalog grows, not on every keystroke. */
+  const previewCosmetics = useMemo(
+    () => buildPreviewCosmetics(badgeLibrary.assets),
+    [badgeLibrary.assets],
+  );
 
   /* The preview-only zoom. Generator-only state in the strictest sense: it is
      not in `chatStyle`, so the serializer never sees it, it is not in the draft,
@@ -830,6 +842,7 @@ export default function ClassicGenerator({
             <ClassicChatPreview
               query={chatQuery}
               messages={previewMessages}
+              cosmetics={previewCosmetics}
               width={MULTICHAT_OBS_SIZE.width}
               height={MULTICHAT_OBS_SIZE.height}
               /* Not part of `chatQuery`, and that is the whole point: the zoom

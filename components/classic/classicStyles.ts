@@ -282,6 +282,13 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-conn-btn:disabled { color: var(--dim); cursor: default; }
 
 /* Preview surfaces */
+/* The chat output header: the section title and the "Preview data" marker on one
+   row. The title drops its own bottom margin here so the row sets the spacing,
+   and the badge is pushed to the trailing edge so it reads as an aside to the
+   title rather than a second heading. */
+.preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.preview-head .section-title { margin: 0; }
+.preview-head .preview-badge { margin-left: auto; }
 .preview-label { font-size: 0.73rem; color: var(--dim); margin-bottom: 5px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .preview-label button { background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 0.72rem; padding: 3px 9px; cursor: pointer; transition: all .15s; text-transform: none; letter-spacing: 0; font-weight: 600; font-family: inherit; }
 .preview-label button:hover { border-color: var(--accent); color: var(--accent); }
@@ -320,6 +327,12 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
    stretching, so a wrapped row does not leave a full-width Pause. */
 .preview-feed-row .toggle-wrap { flex: 0 0 auto; gap: 8px; }
 .preview-feed-seg { margin: 7px 0 0; }
+/* Speed and scale, paired. Each takes an equal share of the row and wraps to its
+   own line once the card is too narrow for two — flex-basis of 220px is the point
+   below which a four-pill band would start to crowd. min-width:0 lets a segment
+   shrink inside the flex track rather than forcing the row wider than the card. */
+.preview-feed-segs { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.preview-feed-segs > .preview-feed-seg { flex: 1 1 220px; min-width: 0; }
 .preview-feed-seg legend, .preview-feed-sources legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 5px; }
 /* The fixture chips wrap; they are the only part of this card that can grow, and
    they grow downward rather than pushing the row's buttons around. */

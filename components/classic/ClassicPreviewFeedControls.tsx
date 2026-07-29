@@ -43,6 +43,7 @@ export default function ClassicPreviewFeedControls({
   onTogglePaused,
   onSpeedChange,
   onReset,
+  segControls,
   children,
 }: {
   enabled: boolean;
@@ -58,7 +59,12 @@ export default function ClassicPreviewFeedControls({
   onTogglePaused: () => void;
   onSpeedChange: (next: PreviewSpeed) => void;
   onReset: () => void;
-  /** The badge and cosmetic picker, rendered between speed and the status line. */
+  /** A second segmented control set beside the speed band — the preview scale.
+      The two are the card's short enum controls, so they share one wrapping row
+      rather than stacking, which is what shortens this control block. */
+  segControls?: ReactNode;
+  /** The badge and cosmetic picker, rendered between the segments and the status
+      line. Full width of its own, because nine source chips do not pair. */
   children?: ReactNode;
 }) {
   /* `preview-chat-feed` carries no styling of its own — it names which of the two
@@ -98,29 +104,36 @@ export default function ClassicPreviewFeedControls({
         </button>
       </div>
 
-      <fieldset className="classic-seg preview-feed-seg">
-        <legend>Feed speed</legend>
-        <div className="classic-seg-row">
-          {PREVIEW_SPEEDS.map((option) => (
-            <span className="classic-seg-item" key={option}>
-              <input
-                type="radio"
-                id={`preview-feed-speed-${option}`}
-                name="preview-feed-speed"
-                value={option}
-                checked={speed === option}
-                onChange={() => onSpeedChange(option)}
-              />
-              <label
-                htmlFor={`preview-feed-speed-${option}`}
-                className={`classic-seg-label${speed === option ? ' on' : ''}`}
-              >
-                {SPEED_LABEL[option]}
-              </label>
-            </span>
-          ))}
-        </div>
-      </fieldset>
+      {/* Speed and scale sit in one wrapping row — both are short named enums, so
+          pairing them keeps the control block two rows shorter than stacking. On a
+          narrow card they wrap to one per line, losing nothing. */}
+      <div className="preview-feed-segs">
+        <fieldset className="classic-seg preview-feed-seg">
+          <legend>Feed speed</legend>
+          <div className="classic-seg-row">
+            {PREVIEW_SPEEDS.map((option) => (
+              <span className="classic-seg-item" key={option}>
+                <input
+                  type="radio"
+                  id={`preview-feed-speed-${option}`}
+                  name="preview-feed-speed"
+                  value={option}
+                  checked={speed === option}
+                  onChange={() => onSpeedChange(option)}
+                />
+                <label
+                  htmlFor={`preview-feed-speed-${option}`}
+                  className={`classic-seg-label${speed === option ? ' on' : ''}`}
+                >
+                  {SPEED_LABEL[option]}
+                </label>
+              </span>
+            ))}
+          </div>
+        </fieldset>
+
+        {segControls}
+      </div>
 
       {children}
 

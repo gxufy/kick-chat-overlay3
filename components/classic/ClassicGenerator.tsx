@@ -795,16 +795,16 @@ export default function ClassicGenerator({
         className="card panel-chat-output"
         aria-labelledby="chat-output-heading"
       >
-        <h2 id="chat-output-heading" className="section-title">
-          Chat overlay
-        </h2>
-
-        <div className="preview-label">
-          <span>Preview</span>
-          {/* Says what is on screen, for anyone who can see it — the preview's own
-              aria-label says the same thing to a screen reader. Without this the
-              samples read as somebody's real chat, and a visitor could reasonably
-              wonder whose. Unobtrusive by design: it is a marker, not a warning. */}
+        {/* One header row rather than a heading stacked over a second "Preview"
+            label: the badge sits inline with the title, which is a row shorter and
+            drops a word that only repeated the heading. The h2 keeps its id so the
+            section stays labelled, and the badge keeps saying what is on screen —
+            the preview's own aria-label says the same to a screen reader. Without
+            it the samples read as somebody's real chat. A marker, not a warning. */}
+        <div className="preview-head">
+          <h2 id="chat-output-heading" className="section-title">
+            Chat overlay
+          </h2>
           {!chatConfigured && <span className="preview-badge">Preview data</span>}
         </div>
 
@@ -882,6 +882,17 @@ export default function ClassicGenerator({
             onSpeedChange={feed.setSpeed}
             onReset={feed.reset}
             statusDetail={`${enabledSourceCount} of ${PREVIEW_SOURCES.length} fixture sources on.`}
+            /* The scale control sits beside the speed band, since both are short
+               named enums: pairing them in one wrapping row is what shortens this
+               block. Reset lives inside the control, which already returns to the
+               default through this same setter — a second path would be one more
+               thing to keep in agreement. */
+            segControls={
+              <ClassicPreviewScaleControl
+                scale={previewScale}
+                onScaleChange={setPreviewScale}
+              />
+            }
           >
             <ClassicPreviewBadgePicker
               sources={feed.sources}
@@ -898,13 +909,6 @@ export default function ClassicGenerator({
                 status line — it composes no message and reaches no URL; the
                 loaded badges appear in the feed beside usernames, not here. */}
             <ClassicPreviewBadgeRefresh library={badgeLibrary} />
-            {/* Reset lives inside the control, which already returns to the
-                default through this same setter — a second path would be one
-                more thing to keep in agreement. */}
-            <ClassicPreviewScaleControl
-              scale={previewScale}
-              onScaleChange={setPreviewScale}
-            />
           </ClassicPreviewFeedControls>
         )}
 

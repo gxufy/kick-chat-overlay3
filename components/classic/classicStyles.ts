@@ -339,12 +339,21 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-scale .preview-feed-actions { margin-top: 5px; }
 .preview-feed-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
 
-/* Preview counts, inside the Counter output card.
-   Shorter than the chat composer because it has less to hold: four small numeric
-   fields on one wrapping row, then one action. The counter preview surface is
-   80px rather than 600px, so this card has room to spare — but it still sits
-   above the Counter settings card, and growing it pushes those settings down. */
-.preview-counts { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+/* Counter simulation controls, inside the Counter output card. Reuses
+   .preview-feed for the card itself so the two preview control surfaces read as
+   the same kind of thing; only the manual section below is particular to it. */
+.preview-counter-feed .preview-feed-row { row-gap: 6px; }
+/* The four numeric fields used to be always visible and were the tallest thing
+   in this card. Collapsed, the card is a row of controls; open, it is what it
+   was before. The rule is a separator rather than a nested box — a second
+   border inside a bordered card reads as a card inside a card. */
+.preview-manual { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 7px; }
+.preview-manual > summary { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; cursor: pointer; list-style-position: outside; padding: 1px 0; }
+.preview-manual > summary:hover { color: var(--fg); }
+/* Keyboard focus lands on the summary, and it is the only way to discover the
+   section, so the ring must not be the browser's default invisible-on-dark. */
+.preview-manual > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.preview-manual[open] > summary { color: var(--fg); margin-bottom: 7px; }
 .preview-counts-fields { display: flex; gap: 10px; flex-wrap: wrap; border: 0; padding: 0; margin: 0 0 7px; }
 .preview-counts-fields legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 6px; }
 .preview-counts-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 92px; }

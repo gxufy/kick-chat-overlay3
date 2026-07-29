@@ -49,7 +49,10 @@ import {
   PREVIEW_SCALE_DEFAULT,
   type PreviewScale,
 } from './IsolatedPreviewFrame';
+import ClassicCounterFeedControls from './ClassicCounterFeedControls';
 import { useChatPreviewSimulator } from './useChatPreviewSimulator';
+import { useCounterPreviewSimulator } from './useCounterPreviewSimulator';
+import { combinationLabel } from '@/lib/tools/counter/previewSimulator';
 import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
@@ -64,7 +67,6 @@ import { multichatTool } from '@/lib/tools/multichat/config';
 import { SAMPLE_PIN_ID, sampleMessages } from '@/lib/tools/multichat/samples';
 import { counterTool } from '@/lib/tools/counter/config';
 import {
-  COUNTER_COUNT_MAX,
   SAMPLE_COUNTER_COUNTS,
   parseCounterCount,
   sampleCounterStatuses,
@@ -284,6 +286,21 @@ export default function ClassicGenerator({
   const clearCustomMessages = useCallback(() => setCustomMessages([]), []);
   const resetPreviewMessages = useCallback(() => setCustomMessages([]), []);
 
+  /* The live Counter rotation. Generator-only in the same way the chat feed is:
+     it produces `PlatformStatuses` — the shape the live overlay folds real
+     /api/viewers results into — and hands them to the same production renderer
+     the fixtures went through. No request, no polling, no provider connection,
+     and nothing it produces is serialized.
+
+     Declared above the manual fields because typing in one switches the mode. */
+  const counterSim = useCounterPreviewSimulator();
+
+  /* Pulled out by itself so the callback below can depend on it. It is a
+     `useState` setter, so its identity is stable for the life of the component —
+     depending on the whole `counterSim` object instead would rebuild that
+     callback on every render, since the hook returns a fresh object each time. */
+  const { setMode: setCounterMode } = counterSim;
+
   /* Sample viewer counts, as typed. Strings rather than numbers, because the
      field has to be able to hold "" — the state the renderer draws as an em dash
      — and a numeric state would have to encode that absence some other way.
@@ -293,25 +310,33 @@ export default function ClassicGenerator({
     () => initialSampleCountFields(),
   );
 
-  const setSampleCount = useCallback((platform: ViewerPlatform, raw: string) => {
-    /* Rejected keystrokes are dropped rather than corrected: silently rewriting
-       what someone typed is worse than refusing it, and the field is already
-       constrained to seven digits. An empty field is always allowed through —
-       it is a meaningful value here, not an invalid one. */
-    if (raw !== '' && parseCounterCount(raw) === null) return;
-    setSampleCounts((current) => ({ ...current, [platform]: raw }));
-  }, []);
+  const setSampleCount = useCallback(
+    (platform: ViewerPlatform, raw: string) => {
+      /* Rejected keystrokes are dropped rather than corrected: silently rewriting
+         what someone typed is worse than refusing it, and the field is already
+         constrained to seven digits. An empty field is always allowed through —
+         it is a meaningful value here, not an invalid one. */
+      if (raw !== '' && parseCounterCount(raw) === null) return;
+      /* Typing is the switch into Manual. Without this the rotation would
+         overwrite the typed value at the next tick and the field would look
+         broken; there is no reading of "edit a number but keep cycling" that a
+         person would actually want. Restore simulation goes back. */
+      setCounterMode('manual');
+      setSampleCounts((current) => ({ ...current, [platform]: raw }));
+    },
+    [setCounterMode],
+  );
 
   const restoreSampleCounts = useCallback(
     () => setSampleCounts(initialSampleCountFields()),
     [],
   );
 
-  /* The statuses the preview renders. Every field is parsed through the shared
-     helper, so a blank field becomes 'live-unknown' and the renderer's own
+  /* The statuses the manual fields describe. Every field is parsed through the
+     shared helper, so a blank field becomes 'live-unknown' and the renderer's own
      unavailable presentation is what appears — no second reading of the counts
      here. */
-  const sampleStatuses = useMemo(() => {
+  const manualStatuses = useMemo(() => {
     const counts: Partial<Record<ViewerPlatform, number>> = {};
     for (const platform of PLATFORM_ORDER) {
       const parsed = parseCounterCount(sampleCounts[platform]);
@@ -319,6 +344,18 @@ export default function ClassicGenerator({
     }
     return sampleCounterStatuses(counts);
   }, [sampleCounts]);
+
+  /* Which numbers the preview shows.
+     The rotation's statuses win while it is live and has produced a state, and
+     the manual fields are the fallback in every other case. The order matters
+     twice over: `counterSim.statuses` is null until the first tick, so the very
+     first paint — server and client alike — is the deterministic fixture set and
+     there is no hydration mismatch; and switching to Manual hands control back
+     to the fields immediately rather than after the pending delay expires. */
+  const counterStatuses =
+    counterSim.mode === 'live' && counterSim.statuses !== null
+      ? counterSim.statuses
+      : manualStatuses;
 
   /* Rendered origin. Kept out of the initial state so the server-rendered markup
      and the first client render agree; the effect corrects it immediately. */
@@ -885,55 +922,39 @@ export default function ClassicGenerator({
                URL, so nothing fetches /api/viewers and nothing polls. */
             <ClassicCounterPreview
               query={counterQuery}
-              statuses={sampleStatuses}
+              statuses={counterStatuses}
               width={counterTool.obs.width}
               height={counterTool.obs.height}
             />
           )}
         </div>
 
-        {/* Paired with the fixture preview, because these counts feed it. With a
+        {/* Paired with the fixture preview, because this is what feeds it. With a
             channel configured the panel above is the real overlay showing real
-            numbers, and editing a sample would have nowhere to appear. */}
+            numbers, and simulating a count would have nowhere to appear. */}
         {!counterConfigured && (
-          <div className="preview-counts">
-            <fieldset className="preview-counts-fields">
-              <legend>Preview counts</legend>
-              {PLATFORM_ORDER.map((platform) => (
-                <span key={platform} className="preview-counts-field">
-                  <label htmlFor={`sample-count-${platform}`}>
-                    {COUNTER_PLATFORM_LABEL[platform]}
-                  </label>
-                  <input
-                    id={`sample-count-${platform}`}
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={String(COUNTER_COUNT_MAX).length}
-                    value={sampleCounts[platform]}
-                    onChange={(e) => setSampleCount(platform, e.target.value)}
-                  />
-                </span>
-              ))}
-            </fieldset>
-            <div className="preview-counts-actions">
-              <button
-                type="button"
-                className="classic-conn-btn"
-                onClick={restoreSampleCounts}
-              >
-                Restore sample counts
-              </button>
-              {/* Says what an empty field does, because leaving one blank is a
-                  deliberate way to see the unavailable styling rather than a
-                  mistake. */}
-              <p className="classic-help">
-                Sample values only — never fetched, never saved, and never part of
-                the URL below. Clear a field to see how an uncountable platform
-                looks.
-              </p>
-            </div>
-          </div>
+          <ClassicCounterFeedControls
+            enabled={counterSim.enabled}
+            paused={counterSim.paused}
+            speed={counterSim.speed}
+            mode={counterSim.mode}
+            running={counterSim.running}
+            seenCount={counterSim.seenCount}
+            combinationLabel={
+              counterSim.combination === null
+                ? ''
+                : combinationLabel(counterSim.combination, COUNTER_PLATFORM_LABEL)
+            }
+            counts={sampleCounts}
+            platformLabel={COUNTER_PLATFORM_LABEL}
+            onEnabledChange={counterSim.setEnabled}
+            onTogglePaused={counterSim.togglePaused}
+            onSpeedChange={counterSim.setSpeed}
+            onAdvance={counterSim.advance}
+            onRestore={counterSim.restore}
+            onCountChange={setSampleCount}
+            onRestoreCounts={restoreSampleCounts}
+          />
         )}
 
         <p className="card-note">{counterTool.previewNote}</p>

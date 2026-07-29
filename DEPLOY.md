@@ -323,6 +323,27 @@ npm run build        # production build
 `npm run build` regenerates `next-env.d.ts`; restore it if git reports it as
 modified (`git restore -- next-env.d.ts`).
 
+Before the connect flow, confirm the six variables are all present and the
+redirect path is well-formed:
+
+```bash
+npm run verify:oauth
+```
+
+It reads `process.env` only — never `.env.local` — and prints each variable name
+with a present/MISSING verdict and never its value, then the two public callback
+URLs. Exit `0` means every variable is set and `TWITCH_REDIRECT_URI` ends in
+`/api/twitch/oauth/callback`; a missing variable or a wrong path exits `1`. To
+check a dotenv file, opt in explicitly — the script never reads one on its own:
+
+```bash
+node --env-file=.env.local scripts/verify-oauth-config.mts
+```
+
+A `0` here means the configuration contract is satisfied; whether a real
+authorization round trip completes still depends on the console entry matching
+`TWITCH_REDIRECT_URI` byte for byte, which only the connect flow below proves.
+
 Connect flow — open the generator at `/multichat` (no channel parameter), enter
 your Twitch channel, click **Connect Twitch**, approve on Twitch. You should
 return showing "Connected as &lt;login&gt;", with your channels and settings still

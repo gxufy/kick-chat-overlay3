@@ -1111,3 +1111,81 @@ is claimed anywhere in this section.
 - [ ] OBS confirmation of both generated URLs as two browser sources.
 - [ ] Live-channel confirmation of each command from all four chat platforms,
       including a real moderator and a real non-moderator.
+
+## 12. 7TV v3 split fetch, preview library, and OAuth check (implemented)
+
+Three threads: the 7TV v3 emote-set change and its regression coverage, the two
+generator preview additions, and a safe local OAuth configuration check. No
+route, URL, default, or overlay behaviour changed; every addition is either a
+resilience fix on the emote path or generator-only preview state.
+
+### 7TV v3 split emote-set fetch
+
+- [x] `lib/kick.ts` — `GET /v3/users/:platform/:id` can now return
+      `emote_set: null` while `emote_set_id` stays populated, so reading emotes
+      off the inline set silently loaded zero channel emotes. The loader prefers
+      `emote_set_id`, falls back to the inline set id, and fetches the full set
+      from `GET /v3/emote-sets/:id` when the connection carries no inline emotes.
+      One emote parser is shared across the global, inline, and by-id sources, and
+      the id is preferred when building the `emote_set` SSE subscription so live
+      updates survive. (`335239b`)
+- [x] `lib/sevenTVEmoteSetCache.ts` — a process-wide cache keyed by emote-set id,
+      with shared in-flight requests, a documented positive TTL (10 min) and a
+      short negative TTL (1 min) for 404s. Transient failures (network, abort,
+      429, 5xx) are never written, so a blip during one load never denies emotes
+      to the next. The by-id fetch returns a discriminated outcome so the cache
+      distinguishes a genuinely empty set from a missing one from a transient
+      error. The `refresh` command clears the cache first so it is never a silent
+      no-op under the TTL. (`e98890b`)
+- [x] `tests/unit/sevenTVEmoteSetCache.test.ts` (18 tests) — cold ask, warm
+      cache, in-flight dedup (three concurrent asks, one fetch), TTL boundaries,
+      negative caching and a recreated set, negative TTL shorter than positive,
+      transient failure never cached and not wedged, explicit clear, and
+      caller-abort (a shared fetch survives one caller's abort; an
+      already-aborted signal resolves to `[]` without a request). (`260d618`)
+- [x] `tests/unit/sevenTVSplitFetch.test.ts` (9 tests) — drives the real
+      `getSevenTVChannelEmotes` against a stubbed `fetch`: inline fast path (one
+      request), platform defaulting to kick, the v3 follow-up (two requests),
+      `emote_set_id` precedence over the inline set's id, dedup across two
+      channels sharing a set, an unregistered user, a 404 follow-up that keeps the
+      set id, no set at all, and malformed emotes dropped. (`5956996`)
+
+### Generator preview additions
+
+- [x] `components/classic/ClassicPreviewBadgeLibrary.tsx`,
+      `usePreviewBadgeLibrary.ts`, `lib/tools/multichat/previewBadgeLibrary.ts`
+      — a browsable badge/cosmetic library beside the source picker, seeded from
+      a local catalog and extended by one real 7TV fetch **on click**. It fetches
+      nothing on mount, shares one in-flight request under Strict Mode, caches the
+      first success per session, and never clears the shown assets on a failed or
+      aborted load. It is generator-only: it composes no chat line, reaches no
+      overlay URL or draft, and the overlay route does not import it. (`383d25e`)
+- [x] `components/classic/ClassicPreviewBackgroundControl.tsx` — the preview
+      backdrop (Transparent / Dark / Light / Custom hex) is now offered on **both**
+      the chat and counter panels, independently, and persists across the OAuth
+      round trip via the per-tool session draft. Still page-only: the chosen
+      background is never read into a tool's style and never serialized into an
+      overlay URL. A restored draft carrying an unknown background string falls
+      back to Transparent rather than throwing. (`556ffb7`)
+- [x] `tests/unit/previewBadgeLibrary.test.tsx` (in `383d25e`) and
+      `tests/unit/previewBackgroundControl.test.ts` (13 tests, `fd24968`) — the
+      badge hook's grow-only invariant and no-request-without-a-click guarantee,
+      and the background control's pure serialize/restore round trip
+      (`effectivePreviewBackground`, `previewBackgroundFromDraft`,
+      `previewSurfaceClass`, `isHexColor`).
+
+### Safe local OAuth configuration check
+
+- [x] `scripts/verify-oauth-config.mts`, wired as `npm run verify:oauth`. Reads
+      `process.env` only — never `.env.local`, never any secret's value — and
+      reports each of the six required variables as present or MISSING by name,
+      prints the public production and local callback URLs, and exits non-zero
+      when a variable is absent or `TWITCH_REDIRECT_URI`'s path is wrong. It reuses
+      `lib/server/oauthConfig.ts` as the authoritative list, so it cannot drift
+      from what the OAuth routes check. Opt-in dotenv checking is documented in the
+      script header as `node --env-file=.env.local scripts/verify-oauth-config.mts`.
+      (`2627b54`)
+
+Documented in `DEPLOY.md`'s build/verification section. The check confirms only
+that the configuration contract is satisfied; whether a real authorization round
+trip completes still needs a human, exactly as the `curl` check already notes.

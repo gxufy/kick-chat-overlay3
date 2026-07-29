@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:oauth": "node scripts/verify-oauth-config.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

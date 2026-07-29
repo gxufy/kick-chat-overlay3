@@ -417,7 +417,9 @@ function MultichatOverlay() {
               const r = await fetch(`https://7tv.io/v3/users/twitch/${roomId}`);
               if (r.ok) {
                 const j = await r.json();
-                setId = j?.emote_set?.id ?? null;
+                // v3: emote_set may be null while emote_set_id is populated —
+                // prefer the id so the emote_set.* SSE subscription survives.
+                setId = j?.emote_set_id ?? j?.emote_set?.id ?? null;
                 stvUserId = j?.user?.id ?? null; // user.id = 7TV user id (root id is the twitch id)
               }
             } catch { /* no 7tv profile */ }

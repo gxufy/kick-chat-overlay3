@@ -26,49 +26,30 @@ import { SAMPLE_EPOCH } from './samples';
 /* Random source                                                       */
 /* ------------------------------------------------------------------ */
 
-/** A source of randomness, so a caller can be deterministic. */
-export type RandomSource = () => number;
+/* The randomness primitives and the named speeds are shared with the Viewer
+   Counter simulator and live in lib/tools/previewRandom.ts. They are re-exported
+   here so this module stays the one import site for everything the chat feed
+   needs — a caller should not have to know which of two files a helper came
+   from. */
+import {
+  intBetween,
+  pick,
+  speedBounds,
+  speedDelay,
+  type PreviewSpeed,
+  type RandomSource,
+} from '@/lib/tools/previewRandom';
 
-/**
- * A seeded generator (mulberry32), for tests and for any caller that needs the
- * same feed twice.
- *
- * Chosen over `Math.random` in tests for the obvious reason and over a
- * hand-rolled LCG for a less obvious one: a poor generator correlates
- * successive values, and this module draws several in a row per message (pool
- * slot, then platform-independent decisions). Correlation there would quietly
- * bias which fixtures ever appear, so a test asserting "all four platforms are
- * reachable" could pass on the seed it was written against and fail on the next.
- */
-export function seededRandom(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** An integer in [min, max]. */
-function intBetween(random: RandomSource, min: number, max: number): number {
-  return min + Math.floor(random() * (max - min + 1));
-}
-
-/** One item, or undefined for an empty list. */
-function pick<T>(random: RandomSource, items: readonly T[]): T {
-  return items[Math.floor(random() * items.length)] ?? items[0];
-}
+export {
+  PREVIEW_SPEEDS,
+  seededRandom,
+  type PreviewSpeed,
+  type RandomSource,
+} from '@/lib/tools/previewRandom';
 
 /* ------------------------------------------------------------------ */
 /* Timing                                                             */
 /* ------------------------------------------------------------------ */
-
-/** How fast the feed runs. Named, because it is a control on the page. */
-export type PreviewSpeed = 'slow' | 'normal' | 'fast';
-
-export const PREVIEW_SPEEDS: readonly PreviewSpeed[] = ['slow', 'normal', 'fast'];
 
 /**
  * The Normal band, in milliseconds.
@@ -84,30 +65,14 @@ export const PREVIEW_SPEEDS: readonly PreviewSpeed[] = ['slow', 'normal', 'fast'
 export const CHAT_INTERVAL_MIN_MS = 1200;
 export const CHAT_INTERVAL_MAX_MS = 3500;
 
-/** Multipliers applied to the band. Normal is exactly the documented range. */
-const SPEED_FACTOR: Record<PreviewSpeed, number> = {
-  slow: 2,
-  normal: 1,
-  fast: 0.5,
-};
-
 /** A randomized delay for the next message, in the given speed's band. */
 export function nextChatDelay(random: RandomSource, speed: PreviewSpeed): number {
-  const factor = SPEED_FACTOR[speed];
-  const min = Math.round(CHAT_INTERVAL_MIN_MS * factor);
-  const max = Math.round(CHAT_INTERVAL_MAX_MS * factor);
-  /* Drawn per message rather than kept as one fixed period: a constant cadence
-     reads as a machine, and the point of the feed is to look like chat. */
-  return intBetween(random, min, max);
+  return speedDelay(random, speed, CHAT_INTERVAL_MIN_MS, CHAT_INTERVAL_MAX_MS);
 }
 
 /** The band a speed draws from, for controls and tests to state exactly. */
 export function chatDelayBounds(speed: PreviewSpeed): { min: number; max: number } {
-  const factor = SPEED_FACTOR[speed];
-  return {
-    min: Math.round(CHAT_INTERVAL_MIN_MS * factor),
-    max: Math.round(CHAT_INTERVAL_MAX_MS * factor),
-  };
+  return speedBounds(speed, CHAT_INTERVAL_MIN_MS, CHAT_INTERVAL_MAX_MS);
 }
 
 /* ------------------------------------------------------------------ */

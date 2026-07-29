@@ -1117,13 +1117,13 @@ export default function ClassicGenerator({
           Chat settings
         </h2>
 
-        {/* Two columns once the settings half is wide enough for them, one below
-            that — grid tracks over one unchanged tree, so reading and tab order
-            follow this DOM order at every width and no control exists twice.
-            Two rather than three: this panel is one column of the grid rather
-            than the page's full width, and a third track put two words per line
-            on the longer labels. */}
-        <div className="form_table cols-2">
+        {/* Three columns once the row is wide enough (~1600px), two at the
+            settings-half breakpoint below that, one on narrow — grid tracks over
+            one unchanged tree, so reading and tab order follow this DOM order at
+            every width and no control exists twice. The third track waits for
+            ~1600px because a settings panel is half a tool row now, and two
+            tracks already sit near the readable floor at the row breakpoint. */}
+        <div className="form_table cols-3">
           {/* How it is drawn. */}
           <div className="form_col">
             <p className="col-heading">Text</p>

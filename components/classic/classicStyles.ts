@@ -175,7 +175,20 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
    which is the failure this breakpoint exists to avoid. */
 @media (min-width: 1360px) {
   .form_table.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .form_table.cols-2 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
+  .form_table.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form_table.cols-2 > .form_col:not(:last-child),
+  .form_table.cols-3 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
+}
+
+/* A third track, but only once the panel is wide enough to carry it. A settings
+   panel is half a tool row, so at 1360px two tracks already sit near the readable
+   floor and a third there would repeat the narrow-column failure the gate above
+   exists to avoid. By ~1600px each half is ~760px, where three ~240px columns
+   read well. Below this width a cols-3 table falls back to the two-track rule,
+   then the one-track base — the same one-tree-many-tracks arrangement, so nothing
+   is duplicated and the stacked reading order still equals the DOM order. */
+@media (min-width: 1600px) {
+  .form_table.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* textarea is listed here rather than left to the browser: without it the one

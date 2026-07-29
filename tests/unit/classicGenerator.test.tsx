@@ -640,7 +640,13 @@ describe('density', () => {
     mount();
     /* The class declares the intent; the media query in the stylesheet is what
        keeps a narrow screen at one column. Both are asserted, because the class
-       alone would not prove the narrow case. */
+       alone would not prove the narrow case.
+
+       The chat panel's appearance table now carries three catalog groups, so it
+       is cols-3; its Filters table stays cols-2 (free-text lists need a full
+       line). The counter panel is a single cols-2 table. */
+    expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-3').length)
+      .toBeGreaterThan(0);
     expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-2').length)
       .toBeGreaterThan(0);
     expect(
@@ -662,9 +668,24 @@ describe('density', () => {
     expect(Number(enclosing![1])).toBeGreaterThan(1000);
     // The base rule is one column, so narrow widths inherit it.
     expect(CLASSIC_GENERATOR_CSS).toMatch(/\.form_table \{[\s\S]*?grid-template-columns: 1fr;/);
-    // No stale three-column rule left behind for a class nothing carries.
-    expect(document.querySelectorAll('.form_table.cols-3')).toHaveLength(0);
-    expect(CLASSIC_GENERATOR_CSS).not.toContain('cols-3');
+    /* The third track exists but is gated higher still: a settings panel is half a
+       tool row, so at 1360px two tracks already sit near the readable floor and a
+       third belongs only once each half is wide (~1600px). Below that a cols-3
+       table falls back to the two-track rule, so it is never three narrow columns. */
+    const thirdRule = CLASSIC_GENERATOR_CSS.indexOf(
+      '.form_table.cols-3 { grid-template-columns: repeat(3',
+    );
+    expect(thirdRule, 'the third-column rule is missing').toBeGreaterThan(-1);
+    const thirdEnclosing = CLASSIC_GENERATOR_CSS.slice(0, thirdRule).match(
+      /@media \(min-width: (\d+)px\)[^{]*\{[^@]*$/,
+    );
+    expect(thirdEnclosing, 'the third column is not inside a media query').not.toBeNull();
+    expect(Number(thirdEnclosing![1])).toBeGreaterThan(Number(enclosing![1]));
+    /* Below its own gate, cols-3 inherits the two-track rule rather than jumping
+       straight from one column to three. */
+    expect(CLASSIC_GENERATOR_CSS).toContain(
+      '.form_table.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
+    );
   });
 
   it('does not reserve a line for the absent fragment warning', () => {

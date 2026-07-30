@@ -43,9 +43,11 @@ import {
   noSourcesEnabled,
   randomSources,
   seededRandom,
+  SHOWCASE_LENGTH,
   type PreviewSourceState,
   type PreviewSpeed,
 } from '@/lib/tools/multichat/previewSimulator';
+import { PREVIEW_EMOTE_TOKENS } from '@/lib/tools/multichat/previewAssets';
 import {
   useChatPreviewSimulator,
   type ChatSimulatorOptions,
@@ -311,6 +313,117 @@ describe('a generated message', () => {
   });
 });
 
+describe('PROVIDER SHOWCASE: the feed opens with a fixed cosmetic/emote cycle', () => {
+  /* The static fixtures already paint native badges, a paint and an emote on the
+     first frame; the moving feed's opening job is to demonstrate the
+     provider-gated cosmetics in a legible order rather than leaving a 7TV badge
+     to chance. This asserts the order is fixed and covers every provider — and
+     that a source switched off drops only its own step. */
+  const sources = allSourcesEnabled();
+
+  /** The first `SHOWCASE_LENGTH` lines, generated as the feed would in order. */
+  const openingCycle = (state: PreviewSourceState, seed = 4) => {
+    const random = seededRandom(seed);
+    const out = [] as ReturnType<typeof generateMessage>[];
+    let previous: ReturnType<typeof generateMessage> | null = null;
+    for (let sequence = 1; sequence <= SHOWCASE_LENGTH; sequence += 1) {
+      const message = generateMessage(sequence, state, random, previous);
+      out.push(message);
+      previous = message;
+    }
+    return out;
+  };
+
+  it('covers the 7TV badge, the paint, and one emote per provider, in order', () => {
+    const opening = openingCycle(sources);
+    const usernames = opening.map((m) => m.username);
+    /* The exact opening order the showcase promises. */
+    expect(usernames).toEqual([
+      'catalogcarl', // 7TV cosmetic badge
+      'paintedpip', // 7TV paint
+      'emotedelia', // 7TV emote
+      'bttvbrady', // BTTV emote
+      'ffzfelix', // FFZ emote
+    ]);
+    /* The paint step claims the entitled paint identity, so the paint attaches. */
+    expect(opening[1].senderId).toBe('sample-paint-sender');
+    /* The three emote steps carry each provider's token in their text, so the
+       production word-swap has something to resolve. */
+    expect(opening[2].text).toContain(PREVIEW_EMOTE_TOKENS.sevenTV);
+    expect(opening[3].text).toContain(PREVIEW_EMOTE_TOKENS.bttv);
+    expect(opening[4].text).toContain(PREVIEW_EMOTE_TOKENS.ffz);
+  });
+
+  it('is identical run to run — the opening cycle is deterministic', () => {
+    /* Different seeds, because the showcase must not depend on the random source
+       at all for the steps it governs. */
+    expect(openingCycle(sources, 1).map((m) => m.username)).toEqual(
+      openingCycle(sources, 999).map((m) => m.username),
+    );
+  });
+
+  it('restarts from the first step when the sequence restarts', () => {
+    /* Reset zeroes the sequence counter, so sequence 1 must be the first step
+       again — this is what makes Reset replay the showcase. */
+    const first = generateMessage(1, sources, seededRandom(2), null);
+    expect(first.username).toBe('catalogcarl');
+  });
+
+  it('drops only the step whose source is off, keeping the rest in order', () => {
+    /* 7TV cosmetics off removes the badge step (catalogcarl needs it) and the
+       paint step (paintedpip needs sevenTVPaints, gated the same way in the
+       picker but a distinct source here); the emote steps stay. The dropped
+       positions take an ordinary random draw rather than forcing the entry. */
+    const noCosmetics: PreviewSourceState = {
+      ...sources,
+      sevenTVCosmetics: false,
+      sevenTVPaints: false,
+    };
+    const opening = openingCycle(noCosmetics);
+    const usernames = opening.map((m) => m.username);
+    expect(usernames).not.toContain('catalogcarl');
+    expect(usernames).not.toContain('paintedpip');
+    /* The emote steps are still played, still in their order. */
+    expect(usernames).toContain('emotedelia');
+    expect(usernames).toContain('bttvbrady');
+    expect(usernames).toContain('ffzfelix');
+  });
+
+  it('plays plain lines when every source is off, never an unavailable step', () => {
+    const opening = openingCycle(noSourcesEnabled());
+    for (const message of opening) {
+      expect(message.badges).toEqual([]);
+      expect(message.text.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('NO CONSECUTIVE REPEAT: the feed never emits one identity twice in a row', () => {
+  it('draws a different identity than the previous line across a long run', () => {
+    /* Past the showcase window the draw is random, so this is where a repeat
+       could occur; the previous-line exclusion is what prevents it. */
+    const sources = allSourcesEnabled();
+    const random = seededRandom(31);
+    let previous = generateMessage(1, sources, random, null);
+    for (let sequence = 2; sequence <= 600; sequence += 1) {
+      const message = generateMessage(sequence, sources, random, previous);
+      expect(message.username, `seq ${sequence}`).not.toBe(previous.username);
+      previous = message;
+    }
+  });
+
+  it('still draws when only one plain line is reachable, preferring it to silence', () => {
+    /* With every source off the pool narrows to plain lines; the dedup must not
+       empty it. A message is still produced even when asked to avoid the only
+       reachable identity. */
+    const none = noSourcesEnabled();
+    const random = seededRandom(8);
+    const first = generateMessage(1, none, random, null);
+    const second = generateMessage(2, none, random, first);
+    expect(second.text.length).toBeGreaterThan(0);
+  });
+});
+
 describe('the fixture source selection', () => {
   it('offers a label and a hint for every source, with no duplicates', () => {
     const labels = PREVIEW_SOURCES.map((source) => PREVIEW_SOURCE_LABEL[source]);
@@ -550,6 +663,36 @@ describe('the feed hook', () => {
     expect(view.state.pinVisible).toBe(true);
     advance(1);
     expect(view.state.messages.map((message) => message.id)).toEqual(['sim-1']);
+    /* And the replayed sequence starts the showcase over: the first line after a
+       reset is the first showcase step, not wherever the random stream had got
+       to. This is the hook-side promise that Reset restarts the showcase. */
+    expect(view.state.messages[0].username).toBe('catalogcarl');
+  });
+
+  it('opens with the provider showcase, in order, on a fresh feed', () => {
+    /* End to end through the hook: the first SHOWCASE_LENGTH messages the timer
+       delivers are the showcase steps in their fixed order, so a viewer sees a
+       7TV badge, a paint and each provider's emote without waiting on a draw. */
+    const view = mountSimulator({ random: seededRandom(2) });
+    advance(SHOWCASE_LENGTH);
+    expect(view.state.messages.map((message) => message.username)).toEqual([
+      'catalogcarl',
+      'paintedpip',
+      'emotedelia',
+      'bttvbrady',
+      'ffzfelix',
+    ]);
+  });
+
+  it('never shows the same identity in two consecutive delivered lines', () => {
+    /* The hook threads the previous line into the next draw; this is that wiring
+       observed from the outside, across a run long enough to wrap the history. */
+    const view = mountSimulator({ random: seededRandom(19) });
+    advance(40);
+    const names = view.state.messages.map((message) => message.username);
+    for (let i = 1; i < names.length; i += 1) {
+      expect(names[i], `line ${i}`).not.toBe(names[i - 1]);
+    }
   });
 
   it('arms exactly one scheduler under Strict Mode', () => {

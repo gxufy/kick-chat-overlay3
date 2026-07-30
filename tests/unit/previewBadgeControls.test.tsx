@@ -30,6 +30,7 @@ import { multichatTool } from '@/lib/tools/multichat/config';
 import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
 import { SAMPLE_COSMETICS, sampleMessages } from '@/lib/tools/multichat/samples';
+import { PREVIEW_EMOTE_TOKENS } from '@/lib/tools/multichat/previewAssets';
 import {
   PREVIEW_SOURCES,
   PREVIEW_SOURCE_HINT,
@@ -425,6 +426,27 @@ describe('the chat settings remain the authority over what draws', () => {
     expect(withEmotes).toBeGreaterThan(withoutEmotes);
     /* The word survives as text either way. */
     expect(preview().textContent).toMatch(/OMEGALUL|KEKW/);
+  });
+
+  it('gates the BTTV and FFZ emote tokens on the same sevenTVEmotesEnabled setting', () => {
+    /* PROVIDER-TOGGLE HONESTY. There is no BTTV or FFZ setting in this repo:
+       loadTwitchEmotes merges FFZ, BTTV and 7TV into one list and
+       buildParsedMessage gates that whole list on sevenTVEmotesEnabled. So the
+       BTTV token (catJAM) and the FFZ token (PepeLaugh) must swap to images only
+       when that one setting is on, exactly as the 7TV tokens do — asserted here
+       rather than assumed. */
+    for (const token of [PREVIEW_EMOTE_TOKENS.bttv, PREVIEW_EMOTE_TOKENS.ffz]) {
+      const carrier = generateUntil((m) => m.text.includes(token), 1);
+      mountPreview(carrier, { sevenTVEmotesEnabled: true });
+      const swapped = preview().querySelectorAll('img.ck-emote').length;
+      cleanup();
+      mountPreview(carrier, { sevenTVEmotesEnabled: false });
+      const plain = preview().querySelectorAll('img.ck-emote').length;
+      expect(swapped, token).toBeGreaterThan(plain);
+      /* Off, the token is still readable as text — nothing is silently dropped. */
+      expect(preview().textContent, token).toContain(token);
+      cleanup();
+    }
   });
 
   it('has no chat setting that hides badges, so the picker must not claim one', () => {

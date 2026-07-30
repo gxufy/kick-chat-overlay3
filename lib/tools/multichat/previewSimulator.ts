@@ -21,6 +21,12 @@
  */
 import type { Platform, UnifiedBadge, UnifiedMessage } from '@/lib/types';
 import { SAMPLE_EPOCH } from './samples';
+import {
+  PREVIEW_EMOTE_TOKENS,
+  PREVIEW_FFZ_MOD_BADGE,
+  PREVIEW_FFZ_VIP_BADGE,
+  PREVIEW_TIKTOK_MOD_BADGE,
+} from './previewAssets';
 
 /* ------------------------------------------------------------------ */
 /* Random source                                                       */
@@ -164,30 +170,14 @@ export const PREVIEW_SOURCE_HINT: Record<PreviewSource, string> = {
   ffzBadges: 'FFZ room-badge overrides for moderator and VIP art.',
 };
 
-/* ------------------------------------------------------------------ */
-/* Local badge art                                                    */
-/* ------------------------------------------------------------------ */
-
-/* An FFZ room-badge override, as a local data URI.
-   Production receives these as a `url` on a mod or VIP badge, resolved from the
-   FFZ CDN at runtime. The preview must not depend on a remote image, so the
-   fixture supplies its own art through the very same field — `renderBadges`
-   draws any badge carrying a `url` directly, so this exercises the real path
-   rather than an approximation of it. Modelled on the inline YouTube badge art
-   already in lib/render.tsx. */
-const FFZ_MOD_BADGE =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#5c16c5">' +
-      '<path d="M3 4h18v13a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Zm4.6 4.2v7.6h2V12l2.4 2.7 2.4-2.7v3.8h2V8.2h-2L12 11.4 9.6 8.2Z"/></svg>',
-  );
-
-const FFZ_VIP_BADGE =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#e005b9">' +
-      '<path d="M2 6h4l3 9 3-9h4l-6 13H8Zm14 0h4v13h-4Z"/></svg>',
-  );
+/* The FFZ room-badge override art now lives in the shared preview asset catalog
+   (lib/tools/multichat/previewAssets.ts), so the simulator and the static
+   fixtures draw the same local art from one typed place rather than each keeping
+   its own copy. Production still receives these as a `url` on a mod or VIP badge
+   resolved from the FFZ CDN at runtime; the fixture supplies its own through the
+   same field, and `renderBadges` draws any badge carrying a `url` directly. */
+const FFZ_MOD_BADGE = PREVIEW_FFZ_MOD_BADGE;
+const FFZ_VIP_BADGE = PREVIEW_FFZ_VIP_BADGE;
 
 /* ------------------------------------------------------------------ */
 /* Message pool                                                       */
@@ -374,7 +364,7 @@ const POOL: readonly PoolEntry[] = [
     color: '#25f4ee',
     text: 'keep it friendly in here please',
     needs: ['tiktokSource'],
-    badges: [{ type: 'moderator', url: '/badges/moderator.svg' }],
+    badges: [{ type: 'moderator', url: PREVIEW_TIKTOK_MOD_BADGE }],
   },
   /* Generic art, available whenever platform badges are on at all. */
   {
@@ -407,26 +397,44 @@ const POOL: readonly PoolEntry[] = [
   },
 
   /* Third-party emote word-swaps, including the zero-width overlay. Only Kick
-     and Twitch receive swaps in production, so only those platforms appear. */
+     and Twitch receive swaps in production, so only those platforms appear. The
+     tokens name a provider apiece — OMEGALUL/KEKW/RainTime are 7TV, catJAM is
+     BTTV, PepeLaugh is FFZ — but all merge into one emote list and swap by one
+     path in production, so all sit behind the single `sevenTVEmotesEnabled`
+     gate the `bttvEmotes` source stands in for. */
   {
     platform: 'twitch',
     username: 'emotedelia',
     color: '#ffb86c',
-    text: 'that ending had me OMEGALUL',
+    text: `that ending had me ${PREVIEW_EMOTE_TOKENS.sevenTV}`,
     needs: ['bttvEmotes'],
   },
   {
     platform: 'kick',
     username: 'laughtrack',
     color: '#53fc18',
-    text: 'KEKW every single time',
+    text: `${PREVIEW_EMOTE_TOKENS.sevenTVAlt} every single time`,
     needs: ['bttvEmotes'],
   },
   {
     platform: 'kick',
     username: 'overlayolly',
     color: '#7ae2ff',
-    text: 'watch this OMEGALUL RainTime stack',
+    text: `watch this ${PREVIEW_EMOTE_TOKENS.sevenTV} ${PREVIEW_EMOTE_TOKENS.sevenTVZeroWidth} stack`,
+    needs: ['bttvEmotes'],
+  },
+  {
+    platform: 'twitch',
+    username: 'bttvbrady',
+    color: '#3ea6ff',
+    text: `${PREVIEW_EMOTE_TOKENS.bttv} to that beat drop`,
+    needs: ['bttvEmotes'],
+  },
+  {
+    platform: 'kick',
+    username: 'ffzfelix',
+    color: '#b6ff6f',
+    text: `${PREVIEW_EMOTE_TOKENS.ffz} that was the whole stream`,
     needs: ['bttvEmotes'],
   },
 
@@ -505,6 +513,77 @@ export function availablePool(sources: PreviewSourceState): readonly PoolEntry[]
   return available.length > 0 ? available : POOL.filter((entry) => !entry.needs);
 }
 
+/* ------------------------------------------------------------------ */
+/* Provider showcase                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ordered cosmetic/emote showcase the feed opens with.
+ *
+ * The static fixtures already show native badges, a paint and an emote the
+ * instant the preview paints, so the moving feed's job is to demonstrate the
+ * provider-gated cosmetics in a fixed, legible order rather than leaving them to
+ * a random draw that might not surface a 7TV badge for a dozen messages. Each
+ * step names the pool entry (by its unique username) that demonstrates one
+ * capability; `generateMessage` plays them in order for the first
+ * `SHOWCASE.length` sequence numbers, then falls to the random pool.
+ *
+ * A step is only played when the source it needs is on. With a source off its
+ * entry is not drawable, so that sequence number takes a random pick instead —
+ * the showcase never forces an entry the settings have switched off.
+ *
+ * The order is deliberate: 7TV cosmetic badge, 7TV paint, then one emote per
+ * provider (7TV, BTTV, FFZ). Consecutive steps are distinct identities, so the
+ * showcase itself never repeats a line back to back.
+ */
+const SHOWCASE: readonly string[] = [
+  'catalogcarl', // 7TV cosmetic badge, via entitlement
+  'paintedpip', // 7TV username paint
+  'emotedelia', // 7TV emote word-swap
+  'bttvbrady', // BTTV emote word-swap
+  'ffzfelix', // FFZ emote word-swap
+];
+
+/** How many opening messages the showcase governs. */
+export const SHOWCASE_LENGTH = SHOWCASE.length;
+
+/** The showcase entry for a 1-based sequence position, if it is drawable now. */
+function showcaseEntry(
+  sequence: number,
+  sources: PreviewSourceState,
+): PoolEntry | null {
+  if (sequence < 1 || sequence > SHOWCASE.length) return null;
+  const username = SHOWCASE[sequence - 1];
+  const entry = POOL.find((candidate) => candidate.username === username);
+  return entry && entryAvailable(entry, sources) ? entry : null;
+}
+
+/**
+ * Choose the pool entry for a message: the showcase step if one applies, else a
+ * random draw that never repeats the previous line's identity.
+ *
+ * NON-MUTATING. The pool is never sorted or spliced in place; the candidate list
+ * is a filtered copy and `pick` only reads from it. The dedup excludes the prior
+ * entry by its unique username, and only when doing so leaves something to draw —
+ * with a single plain line reachable (every source off), repetition is preferred
+ * to an empty feed.
+ */
+function selectEntry(
+  sequence: number,
+  sources: PreviewSourceState,
+  random: RandomSource,
+  previous?: UnifiedMessage | null,
+): PoolEntry {
+  const showcase = showcaseEntry(sequence, sources);
+  if (showcase) return showcase;
+
+  const available = availablePool(sources);
+  const withoutPrevious = previous
+    ? available.filter((entry) => entry.username !== previous.username)
+    : available;
+  return pick(random, withoutPrevious.length > 0 ? withoutPrevious : available);
+}
+
 /**
  * Build one generated message.
  *
@@ -512,13 +591,18 @@ export function availablePool(sources: PreviewSourceState): readonly PoolEntry[]
  * two messages are never keyed alike however the random source behaves. The
  * timestamp is derived from the same counter rather than from `Date.now()`,
  * which keeps the module clock-free and lets a test assert exact values.
+ *
+ * `previous`, when supplied, is the line just emitted: the next draw will not
+ * repeat its identity, so the feed never shows the same fixture twice in a row.
+ * Optional so existing callers and the deterministic showcase are unaffected.
  */
 export function generateMessage(
   sequence: number,
   sources: PreviewSourceState,
   random: RandomSource,
+  previous?: UnifiedMessage | null,
 ): UnifiedMessage {
-  const entry = pick(random, availablePool(sources));
+  const entry = selectEntry(sequence, sources, random, previous);
   const badges: UnifiedBadge[] = (entry.badges ?? []).map((badge) => ({ ...badge }));
   if (entry.ffz && badges.length > 0) {
     badges[0] = {

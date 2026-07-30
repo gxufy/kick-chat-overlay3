@@ -101,6 +101,11 @@ export function useChatPreviewSimulator(
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
   const sequenceRef = useRef(0);
+  /* The line just emitted, so the next draw can avoid repeating its identity.
+     Held in a ref rather than read from `messages` so the tick stays off the
+     state it sets — and so a source toggle, which does not restart the timer,
+     never has to re-thread it. Cleared on reset alongside the sequence. */
+  const previousRef = useRef<UnifiedMessage | null>(null);
   /* Null until the first tick draws it. Deliberately not seeded during render:
      Strict Mode renders twice, so a draw there would consume two values and the
      two renders would disagree about the gap. */
@@ -127,7 +132,13 @@ export function useChatPreviewSimulator(
       /* A callback already queued when cleanup ran must not append or re-arm. */
       if (cancelled) return;
       sequenceRef.current += 1;
-      const next = generateMessage(sequenceRef.current, sourcesRef.current, random);
+      const next = generateMessage(
+        sequenceRef.current,
+        sourcesRef.current,
+        random,
+        previousRef.current,
+      );
+      previousRef.current = next;
       setMessages((current) => appendBounded(current, next, CHAT_HISTORY_MAX));
 
       /* The pin is offered on a countdown rather than per message: production's
@@ -160,6 +171,9 @@ export function useChatPreviewSimulator(
   const reset = useCallback(() => {
     setMessages([]);
     sequenceRef.current = 0;
+    /* Cleared so the next tick starts sequence 1 again — restarting the showcase
+       from its first step — with no prior line to dedup against. */
+    previousRef.current = null;
     pinCountdownRef.current = nextPinGap(random);
     setPinVisible(true);
   }, [random]);

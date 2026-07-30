@@ -28,7 +28,7 @@ import {
   TWITCH_OAUTH_PRODUCTION_CALLBACK,
   missingTwitchOAuthEnv,
   twitchRedirectUriPathLooksWrong,
-} from '../lib/server/oauthConfig.ts';
+} from '../src/lib/server/oauthConfig.ts';
 
 /**
  * Print the configuration verdict and return the process exit code: 0 when every

@@ -24,7 +24,7 @@ import {
 import { MULTICHAT_FONTS } from '@/lib/multichatConfig';
 
 const OVERLAY_SOURCE = readFileSync(
-  join(process.cwd(), 'components', 'ChatOverlay.tsx'),
+  join(process.cwd(), 'src', 'components', 'ChatOverlay.tsx'),
   'utf8',
 );
 
@@ -130,7 +130,7 @@ describe('no route asks next/head for a stylesheet', () => {
 
   /** Every .tsx under a directory, recursively. */
   const tsxFiles = (dir: string): string[] =>
-    readdirSync(join(process.cwd(), dir), { withFileTypes: true }).flatMap((entry) => {
+    readdirSync(join(process.cwd(), 'src', dir), { withFileTypes: true }).flatMap((entry) => {
       const rel = `${dir}/${entry.name}`;
       if (entry.isDirectory()) return tsxFiles(rel);
       return entry.name.endsWith('.tsx') ? [rel] : [];
@@ -138,7 +138,7 @@ describe('no route asks next/head for a stylesheet', () => {
 
   const SOURCES = ['components', 'pages', 'app']
     .flatMap(tsxFiles)
-    .map((rel) => [rel, readFileSync(join(process.cwd(), rel), 'utf8')] as const);
+    .map((rel) => [rel, readFileSync(join(process.cwd(), 'src', rel), 'utf8')] as const);
 
   it('reads the component and page sources', () => {
     // Guards the walk: an empty list must not pass the assertion below.

@@ -83,7 +83,7 @@ describe('the failed-image handler', () => {
 
 describe('ARCHITECTURE: the preview asset catalog is local, data-only and browser-safe', () => {
   const ASSETS_SOURCE = readFileSync(
-    join(process.cwd(), 'lib', 'tools', 'multichat', 'previewAssets.ts'),
+    join(process.cwd(), 'src', 'lib', 'tools', 'multichat', 'previewAssets.ts'),
     'utf8',
   );
 

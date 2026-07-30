@@ -1,4 +1,4 @@
-# MultiChat | Custom Multi-Platform Chat Overlay
+# 🕊️ MultiChat | Custom Multi-Platform Chat Overlay
 
 **Live:** https://gxufy.com/
 
@@ -78,14 +78,6 @@ sources**. Add either, both or neither.
 4. Copy the **Viewer Counter URL** into a separate Browser Source sized
    **400 × 80**.
 
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment](docs/DEPLOY.md)
-- [Privacy & token handling](docs/PRIVACY.md)
-- [Testing](docs/TESTING.md)
-
 ---
 
-Built by [gxufy](https://guns.lol/gxufy). Not affiliated with Kick, Twitch,
-YouTube or TikTok.
+Built by [gxufy](https://guns.lol/gxufy).

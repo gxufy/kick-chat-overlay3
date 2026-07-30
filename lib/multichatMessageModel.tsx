@@ -40,6 +40,7 @@ import {
   renderMessageText,
   type MentionContext,
 } from './render';
+import { handleAssetError } from './render/imageFallback';
 import type { UnifiedMessage } from './types';
 
 /**
@@ -209,7 +210,7 @@ export function buildParsedMessage(
         const badge = cosmetics.badges.find((b) => b.id === entitlement.badge);
         if (badge) {
           badgeNodes.push(
-            <img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" />,
+            <img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" onError={handleAssetError} />,
           );
         }
       }

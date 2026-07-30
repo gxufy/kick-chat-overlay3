@@ -31,6 +31,7 @@ import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
 import { SAMPLE_COSMETICS, sampleMessages } from '@/lib/tools/multichat/samples';
 import { PREVIEW_EMOTE_TOKENS } from '@/lib/tools/multichat/previewAssets';
+import { resetAssetErrorLog } from '@/lib/render/imageFallback';
 import {
   PREVIEW_SOURCES,
   PREVIEW_SOURCE_HINT,
@@ -374,6 +375,29 @@ describe('7TV paints render through the production paint builder', () => {
     cleanup();
     mountPreview([painted], { sevenTVCosmeticsEnabled: false });
     expect(preview().querySelector('img[alt="7tv badge"]')).toBeNull();
+  });
+
+  it('FALLBACK: hides a badge whose art fails to load, keeping the message', () => {
+    /* The runtime net, exercised through the real renderer. The fixture art is
+       valid, so this forces the failure the way a dead live CDN would — by
+       firing the image's own error event — and asserts the handler the renderer
+       attached hides that one badge and nothing else. */
+    resetAssetErrorLog();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const [painted] = generateUntil(isPainted, 1);
+    mountPreview([painted], { sevenTVCosmeticsEnabled: true });
+    const badge = preview().querySelector<HTMLImageElement>('img[alt="7tv badge"]')!;
+    expect(badge).toBeTruthy();
+
+    badge.dispatchEvent(new (preview().ownerDocument.defaultView as any).Event('error'));
+
+    /* The badge is hidden with no layout box, and the painted name it sat beside
+       is still on screen — only the failed image left the flow. */
+    expect(badge.style.display).toBe('none');
+    expect(badge.getAttribute('data-asset-failed')).toBe('true');
+    expect(within(preview()).getByText(painted.username)).toBeTruthy();
+    expect(warn).toHaveBeenCalledTimes(1);
+    resetAssetErrorLog();
   });
 
   it("paints a generated name and a fixture name by the very same code path", () => {

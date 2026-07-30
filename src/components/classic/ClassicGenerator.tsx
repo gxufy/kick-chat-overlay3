@@ -60,10 +60,10 @@ import {
 import ClassicCounterFeedControls from './ClassicCounterFeedControls';
 import { useChatPreviewSimulator } from './useChatPreviewSimulator';
 import { usePreviewBadgeLibrary } from './usePreviewBadgeLibrary';
-import { buildPreviewCosmetics } from '@/lib/tools/multichat/previewCosmetics';
+import { buildPreviewCosmetics } from '@/features/multichat/previewCosmetics';
 import { useCounterPreviewSimulator } from './useCounterPreviewSimulator';
-import { combinationLabel } from '@/lib/tools/counter/previewSimulator';
-import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
+import { combinationLabel } from '@/features/counter/previewSimulator';
+import { PREVIEW_SOURCES } from '@/features/multichat/previewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
 import {
@@ -72,20 +72,20 @@ import {
   googleFontsImportCss,
 } from '@/lib/overlayFonts';
 import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
-import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { SAMPLE_PIN_ID, sampleMessages } from '@/lib/tools/multichat/samples';
-import { counterTool } from '@/lib/tools/counter/config';
+import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { multichatTool } from '@/features/multichat/config';
+import { SAMPLE_PIN_ID, sampleMessages } from '@/features/multichat/samples';
+import { counterTool } from '@/features/counter/config';
 import {
   SAMPLE_COUNTER_COUNTS,
   parseCounterCount,
   sampleCounterStatuses,
-} from '@/lib/tools/counter/samples';
-import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/multichat/runtime';
+} from '@/features/counter/samples';
+import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/features/multichat/runtime';
 import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
 import { PLATFORM_ORDER } from '@/lib/viewerCounterConfig';
 import type { ViewerCounterStyle, ViewerPlatform } from '@/lib/viewerCounterConfig';
-import type { ToolChannels } from '@/lib/tools/registry';
+import type { ToolChannels } from '@/features/registry';
 import type { UnifiedMessage } from '@/lib/types';
 import type { CatalogAvailability, SettingValue } from '@/lib/tools/settingTypes';
 import {

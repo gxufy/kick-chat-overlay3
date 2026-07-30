@@ -22,7 +22,7 @@ import {
   PREVIEW_FALLBACK_NAME,
   canComposePreviewMessage,
   composePreviewMessage,
-} from '@/lib/tools/multichat/composePreviewMessage';
+} from '@/features/multichat/composePreviewMessage';
 import type { Platform, UnifiedMessage } from '@/lib/types';
 
 /** The four platforms, in the page's established order. */

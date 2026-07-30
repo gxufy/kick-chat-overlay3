@@ -38,7 +38,7 @@ import {
   shuffledCombinations,
   statusesForCombination,
   type CounterCombination,
-} from '@/lib/tools/counter/previewSimulator';
+} from '@/features/counter/previewSimulator';
 import type { PreviewSpeed, RandomSource } from '@/lib/tools/previewRandom';
 import type { PlatformStatuses } from '@/lib/viewerCounterConfig';
 

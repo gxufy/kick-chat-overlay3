@@ -38,7 +38,7 @@ import {
   PREVIEW_SOURCE_LABEL,
   type PreviewSource,
   type PreviewSourceState,
-} from '@/lib/tools/multichat/previewSimulator';
+} from '@/features/multichat/previewSimulator';
 
 export default function ClassicPreviewBadgePicker({
   sources,

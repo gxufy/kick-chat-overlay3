@@ -45,7 +45,7 @@ import {
 } from '@/lib/multichatMessageModel';
 import type { ParsedMessage } from '@/lib/kick';
 import type { UnifiedMessage } from '@/lib/types';
-import { SAMPLE_COSMETICS, SAMPLE_PIN_BY, SAMPLE_PIN_ID } from '@/lib/tools/multichat/samples';
+import { SAMPLE_COSMETICS, SAMPLE_PIN_BY, SAMPLE_PIN_ID } from '@/features/multichat/samples';
 
 /* Hoisted so the identity is stable across renders. A fresh Set every render
    would change ChatOverlay's props on every keystroke for no reason — and

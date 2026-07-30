@@ -20,8 +20,8 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ClassicSetting from '@/components/classic/ClassicSetting';
-import { COUNTER_CATALOG } from '@/lib/tools/counter/settings';
-import { counterTool } from '@/lib/tools/counter/config';
+import { COUNTER_CATALOG } from '@/features/counter/settings';
+import { counterTool } from '@/features/counter/config';
 import {
   DEFAULT_STYLE,
   buildViewerCounterQuery,

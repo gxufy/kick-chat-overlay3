@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { handleAssetError, resetAssetErrorLog } from '@/lib/render/imageFallback';
-import * as previewAssets from '@/lib/tools/multichat/previewAssets';
+import * as previewAssets from '@/features/multichat/previewAssets';
 
 /** Fire a native error event at an <img>, as a failed load would. */
 function failLoad(img: HTMLImageElement) {
@@ -83,7 +83,7 @@ describe('the failed-image handler', () => {
 
 describe('ARCHITECTURE: the preview asset catalog is local, data-only and browser-safe', () => {
   const ASSETS_SOURCE = readFileSync(
-    join(process.cwd(), 'src', 'lib', 'tools', 'multichat', 'previewAssets.ts'),
+    join(process.cwd(), 'src', 'features', 'multichat', 'previewAssets.ts'),
     'utf8',
   );
 

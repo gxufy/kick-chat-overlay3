@@ -10,8 +10,8 @@ import {
   buildViewerCounterQuery,
   type ViewerCounterStyle,
 } from '@/lib/viewerCounterConfig';
-import { COUNTER_CATALOG } from '@/lib/tools/counter/settings';
-import { counterTool } from '@/lib/tools/counter/config';
+import { COUNTER_CATALOG } from '@/features/counter/settings';
+import { counterTool } from '@/features/counter/config';
 import { visibleSettings } from '@/lib/tools/settingTypes';
 
 describe('catalog integrity', () => {

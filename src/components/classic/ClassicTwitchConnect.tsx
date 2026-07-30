@@ -20,12 +20,12 @@
  * they match, native pins stay off. The button fills the field from the connected
  * login, which is the entire fix.
  */
-import type { MultichatRuntime } from '@/lib/tools/multichat/runtime';
+import type { MultichatRuntime } from '@/features/multichat/runtime';
 import {
   OAUTH_RETURN_GENERATOR,
   twitchPinsAvailable,
-} from '@/lib/tools/multichat/runtime';
-import { useTwitchConnection } from '@/lib/tools/multichat/useTwitchConnection';
+} from '@/features/multichat/runtime';
+import { useTwitchConnection } from '@/features/multichat/useTwitchConnection';
 
 export default function ClassicTwitchConnect({
   runtime,

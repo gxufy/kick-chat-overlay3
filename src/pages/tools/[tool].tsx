@@ -23,7 +23,7 @@ import Head from 'next/head';
 import type { GetStaticPaths, GetStaticProps } from 'next';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { TOOL_IDS, findTool } from '@/lib/tools/registry';
+import { TOOL_IDS, findTool } from '@/features/registry';
 import {
   CANONICAL_COUNTER_ROUTE,
   CANONICAL_MULTICHAT_ROUTE,

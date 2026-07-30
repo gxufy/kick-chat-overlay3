@@ -29,12 +29,12 @@ import IsolatedPreviewFrame, {
   type PreviewScale,
 } from '@/components/classic/IsolatedPreviewFrame';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
-import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
-import { SAMPLE_COSMETICS, sampleMessages } from '@/lib/tools/multichat/samples';
+import { multichatTool } from '@/features/multichat/config';
+import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { MULTICHAT_CATALOG } from '@/features/multichat/settings';
+import { SAMPLE_COSMETICS, sampleMessages } from '@/features/multichat/samples';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
-import type { ToolChannels } from '@/lib/tools/registry';
+import type { ToolChannels } from '@/features/registry';
 import type { MultichatPlatform } from '@/lib/multichatConfig';
 
 vi.mock('next/head', () => ({

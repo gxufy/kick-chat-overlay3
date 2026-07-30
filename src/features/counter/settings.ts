@@ -20,7 +20,7 @@ import {
   optionsFrom,
   titleCase,
   type SettingCatalog,
-} from '../settingTypes';
+} from '@/lib/tools/settingTypes';
 
 /** Non-channel Viewer Counter controls, in display order. */
 export const COUNTER_CATALOG: SettingCatalog<ViewerCounterStyle> = [

@@ -25,8 +25,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
+import { multichatTool } from '@/features/multichat/config';
+import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_EPOCH,
@@ -36,8 +36,8 @@ import {
   SAMPLE_PIN_ID,
   sampleMessages,
   samplePlatforms,
-} from '@/lib/tools/multichat/samples';
-import type { ToolChannels } from '@/lib/tools/registry';
+} from '@/features/multichat/samples';
+import type { ToolChannels } from '@/features/registry';
 import type { MultichatPlatform } from '@/lib/multichatConfig';
 
 vi.mock('next/head', () => ({

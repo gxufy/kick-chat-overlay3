@@ -33,7 +33,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
-import { counterTool } from '@/lib/tools/counter/config';
+import { counterTool } from '@/features/counter/config';
 import { buildViewerCounterQuery } from '@/lib/viewerCounterConfig';
 
 /* next/head renders nothing in jsdom and next/link wants a router context; the

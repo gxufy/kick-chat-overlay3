@@ -23,7 +23,7 @@ import type { ReactNode } from 'react';
 import {
   PREVIEW_SPEEDS,
   type PreviewSpeed,
-} from '@/lib/tools/multichat/previewSimulator';
+} from '@/features/multichat/previewSimulator';
 
 /** Visible names for the three speeds, in the order the band widens. */
 const SPEED_LABEL: Record<PreviewSpeed, string> = {

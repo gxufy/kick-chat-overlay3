@@ -27,7 +27,7 @@ import {
   loadPreviewBadges,
   type BadgeProviderRow,
   type PreviewBadgeAsset,
-} from '@/lib/tools/multichat/previewBadgeLibrary';
+} from '@/features/multichat/previewBadgeLibrary';
 
 /** Where the one request stands, as a closed union rather than loose booleans. */
 export type BadgeLibraryStatus = 'idle' | 'loading' | 'success' | 'error';

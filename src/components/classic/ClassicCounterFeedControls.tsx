@@ -19,7 +19,7 @@
  */
 import { PLATFORM_ORDER, type ViewerPlatform } from '@/lib/viewerCounterConfig';
 import { PREVIEW_SPEEDS, type PreviewSpeed } from '@/lib/tools/previewRandom';
-import { COUNTER_COUNT_MAX } from '@/lib/tools/counter/samples';
+import { COUNTER_COUNT_MAX } from '@/features/counter/samples';
 import { COUNTER_STATE_COUNT, type CounterPreviewMode } from './useCounterPreviewSimulator';
 
 /** Visible names for the three speeds, in the order the band widens. */

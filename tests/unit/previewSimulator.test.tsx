@@ -46,14 +46,14 @@ import {
   SHOWCASE_LENGTH,
   type PreviewSourceState,
   type PreviewSpeed,
-} from '@/lib/tools/multichat/previewSimulator';
-import { PREVIEW_EMOTE_TOKENS } from '@/lib/tools/multichat/previewAssets';
+} from '@/features/multichat/previewSimulator';
+import { PREVIEW_EMOTE_TOKENS } from '@/features/multichat/previewAssets';
 import {
   useChatPreviewSimulator,
   type ChatSimulatorOptions,
   type ChatSimulatorState,
 } from '@/components/classic/useChatPreviewSimulator';
-import { SAMPLE_EPOCH, SAMPLE_MESSAGES } from '@/lib/tools/multichat/samples';
+import { SAMPLE_EPOCH, SAMPLE_MESSAGES } from '@/features/multichat/samples';
 import type { Platform } from '@/lib/types';
 
 /* ------------------------------------------------------------------ */

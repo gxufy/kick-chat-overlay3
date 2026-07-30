@@ -14,7 +14,7 @@ import {
   MULTICHAT_COMMAND_TRIGGER,
 } from '@/lib/multichatCommands';
 import { MULTICHAT_OBS_SIZE, MULTICHAT_OBS_ALTERNATE } from './obs';
-import type { ToolHelpSection } from '@/lib/tools/registry';
+import type { ToolHelpSection } from '@/features/registry';
 
 const size = (s: { width: number; height: number }) => `${s.width} × ${s.height}`;
 

@@ -20,7 +20,7 @@ import {
   groupByProvider,
   loadPreviewBadges,
   type PreviewBadgeAsset,
-} from '@/lib/tools/multichat/previewBadgeLibrary';
+} from '@/features/multichat/previewBadgeLibrary';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
 
 /* A well-formed 7TV cosmetics response with two usable badges and one that is

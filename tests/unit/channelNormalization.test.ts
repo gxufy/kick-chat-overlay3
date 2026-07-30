@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PLATFORM_ORDER, type ViewerPlatform } from '@/lib/viewerCounterConfig';
-import { configuredCounterPlatforms, counterTool } from '@/lib/tools/counter/config';
+import { configuredCounterPlatforms, counterTool } from '@/features/counter/config';
 
 const configured = (channels: Partial<Record<ViewerPlatform, string>>) =>
   configuredCounterPlatforms(channels);

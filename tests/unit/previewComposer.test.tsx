@@ -23,8 +23,8 @@ import {
   PREVIEW_TEXT_MAX,
   canComposePreviewMessage,
   composePreviewMessage,
-} from '@/lib/tools/multichat/composePreviewMessage';
-import { SAMPLE_MESSAGES, SAMPLE_PIN_ID } from '@/lib/tools/multichat/samples';
+} from '@/features/multichat/composePreviewMessage';
+import { SAMPLE_MESSAGES, SAMPLE_PIN_ID } from '@/features/multichat/samples';
 
 vi.mock('next/head', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,

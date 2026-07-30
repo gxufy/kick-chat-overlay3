@@ -38,7 +38,7 @@ import {
   type PreviewSourceState,
   type PreviewSpeed,
   type RandomSource,
-} from '@/lib/tools/multichat/previewSimulator';
+} from '@/features/multichat/previewSimulator';
 import type { UnifiedMessage } from '@/lib/types';
 
 /** What the generator hands the hook. All optional — the page passes nothing. */

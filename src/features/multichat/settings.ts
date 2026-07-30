@@ -34,7 +34,7 @@ import {
   titleCase,
   type SettingCatalog,
   type SettingOption,
-} from '../settingTypes';
+} from '@/lib/tools/settingTypes';
 
 /** Human labels for the font values, matching the generator's own <select>. */
 const FONT_LABEL: Record<string, string> = {

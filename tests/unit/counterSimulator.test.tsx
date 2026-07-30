@@ -26,8 +26,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
-import { counterTool } from '@/lib/tools/counter/config';
-import { SAMPLE_COUNTER_COUNTS } from '@/lib/tools/counter/samples';
+import { counterTool } from '@/features/counter/config';
+import { SAMPLE_COUNTER_COUNTS } from '@/features/counter/samples';
 import {
   COUNTER_COMBINATIONS,
   COUNTER_INTERVAL_MAX_MS,
@@ -43,7 +43,7 @@ import {
   simulatedCount,
   statusesForCombination,
   type CounterCombination,
-} from '@/lib/tools/counter/previewSimulator';
+} from '@/features/counter/previewSimulator';
 import {
   PREVIEW_SPEEDS,
   seededRandom,

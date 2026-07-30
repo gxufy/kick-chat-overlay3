@@ -23,15 +23,15 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicCounterPreview from '@/components/classic/ClassicCounterPreview';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
-import { counterTool } from '@/lib/tools/counter/config';
+import { counterTool } from '@/features/counter/config';
 import {
   COUNTER_COUNT_MAX,
   SAMPLE_COUNTER_COUNTS,
   parseCounterCount,
   sampleCounterStatuses,
-} from '@/lib/tools/counter/samples';
+} from '@/features/counter/samples';
 import { PLATFORM_ORDER, type ViewerPlatform } from '@/lib/viewerCounterConfig';
-import type { ToolChannels } from '@/lib/tools/registry';
+import type { ToolChannels } from '@/features/registry';
 
 vi.mock('next/head', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,

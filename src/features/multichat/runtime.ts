@@ -12,8 +12,8 @@
  * computed once here.
  */
 import type { MultichatWorkspaceStyle } from '@/lib/multichatConfig';
-import type { OptionAvailability } from '../settingTypes';
-import type { ToolContext } from '../toolContext';
+import type { OptionAvailability } from '@/lib/tools/settingTypes';
+import type { ToolContext } from '@/lib/tools/toolContext';
 import {
   TWITCH_CONNECTION_FRAGMENT_ID,
   TWITCH_CONNECTION_FRAGMENT_LOGIN,

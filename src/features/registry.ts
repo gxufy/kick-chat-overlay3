@@ -17,9 +17,9 @@
  * Browser-safe — no server-only imports, no secrets.
  */
 import type { ReactElement } from 'react';
-import type { PreviewBackgroundId } from './previewBackground';
-import type { OptionAvailability, SettingCatalog } from './settingTypes';
-import type { ToolContext } from './toolContext';
+import type { PreviewBackgroundId } from '@/lib/tools/previewBackground';
+import type { OptionAvailability, SettingCatalog } from '@/lib/tools/settingTypes';
+import type { ToolContext } from '@/lib/tools/toolContext';
 import { counterTool } from './counter/config';
 import { multichatTool } from './multichat/config';
 

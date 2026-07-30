@@ -7,6 +7,117 @@ In front of it, Caddy handles your domain + automatic HTTPS.
 visitors → https://yourdomain.com → Caddy (443) → Node app (localhost:3000)
 ```
 
+## Domain: gxufy.com primary, multichat-gxufy.com compatibility
+
+The site's primary domain is **`gxufy.com`**. The older **`multichat-gxufy.com`**
+stays fully operational as a **compatibility domain** — it is never globally
+redirected, because existing OBS browser sources hold channel-parameter overlay
+URLs on that host and those must keep rendering forever. Only the non-overlay
+generator/website routes are canonicalized to `gxufy.com`, and that happens in
+the app's middleware (`src/middleware.ts` → `src/lib/canonicalRedirect.ts`),
+which consults the routing classifier so it can never redirect a configured
+overlay. Both hosts point at the **same** Node process on the **same** VPS
+(`150.136.76.98`).
+
+### Cloudflare DNS
+
+In the Cloudflare dashboard for **`gxufy.com`**:
+
+| Type | Name | Content | Proxy |
+|---|---|---|---|
+| A | `@` | `150.136.76.98` | Proxied (orange cloud) |
+| CNAME | `www` | `gxufy.com` | Proxied (orange cloud) |
+
+Leave the existing **`multichat-gxufy.com`** DNS records exactly as they are —
+its A record must keep pointing at `150.136.76.98` so its overlay URLs keep
+resolving. Do not add a redirect rule or Page Rule that sends
+`multichat-gxufy.com` to `gxufy.com`.
+
+Set **SSL/TLS mode to Full (strict)** for `gxufy.com`, matching the existing
+domain: Caddy terminates real certificates on the VPS, so strict verification is
+correct end to end.
+
+### Caddy
+
+The repository `Caddyfile` serves all three name sets from the one local app —
+`gxufy.com` (primary), a permanent `www.gxufy.com` → apex redirect, and the
+unchanged `multichat-gxufy.com, www.multichat-gxufy.com` block that keeps the
+legacy overlays serving in place:
+
+```
+gxufy.com {
+	encode gzip
+	@sse path /api/tiktok/*
+	reverse_proxy @sse localhost:3000 { flush_interval -1 }
+	reverse_proxy localhost:3000
+}
+
+www.gxufy.com {
+	redir https://gxufy.com{uri} permanent
+}
+
+multichat-gxufy.com, www.multichat-gxufy.com {
+	encode gzip
+	@sse path /api/tiktok/*
+	reverse_proxy @sse localhost:3000 { flush_interval -1 }
+	reverse_proxy localhost:3000
+}
+```
+
+Only `www.gxufy.com` redirects (to the apex). The legacy apex is a plain
+`reverse_proxy`, never a `redir` — a global redirect there would break every OBS
+source pointed at it. Adapt hostnames only if your real Caddyfile differs; keep
+the SSE `flush_interval -1` matcher on every host or TikTok live chat buffers.
+
+### Manual cutover order
+
+Do this by hand — nothing here touches DNS or the production server
+automatically:
+
+1. Merge this branch and let the app deploy (or `git pull && npm ci && npm run
+   build && pm2 restart multichat` on the VPS).
+2. Register `https://gxufy.com/api/twitch/oauth/callback` as an OAuth Redirect
+   URL on the Twitch application, **alongside** the existing
+   `https://multichat-gxufy.com/...` and `http://localhost:3000/...` entries.
+   Keep all three (see the console table below).
+3. In Cloudflare, add the `gxufy.com` A record and `www` CNAME above; leave the
+   `multichat-gxufy.com` records untouched.
+4. Set `gxufy.com` SSL/TLS to Full (strict).
+5. Copy the updated `Caddyfile` to the VPS (`sudo cp Caddyfile
+   /etc/caddy/Caddyfile`) and `sudo systemctl reload caddy`. Caddy fetches the
+   `gxufy.com` certificate automatically.
+6. Set `TWITCH_REDIRECT_URI=https://gxufy.com/api/twitch/oauth/callback` in the
+   `ecosystem.config.js` env block, then `pm2 restart multichat --update-env`.
+7. Run `npm run verify:oauth` on the VPS (after the restart, because PM2 caches
+   the environment) and confirm it exits `0` and prints the primary callback.
+8. Visit `https://gxufy.com/` and `https://gxufy.com/multichat` (no channel) and
+   confirm the generator loads and Connect Twitch completes a full round trip.
+9. Visit a legacy overlay URL — e.g.
+   `https://multichat-gxufy.com/multichat?kick=<channel>` — and confirm it still
+   renders the overlay in place and is **not** redirected.
+10. Visit `https://multichat-gxufy.com/` (bare) and confirm it canonicalizes to
+    `https://gxufy.com/` while a channel-carrying URL on the same host does not.
+
+Do **not** remove the legacy `multichat-gxufy.com` OAuth callback during this
+cutover. It stays registered so a rollback needs no Twitch console change;
+removing it belongs to a later cleanup pass.
+
+### Vercel (secondary / preview only)
+
+Cloudflare + Caddy on the Oracle VPS is the **authoritative** production path for
+both domains; any Vercel deployment is **secondary**, for previews only, and is
+not the primary host of `gxufy.com`. Two consequences:
+
+- Vercel does not read `ecosystem.config.js`. Environment variables set in the
+  Vercel dashboard only take effect on a **redeploy** — changing
+  `TWITCH_REDIRECT_URI` there requires triggering a new deployment, and its value
+  must match a callback registered on the Twitch application.
+- Vercel does not control `multichat-gxufy.com` unless that domain is explicitly
+  assigned to the Vercel project. As configured, both `gxufy.com` and
+  `multichat-gxufy.com` resolve through Cloudflare to the VPS, so Vercel serves
+  neither production domain. Do not repoint either apex at Vercel expecting it to
+  become primary.
+
 ## 1. Point your domain at the VPS
 
 At your domain registrar, create an **A record**:
@@ -161,18 +272,23 @@ reconnect. Losing it has the same effect.
 
 ### Twitch developer console
 
-At https://dev.twitch.tv/console/apps, register **both** redirect URLs on the
-same application:
+At https://dev.twitch.tv/console/apps, register **all three** redirect URLs on
+the same application:
 
 | Environment | OAuth Redirect URL |
 |---|---|
 | Local | `http://localhost:3000/api/twitch/oauth/callback` |
-| Production | `https://multichat-gxufy.com/api/twitch/oauth/callback` |
+| Primary (production) | `https://gxufy.com/api/twitch/oauth/callback` |
+| Legacy (compatibility) | `https://multichat-gxufy.com/api/twitch/oauth/callback` |
 
-These are the two values `lib/server/oauthConfig.ts` exports as
-`TWITCH_OAUTH_LOCAL_CALLBACK` and `TWITCH_OAUTH_PRODUCTION_CALLBACK`. If the
-production domain ever changes, change `TWITCH_OAUTH_PRODUCTION_ORIGIN` there and
-this table follows from it.
+These are the three values `lib/server/oauthConfig.ts` exports as
+`TWITCH_OAUTH_LOCAL_CALLBACK`, `TWITCH_OAUTH_PRODUCTION_CALLBACK`, and
+`TWITCH_OAUTH_LEGACY_CALLBACK`. The origins come from the shared domain contract
+`src/lib/domains.mjs` (`CANONICAL_ORIGIN`, `LEGACY_ORIGIN`, `LOCAL_ORIGIN`), so
+the callbacks registered here and the origin the site canonicalizes to cannot
+disagree. The legacy callback stays registered through the cutover so a rollback
+to `multichat-gxufy.com` needs no console change; remove it only in a later
+cleanup pass, not now.
 
 `TWITCH_REDIRECT_URI` must equal the one for the environment you are running,
 character for character — Twitch rejects any mismatch. Note the path is
@@ -281,7 +397,7 @@ before the file existed will not take effect either.
 If **Connect Twitch** fails, request the start endpoint directly:
 
 ```bash
-curl -i 'https://multichat-gxufy.com/api/twitch/oauth/start?returnTo=%2Fmultichat'
+curl -i 'https://gxufy.com/api/twitch/oauth/start?returnTo=%2Fmultichat'
 ```
 
 A configured deployment answers `302` with a `Location` on `id.twitch.tv`. An

@@ -1,6 +1,6 @@
 # MultiChat | Custom Multi-Platform Chat Overlay
 
-**Live:** https://multichat-gxufy.com/
+**Live:** https://gxufy.com/
 
 A customizable Kick, Twitch, YouTube and TikTok chat overlay for OBS, with a
 separate multi-platform viewer counter.
@@ -72,7 +72,7 @@ registry, so it always matches what the overlay implements.
 Chat and the viewer counter are **two separate URLs** in **two separate browser
 sources**. Add either, both or neither.
 
-1. Open the generator at [`/multichat`](https://multichat-gxufy.com/multichat)
+1. Open the generator at [`/multichat`](https://gxufy.com/multichat)
    with no channel in the URL.
 2. Enter your channel name(s) and configure the overlays.
 3. Copy the **Chat URL** into a Browser Source sized **680 × 280**.

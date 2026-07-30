@@ -33,7 +33,7 @@
  * to the draft, and not part of `chatQuery`; this component only reads it.
  */
 import { useMemo } from 'react';
-import ChatOverlay, { type PinnedState } from '@/components/ChatOverlay';
+import ChatOverlay, { type PinnedState } from '@/components/overlay/ChatOverlay';
 import IsolatedPreviewFrame, {
   PREVIEW_SCALE_DEFAULT,
 } from '@/components/classic/IsolatedPreviewFrame';

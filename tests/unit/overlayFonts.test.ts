@@ -24,7 +24,7 @@ import {
 import { MULTICHAT_FONTS } from '@/lib/multichatConfig';
 
 const OVERLAY_SOURCE = readFileSync(
-  join(process.cwd(), 'src', 'components', 'ChatOverlay.tsx'),
+  join(process.cwd(), 'src', 'components', 'overlay', 'ChatOverlay.tsx'),
   'utf8',
 );
 
@@ -143,7 +143,7 @@ describe('no route asks next/head for a stylesheet', () => {
   it('reads the component and page sources', () => {
     // Guards the walk: an empty list must not pass the assertion below.
     expect(SOURCES.length).toBeGreaterThan(5);
-    expect(SOURCES.map(([rel]) => rel)).toContain('components/ChatOverlay.tsx');
+    expect(SOURCES.map(([rel]) => rel)).toContain('components/overlay/ChatOverlay.tsx');
   });
 
   it('has no rel="stylesheet" in any page or component', () => {

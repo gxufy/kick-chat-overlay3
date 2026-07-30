@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import ViewerCounterDisplay from '../components/ViewerCounterDisplay';
+import ViewerCounterDisplay from '../components/overlay/ViewerCounterDisplay';
 import {
   SERVER_PLATFORMS,
   channelPollKey,

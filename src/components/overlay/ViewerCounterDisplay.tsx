@@ -20,7 +20,7 @@ import {
   type PlatformStatuses,
   type ViewerCounterStyle,
   type ViewerPlatform,
-} from '../lib/viewerCounterConfig';
+} from '../../lib/viewerCounterConfig';
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */

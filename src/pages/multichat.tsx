@@ -43,7 +43,7 @@ import {
   RELOAD_STAMP_KEY,
   createMultichatCommandRunner,
 } from '../lib/multichatCommandRuntime';
-import ChatOverlay, { type PinnedState } from '../components/ChatOverlay';
+import ChatOverlay, { type PinnedState } from '../components/overlay/ChatOverlay';
 import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
 

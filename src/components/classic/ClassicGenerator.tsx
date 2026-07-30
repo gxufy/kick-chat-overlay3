@@ -71,7 +71,7 @@ import {
   UI_FONT_SPECS,
   googleFontsImportCss,
 } from '@/lib/overlayFonts';
-import { FONT_FAMILIES } from '@/components/ChatOverlay';
+import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { multichatTool } from '@/lib/tools/multichat/config';
 import { SAMPLE_PIN_ID, sampleMessages } from '@/lib/tools/multichat/samples';

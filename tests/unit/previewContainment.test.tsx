@@ -40,7 +40,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import ClassicCounterPreview from '@/components/classic/ClassicCounterPreview';
-import ChatOverlay from '@/components/ChatOverlay';
+import ChatOverlay from '@/components/overlay/ChatOverlay';
 import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
 import { multichatTool } from '@/lib/tools/multichat/config';
 import { counterTool } from '@/lib/tools/counter/config';

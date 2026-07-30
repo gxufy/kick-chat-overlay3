@@ -32,7 +32,7 @@
  * to the draft, and not part of `counterQuery`; this component only reads it.
  */
 import { useMemo } from 'react';
-import ViewerCounterDisplay from '@/components/ViewerCounterDisplay';
+import ViewerCounterDisplay from '@/components/overlay/ViewerCounterDisplay';
 import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
 import {
   parseViewerCounterConfig,

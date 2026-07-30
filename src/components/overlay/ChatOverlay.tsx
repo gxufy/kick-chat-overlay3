@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import type { MultichatConfig } from '../lib/multichatConfig';
-import type { ParsedMessage } from '../lib/kick';
-import { sourceTag, PROVIDERS, type SourceTagMode } from '../lib/render';
-import type { Platform } from '../lib/types';
-import { overlayFontCss } from '../lib/overlayFonts';
+import type { MultichatConfig } from '../../lib/multichatConfig';
+import type { ParsedMessage } from '../../lib/kick';
+import { sourceTag, PROVIDERS, type SourceTagMode } from '../../lib/render';
+import type { Platform } from '../../lib/types';
+import { overlayFontCss } from '../../lib/overlayFonts';
 
 export interface PinnedState {
   msg: ParsedMessage;

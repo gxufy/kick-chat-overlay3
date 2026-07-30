@@ -31,7 +31,7 @@ vi.mock('next/router', () => ({
   useRouter: () => ({ isReady, query, replace }),
 }));
 
-vi.mock('../../src/components/ChatOverlay', () => ({
+vi.mock('../../src/components/overlay/ChatOverlay', () => ({
   __esModule: true,
   default: () => <div data-testid="chat-overlay" />,
   FONT_FAMILIES: {},

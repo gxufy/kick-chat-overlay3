@@ -35,6 +35,7 @@ import { CLASSIC_GENERATOR_CSS } from '@/components/classic/classicStyles';
 import { buildMultichatQuery } from '@/lib/multichatConfig';
 import { buildViewerCounterQuery } from '@/lib/viewerCounterConfig';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
+import { buildConnectionFragment } from '@/lib/twitchConnection';
 
 vi.mock('next/head', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -1036,6 +1037,189 @@ describe('OAuth preserves both tools', () => {
     mount();
     // The draft was consumed by the first restore; nothing is re-applied.
     expect((document.getElementById('channel-kick') as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('the Twitch connection lives beside the pinned-message controls', () => {
+  /* A well-formed connection id, matching the fragment the OAuth callback emits.
+     The login is what the UI shows; the id is never rendered. */
+  const CONNECTION_ID = '123e4567-e89b-12d3-a456-426614174000';
+
+  const connectVia = (login: string) => {
+    window.location.hash = buildConnectionFragment({
+      connectionId: CONNECTION_ID,
+      login,
+    });
+  };
+
+  /* The connection adoption strips the fragment, but a test that fails before it
+     mounts could leave one behind for the next test — clear it either way. */
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  const settings = () => panel('.panel-chat-settings');
+  const hero = () => panel('.card.hero');
+
+  it('shows no Connect Twitch control in Your Channels', () => {
+    mount();
+    expect(hero().querySelector('.classic-conn')).toBeNull();
+    expect(within(hero()).queryByText('Connect')).toBeNull();
+    expect(
+      within(hero()).queryByRole('link', { name: 'Connect Twitch account' }),
+    ).toBeNull();
+  });
+
+  it('states that no login is required, in Your Channels', () => {
+    mount();
+    expect(hero().textContent).toMatch(
+      /no login is required for chat or viewer counts/i,
+    );
+  });
+
+  it('leaves the Twitch channel field a plain input like the others', () => {
+    mount();
+    const field = document
+      .querySelector('label[for="channel-twitch"]')!
+      .closest('.platform-input') as HTMLElement;
+    // A label and an input, nothing else — the same shape as the other three.
+    expect(field.querySelector('.classic-conn')).toBeNull();
+    expect(within(field).queryByText('Connect')).toBeNull();
+    expect(field.querySelectorAll('input')).toHaveLength(1);
+  });
+
+  it('places the connection controls in Chat settings, by the pin platforms', () => {
+    mount();
+    // The single connection panel now lives in Chat settings.
+    expect(document.querySelectorAll('.classic-conn')).toHaveLength(1);
+    expect(settings().querySelector('.classic-conn')).not.toBeNull();
+    // Beside the pin platform control, in the one wrapper.
+    const wrap = settings().querySelector('.mc-pin-connect')!;
+    expect(wrap).not.toBeNull();
+    expect(wrap.querySelector('.classic-conn')).not.toBeNull();
+    expect(settings().querySelector('#mc-pinPlatforms-kick')).not.toBeNull();
+  });
+
+  it('orders the connection after the pin platform control in reading order', () => {
+    /* jsdom computes no layout, so DOM order is the assertion — it is what a
+       screen reader and a phone follow. The connection sits after the pins. */
+    mount();
+    const pin = settings().querySelector('#mc-pinPlatforms-kick')!;
+    const conn = settings().querySelector('.classic-conn')!;
+    expect(
+      pin.compareDocumentPosition(conn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('reveals the connection controls only while pins are on', () => {
+    mount();
+    // Pins default on, so the connection is present.
+    expect(settings().querySelector('.classic-conn')).not.toBeNull();
+    fireEvent.click(document.getElementById('mc-showPinEnabled')!);
+    expect(settings().querySelector('.classic-conn')).toBeNull();
+  });
+
+  it('keeps Connect reachable before Twitch is a selected pin platform', () => {
+    /* The Twitch pin chip stays disabled until a matching connection exists, so
+       gating Connect on that chip would strand a fresh user with no way in. It
+       is gated on the pin switch instead, which is why Connect shows here even
+       though Twitch is not yet selected. */
+    mount();
+    expect(
+      (document.getElementById('mc-pinPlatforms-twitch') as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(within(settings()).getByText('Connect')).toBeTruthy();
+  });
+
+  it('gives Connect an accurate accessible name and associated help', () => {
+    mount();
+    const connect = within(settings()).getByRole('link', {
+      name: 'Connect Twitch account',
+    });
+    const describedBy = connect.getAttribute('aria-describedby');
+    expect(describedBy).toBe('mc-pin-connect-help');
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(
+      /only to display native Twitch pinned messages/i,
+    );
+  });
+
+  it('reuses the authoritative OAuth start URL, not a second implementation', () => {
+    mount();
+    const href =
+      within(settings()).getByText('Connect').getAttribute('href') ?? '';
+    expect(href).toContain('/api/twitch/oauth/start');
+    expect(href).toContain(encodeURIComponent('/multichat'));
+    expect(href).not.toContain('tools');
+  });
+
+  it('keeps chat and counter URLs working with no connection', () => {
+    /* The whole point of the move: chat and the counter need no login. */
+    mount();
+    typeChannel('kick', 'somechannel');
+    expect(chatUrl().startsWith(`${BASE}/multichat?`)).toBe(true);
+    expect(counterUrl().startsWith(`${BASE}/counter?`)).toBe(true);
+    // And no connection id leaks into either displayed URL.
+    expect(chatUrl()).not.toContain(CONNECTION_ID);
+    expect(counterUrl()).not.toContain(CONNECTION_ID);
+  });
+
+  it('shows the connected login and a Disconnect action once connected', () => {
+    connectVia('streamer');
+    mount();
+    expect(settings().textContent).toContain('Connected as');
+    expect(settings().textContent).toContain('streamer');
+    expect(within(settings()).getByText('Disconnect')).toBeTruthy();
+    // No Connect link while a connection exists.
+    expect(within(settings()).queryByText('Connect')).toBeNull();
+    // The opaque id is never rendered.
+    expect(settings().textContent).not.toContain(CONNECTION_ID);
+  });
+
+  it('warns and offers a one-click fix when the channel does not match', () => {
+    connectVia('streamer');
+    mount();
+    typeChannel('twitch', 'someoneelse');
+    expect(
+      within(settings()).getByText(/does not match the connected account/i),
+    ).toBeTruthy();
+    fireEvent.click(within(settings()).getByText('Use connected channel'));
+    expect(
+      (document.getElementById('channel-twitch') as HTMLInputElement).value,
+    ).toBe('streamer');
+    // The correction resolves the mismatch, so the warning clears.
+    expect(within(settings()).queryByText(/does not match/i)).toBeNull();
+    expect(within(settings()).queryByText('Use connected channel')).toBeNull();
+  });
+
+  it('drops the warning once the channel matches the connected account', () => {
+    connectVia('streamer');
+    mount();
+    typeChannel('twitch', 'streamer');
+    expect(settings().textContent).toContain('Connected as');
+    expect(within(settings()).queryByText(/does not match/i)).toBeNull();
+    expect(within(settings()).queryByText(/Set the Twitch channel/i)).toBeNull();
+    expect(within(settings()).queryByText('Use connected channel')).toBeNull();
+  });
+
+  it('disconnects, returning to the Connect control', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    connectVia('streamer');
+    mount();
+    fireEvent.click(within(settings()).getByText('Disconnect'));
+    // Flush the disconnect's microtasks so local state clears.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/twitch/oauth/disconnect',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(within(settings()).getByText('Connect')).toBeTruthy();
+    expect(settings().textContent).not.toContain('Connected as');
+    vi.unstubAllGlobals();
   });
 });
 

@@ -764,16 +764,12 @@ export default function ClassicGenerator({
                   value={channels[platform.key] ?? ''}
                   onChange={(e) => changeChannel(platform.key, e.target.value)}
                 />
-                {/* Only Twitch has a connection: it is the one platform whose
-                    native pins need authorization. */}
-                {platform.key === 'twitch' ? (
-                  <ClassicTwitchConnect
-                    runtime={runtime}
-                    onRuntimeChange={setRuntime}
-                    onUseConnectedChannel={(login) => changeChannel('twitch', login)}
-                    onBeforeLeave={persistDraft}
-                  />
-                ) : null}
+                {/* No per-field connection here any more: Twitch is a plain
+                    channel-name field like the other three. The Twitch account
+                    connection is optional and only for native Twitch pinned
+                    messages, so it lives beside the pin controls in Chat
+                    settings rather than under this input, where it read as
+                    though Twitch chat needed a login. */}
               </div>
             );
           })}
@@ -782,7 +778,7 @@ export default function ClassicGenerator({
         <p className="platform-hint">
           Fill in any one — or combine platforms into a single overlay. These
           channels feed both the chat overlay and the viewer counter. No login
-          needed.
+          is required for chat or viewer counts.
         </p>
       </section>
     );
@@ -1168,6 +1164,31 @@ export default function ClassicGenerator({
             {chat(MC_MOD_ACTION)}
             {chat(MC_SHOW_PIN)}
             {chatStyle.showPinEnabled ? chat(MC_PIN_PLATFORMS) : null}
+            {/* Optional Twitch account connection lives here, beside the pin
+                platforms it serves — not under the Twitch channel input, where
+                it read as though Twitch chat needed a login. It is gated on the
+                pin switch, not on Twitch being selected in pinPlatforms: that
+                chip stays disabled until a matching connection exists, so
+                gating the Connect control on the chip would strand a fresh user
+                with no way to connect. The help text keeps it clear the account
+                is only for native Twitch pins. */}
+            {chatStyle.showPinEnabled ? (
+              <div className="mc-pin-connect">
+                <ClassicTwitchConnect
+                  runtime={runtime}
+                  onRuntimeChange={setRuntime}
+                  onUseConnectedChannel={(login) =>
+                    changeChannel('twitch', login)
+                  }
+                  onBeforeLeave={persistDraft}
+                  describedBy="mc-pin-connect-help"
+                />
+                <p className="classic-help" id="mc-pin-connect-help">
+                  Connect your Twitch account only to display native Twitch
+                  pinned messages. Chat and viewer counts do not require login.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
 

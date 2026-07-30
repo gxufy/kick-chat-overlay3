@@ -1,9 +1,11 @@
-/* The Twitch connection controls that sit inside the Classic Twitch field.
+/* The Twitch connection controls for the Classic generator.
  *
  * Visually this is the Classic generator's own small purple Connect chip, the
- * "Connected as …" line, the mismatch warning, and Disconnect — the arrangement
- * that page has always had, beside the Twitch channel input rather than in a
- * separate panel.
+ * "Connected as …" line, the mismatch warning, and Disconnect. It sits beside
+ * the pin-platform control in Chat settings — the connection is optional and
+ * exists only for native Twitch pinned messages, so it belongs with the pin
+ * controls it serves, not under the Twitch channel input where it read as
+ * though Twitch chat needed a login.
  *
  * Behaviourally it owns nothing. Fragment adoption, stripping, and the bounded
  * disconnect all come from useTwitchConnection; whether pins are usable comes
@@ -30,6 +32,7 @@ export default function ClassicTwitchConnect({
   onRuntimeChange,
   onUseConnectedChannel,
   onBeforeLeave,
+  describedBy,
 }: {
   runtime: MultichatRuntime;
   onRuntimeChange: (
@@ -39,6 +42,8 @@ export default function ClassicTwitchConnect({
   onUseConnectedChannel: (login: string) => void;
   /** Persist both tools' drafts immediately before the OAuth navigation. */
   onBeforeLeave: () => void;
+  /** id of help text describing what this connection is for. */
+  describedBy?: string;
 }) {
   const { disconnecting, error, disconnect } = useTwitchConnection(
     runtime,
@@ -97,6 +102,8 @@ export default function ClassicTwitchConnect({
           href={`/api/twitch/oauth/start?returnTo=${encodeURIComponent(OAUTH_RETURN_GENERATOR)}`}
           onClick={onBeforeLeave}
           title="Optional — only needed for Twitch's own pinned messages"
+          aria-label="Connect Twitch account"
+          aria-describedby={describedBy}
         >
           Connect
         </a>

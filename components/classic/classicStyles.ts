@@ -275,7 +275,14 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-chip input:disabled + .classic-chip-label { opacity: .45; cursor: not-allowed; }
 .classic-chip input:focus-visible + .classic-chip-label { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
-/* Twitch connection, inline in its platform field */
+/* Twitch connection, beside the pin-platform control in Chat settings. The
+   optional account is only for native Twitch pins, so it sits with the pin
+   controls it serves rather than under the Twitch channel input. */
+.mc-pin-connect { margin-top: 8px; }
+.mc-pin-connect .classic-conn { justify-content: flex-start; }
+.mc-pin-connect .classic-conn-warn,
+.mc-pin-connect .classic-conn-err { text-align: left; }
+.mc-pin-connect .classic-help { margin-top: 6px; }
 .classic-conn { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
 .classic-connect {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;

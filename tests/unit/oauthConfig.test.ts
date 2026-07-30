@@ -16,6 +16,7 @@ import {
   OAUTH_NOT_CONFIGURED,
   REQUIRED_TWITCH_OAUTH_ENV,
   TWITCH_OAUTH_CALLBACK_PATH,
+  TWITCH_OAUTH_LEGACY_CALLBACK,
   TWITCH_OAUTH_LOCAL_CALLBACK,
   TWITCH_OAUTH_PRODUCTION_CALLBACK,
   missingTwitchOAuthEnv,
@@ -178,6 +179,14 @@ describe('callback URL', () => {
 
   it('is exactly the canonical production URL', () => {
     expect(TWITCH_OAUTH_PRODUCTION_CALLBACK).toBe(
+      'https://gxufy.com/api/twitch/oauth/callback',
+    );
+  });
+
+  it('is exactly the legacy compatibility URL', () => {
+    /* multichat-gxufy.com stays registered on the Twitch application through the
+       cutover so a rollback needs no console change. */
+    expect(TWITCH_OAUTH_LEGACY_CALLBACK).toBe(
       'https://multichat-gxufy.com/api/twitch/oauth/callback',
     );
   });
@@ -196,15 +205,24 @@ describe('callback URL', () => {
   });
 
   it('does not double the slash when an origin has a trailing one', () => {
-    expect(twitchOAuthCallbackUrl('https://multichat-gxufy.com/')).toBe(
+    expect(twitchOAuthCallbackUrl('https://gxufy.com/')).toBe(
       TWITCH_OAUTH_PRODUCTION_CALLBACK,
     );
-    expect(twitchOAuthCallbackUrl('https://multichat-gxufy.com///')).toBe(
+    expect(twitchOAuthCallbackUrl('https://gxufy.com///')).toBe(
       TWITCH_OAUTH_PRODUCTION_CALLBACK,
     );
   });
 
   it('accepts the production redirect URI as correctly shaped', () => {
+    expect(twitchRedirectUriPathLooksWrong()).toBe(false);
+  });
+
+  it('accepts the legacy redirect URI as correctly shaped, so a rollback needs no code change', () => {
+    /* The path check is origin-agnostic: it validates the suffix, not the host.
+       That is deliberate — during the cutover TWITCH_REDIRECT_URI may point at
+       either the primary or the legacy callback, and reverting to the legacy one
+       must not trip the operator warning. */
+    process.env.TWITCH_REDIRECT_URI = TWITCH_OAUTH_LEGACY_CALLBACK;
     expect(twitchRedirectUriPathLooksWrong()).toBe(false);
   });
 

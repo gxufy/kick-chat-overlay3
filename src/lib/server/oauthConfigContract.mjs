@@ -34,18 +34,42 @@ export const REQUIRED_TWITCH_OAUTH_ENV = [
  * places, because it must agree with the file layout, TWITCH_REDIRECT_URI, and
  * the entry registered in the Twitch developer console. Twitch compares byte for
  * byte.
+ *
+ * The origins and the callback builder come from the shared domain contract in
+ * src/lib/domains.mjs, so the callback URLs registered on Twitch and the origins
+ * the site canonicalizes to can never disagree. A server module importing that
+ * browser-safe file is fine; the boundary only forbids the reverse.
  */
-export const TWITCH_OAUTH_CALLBACK_PATH = '/api/twitch/oauth/callback';
+import {
+  CANONICAL_ORIGIN,
+  LEGACY_ORIGIN,
+  LOCAL_ORIGIN,
+  OAUTH_CALLBACK_PATH,
+  oauthCallbackUrl,
+} from '../domains.mjs';
 
-/** The canonical production origin. */
-export const TWITCH_OAUTH_PRODUCTION_ORIGIN = 'https://multichat-gxufy.com';
+export const TWITCH_OAUTH_CALLBACK_PATH = OAUTH_CALLBACK_PATH;
+
+/**
+ * The primary production origin, now gxufy.com. TWITCH_REDIRECT_URI on the live
+ * site must be this origin's callback, and it is the one the operator registers
+ * first on the Twitch application.
+ */
+export const TWITCH_OAUTH_PRODUCTION_ORIGIN = CANONICAL_ORIGIN;
+
+/**
+ * The legacy production origin, multichat-gxufy.com. Kept registered on the
+ * Twitch application during the cutover so a rollback to it needs no console
+ * change; it is not removed until a later cleanup pass.
+ */
+export const TWITCH_OAUTH_LEGACY_ORIGIN = LEGACY_ORIGIN;
 
 /** The development origin `npm run dev` serves. */
-export const TWITCH_OAUTH_LOCAL_ORIGIN = 'http://localhost:3000';
+export const TWITCH_OAUTH_LOCAL_ORIGIN = LOCAL_ORIGIN;
 
 /** The callback URL for an origin, with any trailing slash removed. */
 export function twitchOAuthCallbackUrl(origin) {
-  return `${origin.replace(/\/+$/, '')}${TWITCH_OAUTH_CALLBACK_PATH}`;
+  return oauthCallbackUrl(origin);
 }
 
 /**
@@ -54,6 +78,14 @@ export function twitchOAuthCallbackUrl(origin) {
  */
 export const TWITCH_OAUTH_PRODUCTION_CALLBACK = twitchOAuthCallbackUrl(
   TWITCH_OAUTH_PRODUCTION_ORIGIN,
+);
+
+/**
+ * The legacy callback, kept registered alongside the primary one so an OBS-free
+ * rollback to multichat-gxufy.com does not require touching the Twitch console.
+ */
+export const TWITCH_OAUTH_LEGACY_CALLBACK = twitchOAuthCallbackUrl(
+  TWITCH_OAUTH_LEGACY_ORIGIN,
 );
 
 /** The same, for local development. Both may be registered on one application. */

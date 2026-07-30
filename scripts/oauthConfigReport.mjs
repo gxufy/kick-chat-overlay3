@@ -25,6 +25,7 @@
 import {
   REQUIRED_TWITCH_OAUTH_ENV,
   TWITCH_OAUTH_CALLBACK_PATH,
+  TWITCH_OAUTH_LEGACY_CALLBACK,
   TWITCH_OAUTH_LOCAL_CALLBACK,
   TWITCH_OAUTH_PRODUCTION_CALLBACK,
   missingTwitchOAuthEnv,
@@ -70,10 +71,11 @@ export function runOAuthConfigReport() {
   /* The callback URLs are public constants, not secrets — showing them is the
      point: they are what the operator pastes into the Twitch developer console,
      and TWITCH_REDIRECT_URI must equal one of them byte for byte. */
-  console.log('Register one of these as the OAuth Redirect URL on the Twitch application,');
-  console.log('and set TWITCH_REDIRECT_URI to the same value:');
-  console.log(`  production  ${TWITCH_OAUTH_PRODUCTION_CALLBACK}`);
-  console.log(`  local       ${TWITCH_OAUTH_LOCAL_CALLBACK}`);
+  console.log('Register these as OAuth Redirect URLs on the Twitch application, and set');
+  console.log('TWITCH_REDIRECT_URI to the one for the origin this deployment serves:');
+  console.log(`  primary  ${TWITCH_OAUTH_PRODUCTION_CALLBACK}`);
+  console.log(`  legacy   ${TWITCH_OAUTH_LEGACY_CALLBACK}`);
+  console.log(`  local    ${TWITCH_OAUTH_LOCAL_CALLBACK}`);
   console.log('');
 
   const missingList = REQUIRED_TWITCH_OAUTH_ENV.filter((key) => missing.has(key));

@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   TWITCH_OAUTH_CALLBACK_PATH,
+  TWITCH_OAUTH_LEGACY_CALLBACK,
   TWITCH_OAUTH_LOCAL_CALLBACK,
   TWITCH_OAUTH_PRODUCTION_CALLBACK,
 } from '@/lib/server/oauthConfig';
@@ -154,9 +155,10 @@ describe('verify:oauth (process environment)', () => {
     expect(out).not.toContain('SECRET-VALUE');
   });
 
-  it('prints both public callback URLs to register on the Twitch application', () => {
+  it('prints the primary, legacy, and local callback URLs to register on the Twitch application', () => {
     const { out } = run(CONFIG_SCRIPT, { ...baseEnv(), ...COMPLETE }, REPO);
     expect(out).toContain(TWITCH_OAUTH_PRODUCTION_CALLBACK);
+    expect(out).toContain(TWITCH_OAUTH_LEGACY_CALLBACK);
     expect(out).toContain(TWITCH_OAUTH_LOCAL_CALLBACK);
   });
 

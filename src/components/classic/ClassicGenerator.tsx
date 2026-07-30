@@ -98,6 +98,7 @@ import {
 import { buildOverlayUrl } from '@/lib/tools/toolContext';
 import { consumeWorkspaceDraft, writeWorkspaceDraft } from '@/lib/workspaceStorage';
 import { COUNTER_SECTION_ID } from '@/lib/multichatRouting';
+import { CANONICAL_ORIGIN } from '@/lib/domains.mjs';
 
 /* Every face this page needs: its own UI typography plus all overlay families,
    because the font picker renders each option in the face it names. The overlay
@@ -237,7 +238,7 @@ export default function ClassicGenerator({
   const [chatBgColor, setChatBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
   const [counterBgMode, setCounterBgMode] = useState<PreviewBgMode>('checker');
   const [counterBgColor, setCounterBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
-  const [baseUrl, setBaseUrl] = useState('https://multichat-gxufy.com');
+  const [baseUrl, setBaseUrl] = useState(CANONICAL_ORIGIN);
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedCounter, setCopiedCounter] = useState(false);
   /* Composed preview messages, appended after the built-in samples.

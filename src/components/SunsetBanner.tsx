@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 
-const NEW_URL = 'https://multichat-gxufy.com';
+const NEW_URL = 'https://gxufy.com';
 const OLD_HOSTS = ['kickchat-gxufy.vercel.app', 'multichat-gxufy.vercel.app'];
 
 export function useIsOldDomain(): boolean {
@@ -31,7 +31,7 @@ export function SunsetBanner({ variant }: { variant: 'landing' | 'overlay' }) {
       }}>
         ⚠️ This site shuts down after December 31, 2026. Update your browser
         source URL at{' '}
-        <a href={NEW_URL} style={{ color: '#ffe08a' }}>multichat-gxufy.com</a>
+        <a href={NEW_URL} style={{ color: '#ffe08a' }}>gxufy.com</a>
         {' '}— same overlay, new home, plus Twitch/YouTube/TikTok support.
       </div>
     );
@@ -47,7 +47,7 @@ export function SunsetBanner({ variant }: { variant: 'landing' | 'overlay' }) {
       ⚠️ <strong>This website will be deleted after December 31, 2026.</strong>{' '}
       The overlay moved (and got Twitch, YouTube &amp; TikTok support!) —{' '}
       <a href={NEW_URL} style={{ color: '#ffe08a', fontWeight: 800 }}>
-        go to multichat-gxufy.com →
+        go to gxufy.com →
       </a>
     </div>
   );

@@ -51,6 +51,17 @@ import type {
   UnifiedMessage,
   UnifiedPin,
 } from '@/lib/types';
+import {
+  PREVIEW_EMOTE_CAT,
+  PREVIEW_EMOTE_GRIN,
+  PREVIEW_EMOTE_LAUGH,
+  PREVIEW_EMOTE_NATIVE,
+  PREVIEW_EMOTE_RAIN,
+  PREVIEW_EMOTE_SMILE,
+  PREVIEW_EMOTE_TOKENS,
+  PREVIEW_SEVENTV_BADGE_IMAGE,
+  PREVIEW_TIKTOK_MOD_BADGE,
+} from './previewAssets';
 
 /* A fixed instant, so timestamps are stable across runs and machines.
    2026-01-01T00:00:00Z. Never Date.now(). */
@@ -98,27 +109,48 @@ function nativeEmote(text: string, token: string, url: string): UnifiedEmote {
  */
 export const SAMPLE_SEVENTV_EMOTES: readonly SevenTVEmote[] = [
   {
-    name: 'OMEGALUL',
-    image: 'https://cdn.7tv.app/emote/01F6MZGCKG000255K4T4CG3TB2/2x.webp',
+    name: PREVIEW_EMOTE_TOKENS.sevenTV,
+    image: PREVIEW_EMOTE_LAUGH,
     height: 32,
     width: 32,
     zeroWidth: false,
     upscale: false,
   },
   {
-    name: 'KEKW',
-    image: 'https://cdn.7tv.app/emote/01F6ME5WVR000255K4TQNRZZQ6/2x.webp',
+    name: PREVIEW_EMOTE_TOKENS.sevenTVAlt,
+    image: PREVIEW_EMOTE_GRIN,
     height: 32,
     width: 32,
     zeroWidth: false,
     upscale: false,
   },
   {
-    name: 'RainTime',
-    image: 'https://cdn.7tv.app/emote/01F6MFAFRG000FFK5N6TCFTYNH/2x.webp',
+    name: PREVIEW_EMOTE_TOKENS.sevenTVZeroWidth,
+    image: PREVIEW_EMOTE_RAIN,
     height: 32,
     width: 32,
     zeroWidth: true,
+    upscale: false,
+  },
+  /* BTTV and FFZ contribute to the very same list in production —
+     `loadTwitchEmotes` merges FFZ → BTTV → 7TV into one array and the renderer
+     word-swaps them identically. So they are declared here as ordinary emote
+     fixtures whose provider is carried by the token name alone, and they render
+     through the same path behind the same `sevenTVEmotesEnabled` gate. */
+  {
+    name: PREVIEW_EMOTE_TOKENS.bttv,
+    image: PREVIEW_EMOTE_CAT,
+    height: 32,
+    width: 32,
+    zeroWidth: false,
+    upscale: false,
+  },
+  {
+    name: PREVIEW_EMOTE_TOKENS.ffz,
+    image: PREVIEW_EMOTE_SMILE,
+    height: 32,
+    width: 32,
+    zeroWidth: false,
     upscale: false,
   },
 ];
@@ -126,7 +158,7 @@ export const SAMPLE_SEVENTV_EMOTES: readonly SevenTVEmote[] = [
 /** A 7TV badge, attached through an entitlement like a real one. */
 export const SAMPLE_SEVENTV_BADGE: SevenTVBadge = {
   id: 'sample-7tv-badge',
-  image: 'https://cdn.7tv.app/badge/01F03YEP7R000BTFQEZC66WVFP/2x.webp',
+  image: PREVIEW_SEVENTV_BADGE_IMAGE,
 };
 
 /**
@@ -311,9 +343,11 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
       username: 'emotefiend',
       color: '#7ae2ff',
       badges: [{ type: 'subscriber', count: 8 }],
-      /* Plain words. The production word-swap turns the three that match a 7TV
-         fixture into images, and RainTime overlays the emote before it. */
-      text: 'that clip had me OMEGALUL RainTime KEKW',
+      /* Plain words. The production word-swap turns the ones that match an emote
+         fixture into images, and RainTime overlays the emote before it. OMEGALUL
+         and KEKW are 7TV tokens, catJAM is BTTV's and PepeLaugh is FFZ's — all
+         merged into one list and swapped by the same path in production. */
+      text: 'that clip had me OMEGALUL RainTime KEKW catJAM PepeLaugh',
       emotes: [],
       timestamp: at(3),
       kind: 'chat',
@@ -348,7 +382,7 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
       color: '#25f4ee',
       /* A url'd badge, which is how TikTok delivers them — and the path that
          adds ck-badge-wide so non-square art is not squished. */
-      badges: [{ type: 'moderator', url: '/badges/moderator.svg' }],
+      badges: [{ type: 'moderator', url: PREVIEW_TIKTOK_MOD_BADGE }],
       avatar: 'https://p16-sign-va.tiktokcdn.com/sample-avatar~c5_100x100.jpeg',
       text: 'keep it civil in here please',
       emotes: [],
@@ -443,13 +477,7 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
          its offsets are only correct under codepoint indexing. A renderer that
          sliced by UTF-16 code unit would tear the text here — which is the whole
          reason this sample carries a native emote at all. */
-      emotes: [
-        nativeEmote(
-          UNICODE_TEXT,
-          'Kappa',
-          'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
-        ),
-      ],
+      emotes: [nativeEmote(UNICODE_TEXT, PREVIEW_EMOTE_TOKENS.nativeTwitch, PREVIEW_EMOTE_NATIVE)],
       timestamp: at(9),
       kind: 'chat',
     },

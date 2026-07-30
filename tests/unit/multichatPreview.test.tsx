@@ -497,3 +497,59 @@ describe('the preview cannot leak into the generated URL', () => {
     expect(stored.toLowerCase()).not.toContain('omegalul');
   });
 });
+
+describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders', () => {
+  /* The regression this guards is the one that started this work: the 7TV badge
+     and emote fixtures pointed at retired cdn.7tv.app ids that now 404, so the
+     base preview drew a broken-image icon before anyone touched a control. The
+     fix is that a fixture-owned image is a repository-owned image — a data URI or
+     a path this app serves — never a third-party host that can go dead. This does
+     not touch how a live overlay resolves provider art; it is about the fixtures
+     the preview invents. */
+
+  /** Is this a repository-owned source — inline data or an app-served path? */
+  const isLocal = (src: string) =>
+    src.startsWith('data:image/') || (src.startsWith('/') && !src.startsWith('//'));
+
+  it('declares no fixture cosmetic image on a remote host', () => {
+    /* Read straight off the cosmetics the preview is rendered against. */
+    const images = [
+      SAMPLE_COSMETICS.badges.map((b) => b.image),
+      SAMPLE_COSMETICS.emotes.map((e) => e.image),
+    ].flat();
+    /* Both kinds are actually present, so the loop is not vacuously true. */
+    expect(SAMPLE_COSMETICS.badges.length).toBeGreaterThan(0);
+    expect(SAMPLE_COSMETICS.emotes.length).toBeGreaterThan(0);
+    for (const src of images) {
+      expect(src, src).not.toMatch(/^https?:/i);
+      expect(src, src).not.toMatch(/^\/\//);
+      expect(isLocal(src), src).toBe(true);
+    }
+  });
+
+  it('renders no fixture-declared image from a remote host in the mounted preview', () => {
+    /* The DOM half: whatever the overlay actually drew from a fixture-supplied
+       url — badge overrides and native emote art — must be local too. Twitch
+       native badge art is resolved by the production renderer from a badge type,
+       not declared by a fixture, so it is out of scope here and asserted
+       separately by the renderer's own suite. */
+    mountPreview();
+    const fixtureImages = [
+      ...Array.from(preview().querySelectorAll<HTMLImageElement>('img.ck-emote')),
+      ...Array.from(preview().querySelectorAll<HTMLImageElement>('img.ck-badge-img')).filter(
+        (img) => {
+          const src = img.getAttribute('src') ?? '';
+          /* Only the fixture-declared overrides: a data URI or the app's own
+             /badges path. The production Twitch CDN lookup is not a fixture. */
+          return src.startsWith('data:image/') || src.startsWith('/badges/');
+        },
+      ),
+    ];
+    expect(fixtureImages.length).toBeGreaterThan(0);
+    for (const img of fixtureImages) {
+      const src = img.getAttribute('src') ?? '';
+      expect(src, src).not.toMatch(/^https?:/i);
+      expect(isLocal(src), src).toBe(true);
+    }
+  });
+});

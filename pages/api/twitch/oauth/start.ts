@@ -11,8 +11,13 @@
  * against an exact allowlist here and again in the callback, and it travels in an
  * HttpOnly cookie rather than through Twitch, so neither a crafted start URL nor
  * a crafted callback URL can redirect anywhere but an internal page. An absent or
- * refused value falls back to the workspace; it is never echoed back to the
- * client, so nothing unvalidated is reflected.
+ * refused value falls back to the canonical generator; it is never echoed back to
+ * the client, so nothing unvalidated is reflected.
+ *
+ * Configuration is checked through lib/server/oauthConfig, which owns the whole
+ * contract. A deployment missing any required variable refuses here — before the
+ * user leaves the site — with the stable code `oauth_not_configured`. The absent
+ * key *names* go to the server log; no environment value is logged or returned.
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -20,6 +25,11 @@ import {
   buildOAuthCookies,
   generateOAuthState,
 } from '../../../../lib/server/oauthCookies';
+import {
+  OAUTH_NOT_CONFIGURED,
+  readTwitchOAuthStartConfig,
+  reportTwitchOAuthMisconfiguration,
+} from '../../../../lib/server/oauthConfig';
 import { resolveReturnDestination } from '../../../../lib/oauthReturn';
 
 const TWITCH_SCOPE = 'moderator:read:chat_messages';
@@ -35,13 +45,24 @@ export default function handler(
     return;
   }
 
-  const clientId = process.env.TWITCH_CLIENT_ID;
-  const redirectUri = process.env.TWITCH_REDIRECT_URI;
+  /* The whole configuration contract, not only the two values this route
+     dereferences. A deployment missing the encryption key or the Supabase
+     credentials could otherwise send the user to Twitch, take their consent, and
+     fail on the way back with nothing to show for it. */
+  const configured = readTwitchOAuthStartConfig();
 
-  if (!clientId || !redirectUri) {
-    res.status(500).json({ error: 'server misconfiguration' });
+  if (!configured.ok) {
+    /* Names of the absent keys to the server log, for the operator. Never a
+       value, and never anything derived from one. */
+    reportTwitchOAuthMisconfiguration('start', configured.missing);
+    res.setHeader('Cache-Control', 'no-store');
+    /* A stable non-secret code and nothing else — no variable names, no values,
+       no hint about which half of the contract is unsatisfied. */
+    res.status(500).json({ error: OAUTH_NOT_CONFIGURED });
     return;
   }
+
+  const { clientId, redirectUri } = configured.config;
 
   const state = generateOAuthState();
   /* Anything not exactly an allowlisted internal path becomes the default. A

@@ -3,5 +3,9 @@ node_modules/
 .vercel/
 *.local
 .env*
+# The template is names and formats only, no values. Negated after the rule
+# above rather than instead of it, so .env.local stays ignored twice over —
+# by `.env*` here and by `*.local` above.
+!.env.example
 server.log
 tsconfig.tsbuildinfo

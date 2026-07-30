@@ -13,7 +13,6 @@ import {
 import {
   getSevenTVGlobalEmotes,
   getSevenTVChannelEmotes,
-  decimalToRGBA,
   type KickChannel,
   type SevenTVEmote,
   type SevenTVBadge,
@@ -26,8 +25,13 @@ import { createKickConnector } from '../lib/connectors/kick';
 import { createTwitchConnector } from '../lib/connectors/twitch';
 import { createYouTubeConnector } from '../lib/connectors/youtube';
 import { createTikTokConnector } from '../lib/connectors/tiktok';
-import { renderMessageText, renderBadges, fallbackColor, readableColor, isYouTubeOwner } from '../lib/render';
+import { fallbackColor } from '../lib/render';
+/* The one UnifiedMessage → ParsedMessage conversion, and the one display filter,
+   shared with the generator preview so both apply the parse-time settings and the
+   blacklists identically. */
+import { buildMessageFilter, buildParsedMessage } from '../lib/multichatMessageModel';
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
+import { clearSevenTVEmoteSetCache } from '../lib/sevenTVEmoteSetCache';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
@@ -280,102 +284,26 @@ function MultichatOverlay() {
       }
     }
 
-    function buildPaintStyle(paint: SevenTVPaint): { background: string; filter: string } {
-      const parts: string[] = [];
-      const shadows: string[] = [];
-      let prefix = '';
-      if (paint.func === 'URL') {
-        parts.push(paint.image_url ?? '');
-      } else {
-        if (paint.func === 'LINEAR_GRADIENT') parts.push(`${paint.angle ?? 0}deg`);
-        else if (paint.func === 'RADIAL_GRADIENT') parts.push(paint.shape ?? 'circle');
-        prefix = paint.repeat ? 'repeating-' : '';
-        for (const stop of paint.stops) {
-          parts.push(`${decimalToRGBA(stop.color)} ${stop.at * 100}%`);
-        }
-      }
-      for (const shadow of paint.shadows) {
-        if (!cfg.paintShadows) break; // UChat: paint shadows toggle
-        shadows.push(`drop-shadow(${decimalToRGBA(shadow.color)} ${shadow.x_offset}px ${shadow.y_offset}px ${shadow.radius}px)`);
-      }
-      const background = `${prefix}${paint.func.toLowerCase().replace('_', '-')}(${parts.join(', ')})`;
-      return { background, filter: shadows.join(' ') };
-    }
-
     /* UChat mention coloring: name→color map fills as users chat */
     const mentionColors = new Map<string, string>();
     const mentionCtx = { enabled: cfg.mentionColor, colors: mentionColors };
 
-    /** UnifiedMessage → ParsedMessage (React nodes + 7TV cosmetics for kick) */
-    function buildParsed(um: UnifiedMessage): ParsedMessage {
-      const badgeNodes = renderBadges(um, s.channel?.subscriber_badges ?? []);
-      let background = '';
-      let filter = '';
-      // 7TV cosmetics apply to kick AND twitch chatters (chatis parity)
-      if ((um.platform === 'kick' || um.platform === 'twitch') && cfg.sevenTVCosmeticsEnabled && um.senderId) {
-        const entitlement = s.entitlements[`${um.platform}:${um.senderId}`];
-        if (entitlement) {
-          if (entitlement.badge) {
-            const badge = s.badges.find(b => b.id === entitlement.badge);
-            if (badge) badgeNodes.push(<img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" />);
-          }
-          if (entitlement.paint) {
-            const paint = s.paints.find(p => p.id === entitlement.paint);
-            if (paint) ({ background, filter } = buildPaintStyle(paint));
-          }
-        }
-      }
-      // mention map: remember every chatter's color (lowercase name)
-      const displayColor = um.color ? readableColor(um.color) : fallbackColor(um.platform, um.username, um.senderId);
-      mentionColors.set(um.username.toLowerCase(), displayColor);
-      return {
-        id: `${um.platform}:${um.id}`,
-        platform: um.platform,
-        senderId: um.senderId,
-        kind: um.kind,
-        category: um.category,
-        redeem: um.redeem,
-        avatar: um.avatar,
-        raw: um,
-        timestamp: Date.now(),
-        identity: {
-          username: um.username,
-          color: displayColor,
-          background,
-          filter,
-          badges: badgeNodes,
-          // StreamNook: yt channel owner name renders as a gold pill
-          ...(isYouTubeOwner(um) ? { namePill: '#ffd600|#111111' } : {}),
-        },
-        // kick + twitch both get third-party emote word-swaps in text gaps
-        message: renderMessageText(
-          um,
-          (um.platform === 'kick' || um.platform === 'twitch') && cfg.sevenTVEmotesEnabled ? s.emotes : [],
-          mentionCtx
-        ),
-      };
-    }
+    /* UnifiedMessage → ParsedMessage. The conversion itself now lives in
+       lib/multichatMessageModel, because the generator's preview has to perform
+       exactly the same one — four settings (both 7TV toggles, paintShadows,
+       mentionColor) are applied during this step rather than by ChatOverlay, so a
+       preview that built nodes by hand could not respond to any of them.
 
-    // Global well-known bots (matches chatis list)
-    const KNOWN_BOTS = new Set([
-      'streamelements','streamlabs','nightbot','moobot',
-      'titlechange_bot','supibot','pajbot','huwobot',
-      'oshbt','spanixbot','potatbotat','streamqbot','twirapp',
-      'fossabot','wizebot','botisimo','sery_bot','soundalerts',
-    ]);
-    const extraBots = new Set(
-      (cfg.botNames || '').split(',').flatMap((b: string) => b.trim().split(' ')).filter(Boolean).map((b: string) => b.toLowerCase())
-    );
-    // UChat user + prefix blacklists (space-separated)
-    const userBlacklist = new Set((cfg.userBL || '').split(/\s+/).filter(Boolean).map(u => u.toLowerCase()));
-    const prefixBlacklist = (cfg.prefixBL || '').split(/\s+/).filter(Boolean);
-    function isBot(username: string) {
-      const u = username.toLowerCase();
-      return KNOWN_BOTS.has(u) || extraBots.has(u) || userBlacklist.has(u);
-    }
-    function isBlacklistedPrefix(text: string) {
-      return prefixBlacklist.some(p => text.startsWith(p));
-    }
+       `s` is passed as the cosmetics source: its emotes/badges/paints/
+       entitlements/channel fields are precisely what the conversion reads, and
+       they are live, so a paint arriving later applies on the next rebuild. */
+    const buildParsed = (um: UnifiedMessage): ParsedMessage =>
+      buildParsedMessage(um, cfg, s, mentionCtx, Date.now());
+
+    /* Bots and blacklists, from the same helper the generator's preview uses.
+       These gates run before ChatOverlay sees a message, so the preview has to
+       apply the identical predicate to respond to the filter settings at all. */
+    const shouldDisplay = buildMessageFilter(cfg);
 
     /* chatis-exact render loop: messages buffer into s.messages and a
        single 200ms interval flushes to React (script.js update()).
@@ -390,10 +318,9 @@ function MultichatOverlay() {
 
     function addMessage(um: UnifiedMessage) {
       handleCommand(um); // !multichat commands work from any platform
-      if (isBot(um.username)) return;
-      if (um.kind === 'chat' && isBlacklistedPrefix(um.text)) return;
-      if (um.kind === 'system' && !cfg.showSystemMsgs) return;
-      if (um.redeem && !cfg.showRedeems) return;
+      /* Deliberately after handleCommand: a command still dispatches from a
+         hidden or blacklisted account, exactly as before this was extracted. */
+      if (!shouldDisplay(um)) return;
       // queue this chatter for GQL cosmetics (kick/twitch only)
       if (cfg.sevenTVCosmeticsEnabled && (um.platform === 'kick' || um.platform === 'twitch')) {
         cosmeticsFetcher.want(um.platform, um.senderId);
@@ -491,7 +418,9 @@ function MultichatOverlay() {
               const r = await fetch(`https://7tv.io/v3/users/twitch/${roomId}`);
               if (r.ok) {
                 const j = await r.json();
-                setId = j?.emote_set?.id ?? null;
+                // v3: emote_set may be null while emote_set_id is populated —
+                // prefer the id so the emote_set.* SSE subscription survives.
+                setId = j?.emote_set_id ?? j?.emote_set?.id ?? null;
                 stvUserId = j?.user?.id ?? null; // user.id = 7TV user id (root id is the twitch id)
               }
             } catch { /* no 7tv profile */ }
@@ -621,6 +550,10 @@ function MultichatOverlay() {
       setChatVisible,
       reload: () => window.location.reload(),
       async refreshEmotes() {
+        // A manual refresh means "go get the current sets now", so drop the
+        // by-id cache first — otherwise a set fetched under the TTL would be
+        // served from memory and the command would be a silent no-op.
+        clearSevenTVEmoteSetCache();
         const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
         const ch = s.channel;
         if (ch) {

@@ -175,15 +175,30 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
    which is the failure this breakpoint exists to avoid. */
 @media (min-width: 1360px) {
   .form_table.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .form_table.cols-2 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
+  .form_table.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form_table.cols-2 > .form_col:not(:last-child),
+  .form_table.cols-3 > .form_col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 14px; }
 }
 
-input[type=text], input[type=number], select {
+/* A third track, but only once the panel is wide enough to carry it. A settings
+   panel is half a tool row, so at 1360px two tracks already sit near the readable
+   floor and a third there would repeat the narrow-column failure the gate above
+   exists to avoid. By ~1600px each half is ~760px, where three ~240px columns
+   read well. Below this width a cols-3 table falls back to the two-track rule,
+   then the one-track base — the same one-tree-many-tracks arrangement, so nothing
+   is duplicated and the stacked reading order still equals the DOM order. */
+@media (min-width: 1600px) {
+  .form_table.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* textarea is listed here rather than left to the browser: without it the one
+   multiline field on the page renders as a white serif box on a dark card. */
+input[type=text], input[type=number], select, textarea {
   background: #16161b; border: 1px solid var(--line); border-radius: 8px; color: var(--text);
   padding: 6px 11px; font-size: 0.86rem; font-family: inherit; outline: none;
   transition: border-color .15s, box-shadow .15s; max-width: 100%;
 }
-input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,132,250,.15); }
+input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,132,250,.15); }
 select option { background: var(--card); }
 select option:disabled { color: var(--dim); }
 input[type=text].short { width: 52px; }
@@ -193,7 +208,7 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-field { margin-bottom: 2px; }
 .classic-field.stacked { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
 .classic-field.stacked label { font-size: 0.77rem; color: var(--dim); }
-.classic-field.stacked input[type=text] { width: 100%; font-size: 0.8rem; }
+.classic-field.stacked input[type=text], .classic-field.stacked textarea { width: 100%; font-size: 0.8rem; }
 .classic-help { font-size: 0.71rem; line-height: 1.35; color: var(--dim); margin: 1px 0 5px; }
 .classic-help.warn { color: var(--warn); }
 
@@ -260,7 +275,14 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-chip input:disabled + .classic-chip-label { opacity: .45; cursor: not-allowed; }
 .classic-chip input:focus-visible + .classic-chip-label { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
-/* Twitch connection, inline in its platform field */
+/* Twitch connection, beside the pin-platform control in Chat settings. The
+   optional account is only for native Twitch pins, so it sits with the pin
+   controls it serves rather than under the Twitch channel input. */
+.mc-pin-connect { margin-top: 8px; }
+.mc-pin-connect .classic-conn { justify-content: flex-start; }
+.mc-pin-connect .classic-conn-warn,
+.mc-pin-connect .classic-conn-err { text-align: left; }
+.mc-pin-connect .classic-help { margin-top: 6px; }
 .classic-conn { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
 .classic-connect {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
@@ -280,13 +302,119 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-conn-btn:disabled { color: var(--dim); cursor: default; }
 
 /* Preview surfaces */
+/* The chat output header: the section title and the "Preview data" marker on one
+   row. The title drops its own bottom margin here so the row sets the spacing,
+   and the badge is pushed to the trailing edge so it reads as an aside to the
+   title rather than a second heading. */
+.preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.preview-head .section-title { margin: 0; }
+.preview-head .preview-badge { margin-left: auto; }
 .preview-label { font-size: 0.73rem; color: var(--dim); margin-bottom: 5px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .preview-label button { background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 0.72rem; padding: 3px 9px; cursor: pointer; transition: all .15s; text-transform: none; letter-spacing: 0; font-weight: 600; font-family: inherit; }
 .preview-label button:hover { border-color: var(--accent); color: var(--accent); }
 .preview-surface { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: inset 0 2px 12px rgba(0,0,0,.3); min-height: 90px; }
-.preview-surface.white { background: #46464e; }
 .preview-surface.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
+.preview-surface.dark { background: #141414; }
+.preview-surface.light { background: #f4f4f5; }
 .preview-empty { display: flex; align-items: center; justify-content: center; padding: 20px 16px; color: var(--dim); font-size: 0.77rem; text-align: center; line-height: 1.45; }
+/* "Preview data" marker, shown while a preview is showing fixtures rather than a
+   real overlay. Deliberately quiet — it sits in the label row at the same size as
+   the row's own text, states a fact, and is not styled as a warning. */
+.preview-badge { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 0.66rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
+
+/* Custom preview messages, inside the chat output card.
+   Compact on purpose: this sits under a 600px preview in a card that also holds
+   the generated URL, so the fields share one row and the actions share another.
+   Any taller and the chat settings card leaves the first screen. */
+.preview-compose { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+.preview-compose-note { font-size: 0.71rem; line-height: 1.35; color: var(--dim); margin: 0 0 7px; }
+.preview-compose-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+/* The platform pills take the slack, the name field keeps a usable width. */
+.preview-compose-seg { flex: 1 1 260px; margin-bottom: 8px; }
+.preview-compose-name { flex: 1 1 160px; }
+.preview-compose-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Disabled here means "nothing to do yet" rather than "not allowed": the button
+   is still readable, it just stops looking clickable. */
+.preview-compose-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+.preview-compose-status { font-size: 0.7rem; color: var(--dim); }
+
+/* Live preview feed controls, inside the chat output card.
+   Same card furniture as the composer beneath it — one border, one radius, one
+   tint — because they are two controls on one preview rather than two panels. */
+.preview-feed { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 7px; background: rgba(255,255,255,.015); }
+.preview-feed-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* The switch keeps its natural width; the buttons sit beside it rather than
+   stretching, so a wrapped row does not leave a full-width Pause. */
+.preview-feed-row .toggle-wrap { flex: 0 0 auto; gap: 8px; }
+.preview-feed-seg { margin: 7px 0 0; }
+/* Speed and scale, paired. Each takes an equal share of the row and wraps to its
+   own line once the card is too narrow for two — flex-basis of 220px is the point
+   below which a four-pill band would start to crowd. min-width:0 lets a segment
+   shrink inside the flex track rather than forcing the row wider than the card. */
+.preview-feed-segs { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.preview-feed-segs > .preview-feed-seg { flex: 1 1 220px; min-width: 0; }
+.preview-feed-seg legend, .preview-feed-sources legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 5px; }
+/* The fixture chips wrap; they are the only part of this card that can grow, and
+   they grow downward rather than pushing the row's buttons around. */
+.preview-feed-sources { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
+.preview-feed-sources .classic-help { margin: 0 0 6px; }
+/* Left-aligned, unlike .classic-chip-row: these are a wrapping set rather than
+   a right-hand control for a settings row, and a ragged right edge on nine
+   chips reads as broken. */
+.preview-feed-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-start; }
+.preview-feed-chip .classic-chip-label { font-size: 0.66rem; padding: 3px 8px; }
+.preview-feed-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 7px; }
+.preview-feed-status { font-size: 0.7rem; color: var(--dim); margin: 6px 0 0; }
+.preview-feed-row button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+/* Preview scale. Borrows .preview-feed-seg for its legend and row, so only what
+   differs is here: the caveat paragraph sits under the row rather than above it,
+   and Reset goes flat once there is nothing left to reset. */
+.preview-scale .classic-help { margin: 5px 0 0; }
+.preview-scale .preview-feed-actions { margin-top: 5px; }
+.preview-feed-actions button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+
+/* Preview background. Borrows .classic-seg for its legend and radio row; only the
+   custom-colour field and the caveat paragraph's spacing are particular. The
+   backdrop it sets is preview-only — see the surface rules above. */
+.preview-bg { margin: 8px 0 0; }
+.preview-bg .classic-help { margin: 5px 0 0; }
+.preview-bg-custom { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.preview-bg-custom label { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.preview-bg-custom input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+
+/* Preview badge refresh. What replaced the browsable gallery: one button that
+   asks the loader for the full 7TV set, and a one-line status beside it. It
+   borrows .classic-conn-btn for the button so it reads as the same kind of
+   surface the gallery's action did. The loaded badges are drawn in the feed
+   beside usernames, not here — this control owns no art of its own. */
+.preview-badge-refresh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 0; min-width: 0; }
+.preview-badge-refresh button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+.preview-badge-status { font-size: 0.7rem; color: var(--dim); margin: 0; }
+.preview-badge-status[data-status="error"] { color: var(--warn, #e0685a); }
+
+/* Counter simulation controls, inside the Counter output card. Reuses
+   .preview-feed for the card itself so the two preview control surfaces read as
+   the same kind of thing; only the manual section below is particular to it. */
+.preview-counter-feed .preview-feed-row { row-gap: 6px; }
+/* The four numeric fields used to be always visible and were the tallest thing
+   in this card. Collapsed, the card is a row of controls; open, it is what it
+   was before. The rule is a separator rather than a nested box — a second
+   border inside a bordered card reads as a card inside a card. */
+.preview-manual { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 7px; }
+.preview-manual > summary { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; cursor: pointer; list-style-position: outside; padding: 1px 0; }
+.preview-manual > summary:hover { color: var(--fg); }
+/* Keyboard focus lands on the summary, and it is the only way to discover the
+   section, so the ring must not be the browser's default invisible-on-dark. */
+.preview-manual > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.preview-manual[open] > summary { color: var(--fg); margin-bottom: 7px; }
+.preview-counts-fields { display: flex; gap: 10px; flex-wrap: wrap; border: 0; padding: 0; margin: 0 0 7px; }
+.preview-counts-fields legend { font-size: 0.71rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; padding: 0; margin-bottom: 6px; }
+.preview-counts-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 92px; }
+.preview-counts-field label { font-size: 0.68rem; color: var(--dim); }
+/* Tabular digits so the four fields do not shift width as numbers are typed. */
+.preview-counts-field input[type=text] { width: 100%; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.preview-counts-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.preview-counts-actions .classic-help { margin: 0; flex: 1 1 220px; }
 
 /* URL result.
    The field takes the row and the two actions sit beside it at their natural

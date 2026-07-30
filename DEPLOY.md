@@ -119,15 +119,30 @@ overlay still works for Kick, YouTube, TikTok, and 7TV cosmetics.
 
 Set these in the `env` block of `ecosystem.config.js` (production) or
 `.env.local` (development). Names and formats only — never commit values.
+`.env.example` in the repository root lists the same six keys with empty values
+and is safe to copy.
+
+All six names come from one place in the code —
+`REQUIRED_TWITCH_OAUTH_ENV` in `lib/server/oauthConfig.ts`, which is the
+authoritative list every OAuth route checks against.
 
 | Variable | Format | Purpose |
 |---|---|---|
-| `SUPABASE_URL` | `https://<ref>.supabase.co` | Supabase project URL |
-| `SUPABASE_SECRET_KEY` | service-role JWT | Server-only DB access; bypasses RLS |
 | `TWITCH_CLIENT_ID` | app client id | Twitch application identity |
 | `TWITCH_CLIENT_SECRET` | app client secret | Code exchange and token refresh |
 | `TWITCH_REDIRECT_URI` | absolute URL | Must byte-match the console entry |
 | `TWITCH_TOKEN_ENCRYPTION_KEY` | 64 lowercase hex chars | AES-256-GCM key for tokens at rest |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` | Supabase project URL |
+| `SUPABASE_SECRET_KEY` | service-role JWT | Server-only DB access; bypasses RLS |
+
+All six are required **before** authorization begins, not only where each is
+first used. The start endpoint checks the whole list up front, so a deployment
+missing the encryption key or the Supabase credentials refuses at `/multichat`
+rather than sending someone to Twitch, taking their consent, and failing on the
+way back with nothing stored.
+
+An empty or whitespace-only value counts as missing. A hosting panel holding the
+key with a blank value is misconfigured in exactly the way an absent key is.
 
 `TIKTOK_SIGN_API_KEY` is unrelated and optional (see step 4).
 
@@ -152,10 +167,19 @@ same application:
 | Environment | OAuth Redirect URL |
 |---|---|
 | Local | `http://localhost:3000/api/twitch/oauth/callback` |
-| Production | `https://yourdomain.com/api/twitch/oauth/callback` |
+| Production | `https://multichat-gxufy.com/api/twitch/oauth/callback` |
+
+These are the two values `lib/server/oauthConfig.ts` exports as
+`TWITCH_OAUTH_LOCAL_CALLBACK` and `TWITCH_OAUTH_PRODUCTION_CALLBACK`. If the
+production domain ever changes, change `TWITCH_OAUTH_PRODUCTION_ORIGIN` there and
+this table follows from it.
 
 `TWITCH_REDIRECT_URI` must equal the one for the environment you are running,
-character for character — Twitch rejects any mismatch.
+character for character — Twitch rejects any mismatch. Note the path is
+`/api/twitch/oauth/callback`, not `/start`: the start endpoint is where the
+browser goes, the callback is where Twitch comes back. Registering `/start`, or a
+bare origin, is the most common mistake after a missing variable, and the server
+log says so on the next attempt.
 
 Required scope, and the only scope requested:
 
@@ -248,6 +272,47 @@ table through any client-side Supabase call.
 Order matters: the app reads env vars lazily, so a missing variable surfaces
 as an opaque failure at first use rather than at boot.
 
+A code deploy alone is not enough. Changing these variables means restarting the
+process with `--update-env`; adding them to a `.env.local` that pm2 started
+before the file existed will not take effect either.
+
+### Diagnosing `oauth_not_configured`
+
+If **Connect Twitch** fails, request the start endpoint directly:
+
+```bash
+curl -i 'https://multichat-gxufy.com/api/twitch/oauth/start?returnTo=%2Fmultichat'
+```
+
+A configured deployment answers `302` with a `Location` on `id.twitch.tv`. An
+unconfigured one answers `500` with exactly:
+
+```json
+{"error":"oauth_not_configured"}
+```
+
+That code is stable and safe to quote in a support message. It names no variable
+and leaks no value, so the response alone does not say *which* key is absent —
+the server log does:
+
+```bash
+pm2 logs multichat --lines 50 | grep twitch-oauth
+```
+
+```
+[twitch-oauth] start: oauth_not_configured — missing required environment variables: TWITCH_REDIRECT_URI, SUPABASE_SECRET_KEY
+```
+
+Key names only; values are never logged, not truncated and not length-reported.
+A second line appears when `TWITCH_REDIRECT_URI` is set but does not end in
+`/api/twitch/oauth/callback`, which is the usual cause of Twitch's own
+`redirect_mismatch` error later in the flow.
+
+Fix the named keys, restart with `--update-env`, and re-run the `curl`. A `302`
+to `id.twitch.tv` means the configuration contract is satisfied; whether the
+round trip completes then depends on the console entry matching
+`TWITCH_REDIRECT_URI` byte for byte, which only a real authorization proves.
+
 ### Build and verification
 
 ```bash
@@ -257,6 +322,44 @@ npm run build        # production build
 
 `npm run build` regenerates `next-env.d.ts`; restore it if git reports it as
 modified (`git restore -- next-env.d.ts`).
+
+Before the connect flow, confirm the six variables are all present and the
+redirect path is well-formed. There are two commands for this, differing only in
+**where they read the variables from**:
+
+```bash
+npm run verify:oauth         # reads process.env only
+npm run verify:oauth:local   # loads .env.local through Next's own loader first
+```
+
+Both print the identical report — each variable name with a present/MISSING
+verdict and **never its value**, the two public callback URLs, and a warning if
+`TWITCH_REDIRECT_URI` does not end in `/api/twitch/oauth/callback`. Both exit `0`
+only when all six are set and the redirect path is well-formed, and `1` otherwise.
+They share one report body (`scripts/oauthConfigReport.mts`) and the one
+authoritative variable list (`lib/server/oauthConfig.ts`), so their verdicts
+cannot drift.
+
+The difference is the environment each inspects:
+
+- **`verify:oauth`** reads `process.env` exactly as the process already has it. It
+  never opens `.env.local`. This is the one to run on the **VPS, under PM2, or in
+  CI**, where the variables come from `ecosystem.config.js` or the platform's
+  secret store — it checks what the running process will actually see. Because
+  PM2 caches the environment, run it after `pm2 restart multichat --update-env`,
+  not before.
+- **`verify:oauth:local`** loads `.env.local` (and the other Next dotenv files)
+  through `@next/env`'s `loadEnvConfig` — the **same loader `next dev` uses** —
+  then runs the same report. This is the one to run **in local development**, to
+  confirm the file `next dev` will read actually satisfies the contract. It prints
+  only the **names** of the files it loaded, never their contents, and never
+  modifies or commits anything.
+
+Neither command reads, prints, or exposes a secret value, and neither proves the
+credentials work. A `0` means only that the configuration contract is satisfied;
+whether a real authorization round trip completes still depends on the console
+entry matching `TWITCH_REDIRECT_URI` byte for byte, which only the connect flow
+below proves.
 
 Connect flow — open the generator at `/multichat` (no channel parameter), enter
 your Twitch channel, click **Connect Twitch**, approve on Twitch. You should

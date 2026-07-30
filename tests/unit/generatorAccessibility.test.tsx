@@ -130,22 +130,28 @@ describe('radio groups stay independent', () => {
   });
 
   it('gives each preview its own background control, named by tool', () => {
-    /* Each preview has one background toggle, and there are two previews. These
-       are buttons rather than a radio group — the workspace's radio-based
-       PreviewBackground is not used here — so the independence question is about
-       two separate buttons, each carrying its own accessible name. */
+    /* Each preview owns a four-way radio group — Transparent, Dark, Light,
+       Custom — rather than the two-state button it replaced. The independence
+       question is whether the two groups' `name`s differ (a shared name would
+       make picking the chat backdrop move the counter's), so each region's
+       Transparent radio is read by its own id and their names compared. */
     mount();
-    const buttons = ['.panel-chat-output', '.panel-counter-output'].map(
-      (region) =>
-        within(document.querySelector<HTMLElement>(region)!).getByRole('button', {
-          name: /background$/,
-        }),
+    const transparent = ['chat', 'counter'].map(
+      (tool) =>
+        document.getElementById(`${tool}-preview-bg-checker`) as HTMLInputElement,
     );
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]).not.toBe(buttons[1]);
-    /* Both start transparent, and each says so in its own label rather than
-       relying on a visual state a screen reader cannot see. */
-    for (const button of buttons) expect(button.textContent).toContain('Transparent background');
+    expect(transparent.every(Boolean)).toBe(true);
+    /* Each Transparent radio lives inside its tool's output panel. */
+    expect(
+      document.querySelector('.panel-chat-output')!.contains(transparent[0]),
+    ).toBe(true);
+    expect(
+      document.querySelector('.panel-counter-output')!.contains(transparent[1]),
+    ).toBe(true);
+    /* Distinct group names, so the two backdrops never couple. */
+    expect(transparent[0].name).not.toBe(transparent[1].name);
+    /* Both previews start on their Transparent default. */
+    for (const radio of transparent) expect(radio.checked).toBe(true);
   });
 });
 
@@ -205,25 +211,37 @@ describe('the stylesheet keeps focus visible and honours reduced motion', () => 
        one permitted case is `main`, focused programmatically by the skip link,
        which needs no ring of its own. The selector is taken as the text between
        the previous `}` and the `{` — matching from `[^{]*` alone would swallow
-       the tail of the preceding rule. */
-    const suppressions = CLASSIC_GENERATOR_CSS.match(/[^}{]*\{[^}]*outline:\s*(none|0)[^}]*\}/g) ?? [];
+       the tail of the preceding rule.
+
+       Comments are stripped first: a CSS comment above a rule sits in exactly
+       that gap, so an explained rule would otherwise fail this check for being
+       explained, which is the wrong incentive. */
+    const css = CLASSIC_GENERATOR_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const suppressions = css.match(/[^}{]*\{[^}]*outline:\s*(none|0)[^}]*\}/g) ?? [];
     expect(suppressions.length).toBeGreaterThan(0);
 
     /* Two rules legitimately suppress an outline, and each has to say why:
          - `main:focus` is focused programmatically by the skip link. A ring
            around the whole page body would be noise, and the destination is
            announced by its heading rather than by an outline.
-         - the text/number/select base rule replaces the outline with a border
-           colour change and a box-shadow ring on :focus. That substitute is
-           asserted below rather than assumed, and it fires on :focus rather than
-           :focus-visible, so it is if anything more visible than the default. */
-    const allowed = ['main:focus', 'input[type=text], input[type=number], select'];
+         - the text/number/select/textarea base rule replaces the outline with a
+           border colour change and a box-shadow ring on :focus. That substitute
+           is asserted below rather than assumed, and it fires on :focus rather
+           than :focus-visible, so it is if anything more visible than the
+           default. */
+    const allowed = [
+      'main:focus',
+      'input[type=text], input[type=number], select, textarea',
+    ];
     for (const rule of suppressions) {
       const selector = rule.trim().split('{')[0].trim();
       expect(allowed, rule.trim()).toContain(selector);
     }
+    /* The substitute ring must cover every element the base rule silenced —
+       textarea included, or the one multiline field would lose its outline and
+       gain nothing back. */
     expect(CLASSIC_GENERATOR_CSS).toMatch(
-      /input\[type=text\]:focus, input\[type=number\]:focus, select:focus \{[^}]*box-shadow/,
+      /input\[type=text\]:focus, input\[type=number\]:focus, select:focus, textarea:focus \{[^}]*box-shadow/,
     );
   });
 

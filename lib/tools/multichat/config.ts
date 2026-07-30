@@ -274,11 +274,12 @@ export const multichatTool: OverlayTool<
   /* Canonical size, from ./obs — the same constant the help section and the docs
      now cite, so the two conflicting "recommended" values are gone. */
   obs: MULTICHAT_OBS_SIZE,
-  /* Accurate for what the iframe actually is: the real overlay, at the exact
-     URL below it, connected to the real platforms. An empty preview is normal
-     and is not a workspace failure. */
+  /* Has to describe both states the panel can be in, because it renders under
+     either one. With no channel the surface is sample messages through the real
+     renderer; with a channel it is the real overlay at the exact URL below,
+     connected to the real platforms, where staying empty is normal. */
   previewNote:
-    'A real /multichat overlay at this exact URL. It connects to the channels you configure and shows their actual messages, so it stays empty while those channels are offline or nobody is chatting.',
+    'Sample messages until you enter a channel, so you can judge every setting straight away. Once a channel is set this becomes a real /multichat overlay at the exact URL below, showing that channel’s actual messages — and staying empty while it is offline or quiet.',
   /* Commands are derived from the parser's own metadata, so this cannot document
      a command the overlay does not implement. */
   help: MULTICHAT_HELP,

@@ -35,6 +35,7 @@ import { CLASSIC_GENERATOR_CSS } from '@/components/classic/classicStyles';
 import { buildMultichatQuery } from '@/lib/multichatConfig';
 import { buildViewerCounterQuery } from '@/lib/viewerCounterConfig';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
+import { buildConnectionFragment } from '@/lib/twitchConnection';
 
 vi.mock('next/head', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -640,7 +641,13 @@ describe('density', () => {
     mount();
     /* The class declares the intent; the media query in the stylesheet is what
        keeps a narrow screen at one column. Both are asserted, because the class
-       alone would not prove the narrow case. */
+       alone would not prove the narrow case.
+
+       The chat panel's appearance table now carries three catalog groups, so it
+       is cols-3; its Filters table stays cols-2 (free-text lists need a full
+       line). The counter panel is a single cols-2 table. */
+    expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-3').length)
+      .toBeGreaterThan(0);
     expect(document.querySelectorAll('.panel-chat-settings .form_table.cols-2').length)
       .toBeGreaterThan(0);
     expect(
@@ -662,9 +669,24 @@ describe('density', () => {
     expect(Number(enclosing![1])).toBeGreaterThan(1000);
     // The base rule is one column, so narrow widths inherit it.
     expect(CLASSIC_GENERATOR_CSS).toMatch(/\.form_table \{[\s\S]*?grid-template-columns: 1fr;/);
-    // No stale three-column rule left behind for a class nothing carries.
-    expect(document.querySelectorAll('.form_table.cols-3')).toHaveLength(0);
-    expect(CLASSIC_GENERATOR_CSS).not.toContain('cols-3');
+    /* The third track exists but is gated higher still: a settings panel is half a
+       tool row, so at 1360px two tracks already sit near the readable floor and a
+       third belongs only once each half is wide (~1600px). Below that a cols-3
+       table falls back to the two-track rule, so it is never three narrow columns. */
+    const thirdRule = CLASSIC_GENERATOR_CSS.indexOf(
+      '.form_table.cols-3 { grid-template-columns: repeat(3',
+    );
+    expect(thirdRule, 'the third-column rule is missing').toBeGreaterThan(-1);
+    const thirdEnclosing = CLASSIC_GENERATOR_CSS.slice(0, thirdRule).match(
+      /@media \(min-width: (\d+)px\)[^{]*\{[^@]*$/,
+    );
+    expect(thirdEnclosing, 'the third column is not inside a media query').not.toBeNull();
+    expect(Number(thirdEnclosing![1])).toBeGreaterThan(Number(enclosing![1]));
+    /* Below its own gate, cols-3 inherits the two-track rule rather than jumping
+       straight from one column to three. */
+    expect(CLASSIC_GENERATOR_CSS).toContain(
+      '.form_table.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }',
+    );
   });
 
   it('does not reserve a line for the absent fragment warning', () => {
@@ -744,13 +766,37 @@ describe('the two authoritative URLs', () => {
     expect(counterUrl().startsWith(`${BASE}/counter?`)).toBe(true);
   });
 
-  it('shows no preview iframe until a channel is configured', () => {
-    /* No iframe means no overlay mounts, so nothing connects or polls on a page
-       a visitor is only looking at. */
+  it('loads no overlay document until a channel is configured', () => {
+    /* The claim being protected is that nothing connects, polls, or authenticates
+       on a page a visitor is only looking at. That is a claim about *navigation*,
+       not about iframe elements: both fixture previews now render inside an
+       isolated frame, and those frames hold locally written documents that cannot
+       load anything. So the assertion is that no frame has a src or a srcdoc —
+       which is what would pull in the real overlay route and its sockets. */
     mount();
     settle();
-    expect(document.querySelectorAll('iframe')).toHaveLength(0);
-    expect(screen.getAllByText(/Enter a channel above/).length).toBe(2);
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    expect(frames).toHaveLength(2);
+    for (const f of frames) {
+      expect(f.getAttribute('src')).toBeNull();
+      expect(f.getAttribute('srcdoc')).toBeNull();
+    }
+    /* And they are the two fixture frames rather than anything else. */
+    expect(frames.map((f) => f.getAttribute('title')).sort()).toEqual([
+      'MultiChat sample preview',
+      'Viewer Counter sample preview',
+    ]);
+    /* Neither side waits for a channel any more: both render fixtures through
+       their own production renderer, each inside its own frame. */
+    expect(
+      within(panel('.panel-chat-output')).getByTestId('chat-fixture-preview'),
+    ).toBeTruthy();
+    expect(
+      within(panel('.panel-counter-output')).getByTestId('counter-fixture-preview'),
+    ).toBeTruthy();
+    /* And so the "enter a channel" placeholder is gone from both panels rather
+       than merely from one — it described a state neither panel now reaches. */
+    expect(screen.queryAllByText(/Enter a channel above/)).toHaveLength(0);
   });
 
   it('previews both overlays at exactly their generated URLs', () => {
@@ -832,28 +878,60 @@ describe('Copy and Open hand over the displayed URL', () => {
 });
 
 describe('preview backgrounds are page-only and independent', () => {
-  const toggleIn = (region: string) =>
-    within(panel(region)).getByRole('button', { name: /background$/ });
+  /* Each preview's backdrop is a four-way radio group — Transparent, Dark, Light,
+     Custom — rather than the two-state button it replaced. The independence
+     question is now whether the two groups share a radio `name` (they must not,
+     or picking the chat backdrop would move the counter's), so these read each
+     group's radios by their own ids. The id prefix (`chat`/`counter`) is the
+     region, so an id lookup already scopes to the right group without a query. */
+  const bgRadio = (region: 'chat' | 'counter', option: string) =>
+    document.getElementById(`${region}-preview-bg-${option}`) as HTMLInputElement;
+  const colorField = (region: 'chat' | 'counter') =>
+    document.getElementById(`${region}-preview-bg-color`) as HTMLInputElement | null;
 
   it('starts both previews transparent', () => {
     mount();
-    expect(toggleIn('.panel-chat-output').getAttribute('aria-pressed')).toBe('false');
-    expect(toggleIn('.panel-counter-output').getAttribute('aria-pressed')).toBe('false');
+    expect(bgRadio('chat', 'checker').checked).toBe(true);
+    expect(bgRadio('counter', 'checker').checked).toBe(true);
   });
 
   it('changes one preview background without touching the other', () => {
     mount();
-    fireEvent.click(toggleIn('.panel-chat-output'));
-    expect(toggleIn('.panel-chat-output').getAttribute('aria-pressed')).toBe('true');
-    expect(toggleIn('.panel-counter-output').getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(bgRadio('chat', 'dark'));
+    expect(bgRadio('chat', 'dark').checked).toBe(true);
+    expect(bgRadio('chat', 'checker').checked).toBe(false);
+    /* The counter group is untouched — a shared radio name would have moved it. */
+    expect(bgRadio('counter', 'checker').checked).toBe(true);
+    expect(bgRadio('counter', 'dark').checked).toBe(false);
+  });
+
+  it('reveals a colour field only under Custom, and drives the surface with it', () => {
+    mount();
+    const surface = () =>
+      panel('.panel-chat-output').querySelector<HTMLElement>('.preview-surface')!;
+    /* No colour input until Custom is the mode — a field that did nothing would
+       be worse than no field. */
+    expect(colorField('chat')).toBeNull();
+    fireEvent.click(bgRadio('chat', 'custom'));
+    const color = colorField('chat')!;
+    expect(color.type).toBe('color');
+    fireEvent.change(color, { target: { value: '#123456' } });
+    /* The backdrop is inline on the wrapper, never a class and never a URL. */
+    expect(surface().style.background).toContain('rgb(18, 52, 86)');
+    /* Leaving Custom hides the field again but must not lose the chosen colour. */
+    fireEvent.click(bgRadio('chat', 'dark'));
+    expect(colorField('chat')).toBeNull();
+    fireEvent.click(bgRadio('chat', 'custom'));
+    expect(colorField('chat')!.value).toBe('#123456');
   });
 
   it('never puts a preview background in either URL', () => {
     mount();
     typeChannel('kick', 'somechannel');
     const before = [chatUrl(), counterUrl()];
-    fireEvent.click(toggleIn('.panel-chat-output'));
-    fireEvent.click(toggleIn('.panel-counter-output'));
+    fireEvent.click(bgRadio('chat', 'custom'));
+    fireEvent.change(colorField('chat')!, { target: { value: '#abcdef' } });
+    fireEvent.click(bgRadio('counter', 'dark'));
     expect([chatUrl(), counterUrl()]).toEqual(before);
   });
 });
@@ -907,23 +985,44 @@ describe('OAuth preserves both tools', () => {
   });
 
   it('restores each preview background independently', () => {
+    /* Each preview owns a four-way radio group; the two are kept independent by
+       distinct ids and radio `name`s, so picking Dark for the counter must leave
+       the chat preview on its Transparent default across the round trip. */
     mount();
-    fireEvent.click(
-      within(panel('.panel-counter-output')).getByRole('button', { name: /background$/ }),
-    );
+    fireEvent.click(document.getElementById('counter-preview-bg-dark')!);
     leave();
     cleanup();
     mount();
     expect(
-      within(panel('.panel-chat-output'))
-        .getByRole('button', { name: /background$/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('false');
+      (document.getElementById('chat-preview-bg-checker') as HTMLInputElement).checked,
+    ).toBe(true);
     expect(
-      within(panel('.panel-counter-output'))
-        .getByRole('button', { name: /background$/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+      (document.getElementById('counter-preview-bg-dark') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (document.getElementById('chat-preview-bg-dark') as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it('round-trips a custom preview colour through the draft', () => {
+    /* Custom is the one mode whose value is not a fixed id: the chosen hex is
+       what persists, so restoring must land back on Custom with that colour and
+       not fall through to Transparent. The colour reaches no URL — a separate
+       test in this file asserts the background never enters either output. */
+    mount();
+    fireEvent.click(document.getElementById('chat-preview-bg-custom')!);
+    fireEvent.change(document.getElementById('chat-preview-bg-color') as HTMLInputElement, {
+      target: { value: '#123456' },
+    });
+    leave();
+    cleanup();
+    mount();
+    expect(
+      (document.getElementById('chat-preview-bg-custom') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (document.getElementById('chat-preview-bg-color') as HTMLInputElement).value,
+    ).toBe('#123456');
   });
 
   it('consumes each draft once, so a remount does not overwrite new input', () => {
@@ -938,6 +1037,189 @@ describe('OAuth preserves both tools', () => {
     mount();
     // The draft was consumed by the first restore; nothing is re-applied.
     expect((document.getElementById('channel-kick') as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('the Twitch connection lives beside the pinned-message controls', () => {
+  /* A well-formed connection id, matching the fragment the OAuth callback emits.
+     The login is what the UI shows; the id is never rendered. */
+  const CONNECTION_ID = '123e4567-e89b-12d3-a456-426614174000';
+
+  const connectVia = (login: string) => {
+    window.location.hash = buildConnectionFragment({
+      connectionId: CONNECTION_ID,
+      login,
+    });
+  };
+
+  /* The connection adoption strips the fragment, but a test that fails before it
+     mounts could leave one behind for the next test — clear it either way. */
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  const settings = () => panel('.panel-chat-settings');
+  const hero = () => panel('.card.hero');
+
+  it('shows no Connect Twitch control in Your Channels', () => {
+    mount();
+    expect(hero().querySelector('.classic-conn')).toBeNull();
+    expect(within(hero()).queryByText('Connect')).toBeNull();
+    expect(
+      within(hero()).queryByRole('link', { name: 'Connect Twitch account' }),
+    ).toBeNull();
+  });
+
+  it('states that no login is required, in Your Channels', () => {
+    mount();
+    expect(hero().textContent).toMatch(
+      /no login is required for chat or viewer counts/i,
+    );
+  });
+
+  it('leaves the Twitch channel field a plain input like the others', () => {
+    mount();
+    const field = document
+      .querySelector('label[for="channel-twitch"]')!
+      .closest('.platform-input') as HTMLElement;
+    // A label and an input, nothing else — the same shape as the other three.
+    expect(field.querySelector('.classic-conn')).toBeNull();
+    expect(within(field).queryByText('Connect')).toBeNull();
+    expect(field.querySelectorAll('input')).toHaveLength(1);
+  });
+
+  it('places the connection controls in Chat settings, by the pin platforms', () => {
+    mount();
+    // The single connection panel now lives in Chat settings.
+    expect(document.querySelectorAll('.classic-conn')).toHaveLength(1);
+    expect(settings().querySelector('.classic-conn')).not.toBeNull();
+    // Beside the pin platform control, in the one wrapper.
+    const wrap = settings().querySelector('.mc-pin-connect')!;
+    expect(wrap).not.toBeNull();
+    expect(wrap.querySelector('.classic-conn')).not.toBeNull();
+    expect(settings().querySelector('#mc-pinPlatforms-kick')).not.toBeNull();
+  });
+
+  it('orders the connection after the pin platform control in reading order', () => {
+    /* jsdom computes no layout, so DOM order is the assertion — it is what a
+       screen reader and a phone follow. The connection sits after the pins. */
+    mount();
+    const pin = settings().querySelector('#mc-pinPlatforms-kick')!;
+    const conn = settings().querySelector('.classic-conn')!;
+    expect(
+      pin.compareDocumentPosition(conn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('reveals the connection controls only while pins are on', () => {
+    mount();
+    // Pins default on, so the connection is present.
+    expect(settings().querySelector('.classic-conn')).not.toBeNull();
+    fireEvent.click(document.getElementById('mc-showPinEnabled')!);
+    expect(settings().querySelector('.classic-conn')).toBeNull();
+  });
+
+  it('keeps Connect reachable before Twitch is a selected pin platform', () => {
+    /* The Twitch pin chip stays disabled until a matching connection exists, so
+       gating Connect on that chip would strand a fresh user with no way in. It
+       is gated on the pin switch instead, which is why Connect shows here even
+       though Twitch is not yet selected. */
+    mount();
+    expect(
+      (document.getElementById('mc-pinPlatforms-twitch') as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(within(settings()).getByText('Connect')).toBeTruthy();
+  });
+
+  it('gives Connect an accurate accessible name and associated help', () => {
+    mount();
+    const connect = within(settings()).getByRole('link', {
+      name: 'Connect Twitch account',
+    });
+    const describedBy = connect.getAttribute('aria-describedby');
+    expect(describedBy).toBe('mc-pin-connect-help');
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(
+      /only to display native Twitch pinned messages/i,
+    );
+  });
+
+  it('reuses the authoritative OAuth start URL, not a second implementation', () => {
+    mount();
+    const href =
+      within(settings()).getByText('Connect').getAttribute('href') ?? '';
+    expect(href).toContain('/api/twitch/oauth/start');
+    expect(href).toContain(encodeURIComponent('/multichat'));
+    expect(href).not.toContain('tools');
+  });
+
+  it('keeps chat and counter URLs working with no connection', () => {
+    /* The whole point of the move: chat and the counter need no login. */
+    mount();
+    typeChannel('kick', 'somechannel');
+    expect(chatUrl().startsWith(`${BASE}/multichat?`)).toBe(true);
+    expect(counterUrl().startsWith(`${BASE}/counter?`)).toBe(true);
+    // And no connection id leaks into either displayed URL.
+    expect(chatUrl()).not.toContain(CONNECTION_ID);
+    expect(counterUrl()).not.toContain(CONNECTION_ID);
+  });
+
+  it('shows the connected login and a Disconnect action once connected', () => {
+    connectVia('streamer');
+    mount();
+    expect(settings().textContent).toContain('Connected as');
+    expect(settings().textContent).toContain('streamer');
+    expect(within(settings()).getByText('Disconnect')).toBeTruthy();
+    // No Connect link while a connection exists.
+    expect(within(settings()).queryByText('Connect')).toBeNull();
+    // The opaque id is never rendered.
+    expect(settings().textContent).not.toContain(CONNECTION_ID);
+  });
+
+  it('warns and offers a one-click fix when the channel does not match', () => {
+    connectVia('streamer');
+    mount();
+    typeChannel('twitch', 'someoneelse');
+    expect(
+      within(settings()).getByText(/does not match the connected account/i),
+    ).toBeTruthy();
+    fireEvent.click(within(settings()).getByText('Use connected channel'));
+    expect(
+      (document.getElementById('channel-twitch') as HTMLInputElement).value,
+    ).toBe('streamer');
+    // The correction resolves the mismatch, so the warning clears.
+    expect(within(settings()).queryByText(/does not match/i)).toBeNull();
+    expect(within(settings()).queryByText('Use connected channel')).toBeNull();
+  });
+
+  it('drops the warning once the channel matches the connected account', () => {
+    connectVia('streamer');
+    mount();
+    typeChannel('twitch', 'streamer');
+    expect(settings().textContent).toContain('Connected as');
+    expect(within(settings()).queryByText(/does not match/i)).toBeNull();
+    expect(within(settings()).queryByText(/Set the Twitch channel/i)).toBeNull();
+    expect(within(settings()).queryByText('Use connected channel')).toBeNull();
+  });
+
+  it('disconnects, returning to the Connect control', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    connectVia('streamer');
+    mount();
+    fireEvent.click(within(settings()).getByText('Disconnect'));
+    // Flush the disconnect's microtasks so local state clears.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/twitch/oauth/disconnect',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(within(settings()).getByText('Connect')).toBeTruthy();
+    expect(settings().textContent).not.toContain('Connected as');
+    vi.unstubAllGlobals();
   });
 });
 
@@ -988,17 +1270,58 @@ describe('OBS setup', () => {
 });
 
 describe('the Demo interface is gone', () => {
-  it('offers no Live/Demo switch, sample messages, or test tools', () => {
+  it('offers no Live/Demo switch, message creator, or test tools', () => {
     mount();
     const text = document.body.textContent ?? '';
-    for (const gone of [
-      /demo/i,
-      /sample message/i,
-      /message creator/i,
-      /command simulator/i,
-      /test tools/i,
-    ]) {
+    for (const gone of [/demo/i, /message creator/i, /command simulator/i, /test tools/i]) {
       expect(text).not.toMatch(gone);
+    }
+  });
+
+  it('names no control that switches the previews between live and sample content', () => {
+    /* This replaced a /sample message/i scan of the whole page. That pattern was
+       standing in for the retired Demo panel's own heading, and it stopped
+       distinguishing anything once labelled fixtures became a requirement: the
+       captions now say "sample messages" precisely so nobody mistakes invented
+       chat for a real stream, and a text scan cannot tell that caption from the
+       panel it was written to detect.
+
+       What actually has to stay gone is the *switch* — a control the user picks
+       live or sample content with. Fixtures are not a mode: they are what a panel
+       with no channel shows, and typing a channel is the only thing that ends
+       them. So the assertion is structural, over every interactive control on the
+       page, which is what the old regex was a weak proxy for.
+
+       The pattern is about that pairing rather than about the bare word "live",
+       and the distinction now carries weight: the preview feed's controls are
+       named "Live preview feed" and "Live counter simulation", where "live" means
+       the fixtures are moving rather than frozen. Neither offers a choice of
+       content source — both animate the samples that a channel-less panel was
+       already showing, and typing a channel still replaces the whole panel with
+       the real overlay. A bare /\blive\b/ could not tell those apart from the
+       mode switch this test exists to keep out, so it matched the honest label
+       and would have forced it to be renamed to something less accurate. What
+       identifies the retired control is that it named both sides of a choice, or
+       named a mode outright. */
+    mount();
+    const modeSwitch = [
+      /\blive\b[^.]*\b(sample|fixture|demo|test)\b/i,
+      /\b(sample|fixture|demo|test)\b[^.]*\blive\b/i,
+      /\b(live|sample|fixture|demo|test)\s+mode\b/i,
+      /\bswitch to (live|sample|demo)\b/i,
+    ];
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>('button, input, select, [role="switch"], [role="tab"]'),
+    );
+    for (const control of controls) {
+      const name = [
+        control.textContent ?? '',
+        control.getAttribute('aria-label') ?? '',
+        control.getAttribute('value') ?? '',
+        document.querySelector(`label[for="${control.id}"]`)?.textContent ?? '',
+      ].join(' ');
+      expect(name).not.toMatch(/\bdemo\b/i);
+      for (const pattern of modeSwitch) expect(name, name).not.toMatch(pattern);
     }
   });
 
@@ -1013,9 +1336,33 @@ describe('the Demo interface is gone', () => {
     }
   });
 
-  it('states the honest empty case rather than fabricating messages', () => {
+  it('labels the built-in chat samples as preview data', () => {
+    /* This assertion replaced one requiring the chat panel to say "Enter a
+       channel above". That empty state was honest but useless: it showed nothing
+       about styling, which is the only reason to be on this page. Fixtures are
+       now rendered instead — so the requirement becomes that they are *marked*
+       as fixtures rather than passed off as somebody's live chat. The retired
+       Demo interface is still gone; this is a labelled preview, not a mode. */
     mount();
-    expect(screen.getAllByText(/Enter a channel above/).length).toBe(2);
+    const chat = panel('.panel-chat-output');
+    expect(within(chat).getByTestId('chat-fixture-preview')).toBeTruthy();
+    expect(within(chat).getByText('Preview data')).toBeTruthy();
+    /* No mode switch came back with it: nothing toggles between live and sample
+       content, because a configured channel decides that on its own. */
+    expect(chat.textContent ?? '').not.toMatch(/\bdemo\b/i);
+  });
+
+  it('marks the counter panel s sample numbers as samples too', () => {
+    /* This test used to asert the counter's "enter a channel" placeholder, which
+       was the honest empty case while the counter had no fixtures. It has them
+       now, so the requirement is the same one the chat panel carries: sample
+       numbers must be labelled as samples, not passed off as a real audience. */
+    mount();
+    const counter = panel('.panel-counter-output');
+    expect(within(counter).getByTestId('counter-fixture-preview')).toBeTruthy();
+    expect(within(counter).getByText('Preview data')).toBeTruthy();
+    /* No mode switch here either: a configured channel decides live vs sample. */
+    expect(counter.textContent ?? '').not.toMatch(/\bdemo\b/i);
   });
 });
 

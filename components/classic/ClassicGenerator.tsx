@@ -37,8 +37,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
+import ClassicChatPreview from './ClassicChatPreview';
+import ClassicCounterPreview from './ClassicCounterPreview';
+import ClassicPreviewComposer from './ClassicPreviewComposer';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
+import ClassicPreviewFeedControls from './ClassicPreviewFeedControls';
+import ClassicPreviewBadgePicker from './ClassicPreviewBadgePicker';
+import ClassicPreviewBadgeRefresh from './ClassicPreviewBadgeRefresh';
+import ClassicPreviewScaleControl from './ClassicPreviewScaleControl';
+import ClassicPreviewBackgroundControl, {
+  DEFAULT_PREVIEW_CUSTOM_COLOR,
+  effectivePreviewBackground,
+  previewBackgroundFromDraft,
+  previewSurfaceClass,
+  type PreviewBgMode,
+} from './ClassicPreviewBackgroundControl';
+import {
+  PREVIEW_SCALE_DEFAULT,
+  type PreviewScale,
+} from './IsolatedPreviewFrame';
+import ClassicCounterFeedControls from './ClassicCounterFeedControls';
+import { useChatPreviewSimulator } from './useChatPreviewSimulator';
+import { usePreviewBadgeLibrary } from './usePreviewBadgeLibrary';
+import { buildPreviewCosmetics } from '@/lib/tools/multichat/previewCosmetics';
+import { useCounterPreviewSimulator } from './useCounterPreviewSimulator';
+import { combinationLabel } from '@/lib/tools/counter/previewSimulator';
+import { PREVIEW_SOURCES } from '@/lib/tools/multichat/previewSimulator';
 import { CLASSIC_GENERATOR_CSS } from './classicStyles';
 import { MULTICHAT_COMMANDS, MULTICHAT_COMMAND_ALIAS, MULTICHAT_COMMAND_TRIGGER } from '@/lib/multichatCommands';
 import {
@@ -49,11 +74,19 @@ import {
 import { FONT_FAMILIES } from '@/components/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
 import { multichatTool } from '@/lib/tools/multichat/config';
+import { SAMPLE_PIN_ID, sampleMessages } from '@/lib/tools/multichat/samples';
 import { counterTool } from '@/lib/tools/counter/config';
+import {
+  SAMPLE_COUNTER_COUNTS,
+  parseCounterCount,
+  sampleCounterStatuses,
+} from '@/lib/tools/counter/samples';
 import { EMPTY_MULTICHAT_RUNTIME, type MultichatRuntime } from '@/lib/tools/multichat/runtime';
 import type { MultichatPlatform, MultichatWorkspaceStyle } from '@/lib/multichatConfig';
+import { PLATFORM_ORDER } from '@/lib/viewerCounterConfig';
 import type { ViewerCounterStyle, ViewerPlatform } from '@/lib/viewerCounterConfig';
 import type { ToolChannels } from '@/lib/tools/registry';
+import type { UnifiedMessage } from '@/lib/types';
 import type { CatalogAvailability, SettingValue } from '@/lib/tools/settingTypes';
 import {
   colorSetting,
@@ -79,6 +112,24 @@ const GENERATOR_FONT_CSS = googleFontsImportCss([
 
 /** How long the copied confirmation stays on a Copy button. */
 const COPIED_MS = 2000;
+
+/* The built-in chat fixtures, resolved once at module scope.
+   `sampleMessages()` returns a fresh array per call, so calling it inline would
+   hand the preview a new array identity on every keystroke and re-convert every
+   message for nothing. The list is never mutated — custom messages are appended
+   into a new array — so one shared frozen-in-practice value is correct. */
+const SAMPLE_CHAT_MESSAGES = sampleMessages();
+
+/* The built-in counts as field strings, for the editable preview inputs.
+   A fresh object per call, deliberately: this seeds state and backs Restore, and
+   a shared object would let one of those mutate the other's baseline. */
+function initialSampleCountFields(): Record<ViewerPlatform, string> {
+  const fields = {} as Record<ViewerPlatform, string>;
+  for (const platform of PLATFORM_ORDER) {
+    fields[platform] = String(SAMPLE_COUNTER_COUNTS[platform]);
+  }
+  return fields;
+}
 
 /* The two catalogs, looked up once at module scope. Every lookup asserts the key
    exists with the expected control type, so a catalog rename breaks the build
@@ -139,6 +190,14 @@ const EMOTE_SCALE_RANGE: SettingRange = {
   blankLabel: 'Default',
 };
 
+/* Counter platform labels, taken from the descriptor's own channel fields rather
+   than written out again. The counter panel already labels its channel inputs
+   from this list, so the preview-count fields cannot end up disagreeing with
+   them about what a platform is called. */
+const COUNTER_PLATFORM_LABEL = Object.fromEntries(
+  counterTool.platforms.map((platform) => [platform.key, platform.label]),
+) as Record<ViewerPlatform, string>;
+
 /* Platform chip classes, matching the Classic tag colours. */
 const PLATFORM_TAG: Record<string, string> = {
   kick: 'kick-tag',
@@ -170,11 +229,169 @@ export default function ClassicGenerator({
      alter an already-generated counter URL. */
   const [channels, setChannels] = useState<ToolChannels<string>>({});
   const [runtime, setRuntime] = useState<MultichatRuntime>(EMPTY_MULTICHAT_RUNTIME);
-  const [previewWhite, setPreviewWhite] = useState(false);
-  const [counterPreviewWhite, setCounterPreviewWhite] = useState(false);
+  /* The preview-only backdrop, one mode per preview so the two are independent
+     browser sources judged against different scenes. Custom carries its own
+     remembered colour, so a detour through another mode and back restores it.
+     None of this is serialized — see ClassicPreviewBackgroundControl. */
+  const [chatBgMode, setChatBgMode] = useState<PreviewBgMode>('checker');
+  const [chatBgColor, setChatBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
+  const [counterBgMode, setCounterBgMode] = useState<PreviewBgMode>('checker');
+  const [counterBgColor, setCounterBgColor] = useState(DEFAULT_PREVIEW_CUSTOM_COLOR);
   const [baseUrl, setBaseUrl] = useState('https://multichat-gxufy.com');
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedCounter, setCopiedCounter] = useState(false);
+  /* Composed preview messages, appended after the built-in samples.
+     Generator-only state: never serialized into an overlay URL, never written to
+     the saved draft, and gone when the tab closes. */
+  const [customMessages, setCustomMessages] = useState<readonly UnifiedMessage[]>([]);
+
+  /* The live preview feed. Generator-only, exactly like the composed messages:
+     it produces `UnifiedMessage` values and hands them to the same preview
+     component the static fixtures go through. No socket, no pin poll, no fetch,
+     and nothing it produces is serialized. The hook owns its own timer; see its
+     header for why it sits here rather than inside the preview. */
+  const feed = useChatPreviewSimulator();
+
+  /* The preview badge catalog. Generator-only in the same strict sense as the
+     feed: it owns the catalog of preview badge art and the one request that
+     extends it, and nothing it holds is serialized or written to the draft. The
+     real overlay never imports its loader, so refreshing badges opens a request
+     OBS never makes. See the hook header for the no-fetch-on-mount and
+     never-clear-on-failure guarantees. The badges are drawn beside usernames in
+     the feed; the compact refresh control only asks the loader for the full set. */
+  const badgeLibrary = usePreviewBadgeLibrary();
+
+  /* The cosmetics the fixture preview draws on. Built from the loaded badge
+     catalog so the feed's reserved badge senders are entitled to real 7TV badges
+     — before any load they fall back to the sample badge, and a successful
+     refresh flows its assets straight into the chat preview beside usernames,
+     through the production entitlement path. Memoized on the asset list alone, so
+     it changes only when the catalog grows, not on every keystroke. */
+  const previewCosmetics = useMemo(
+    () => buildPreviewCosmetics(badgeLibrary.assets),
+    [badgeLibrary.assets],
+  );
+
+  /* The preview-only zoom. Generator-only state in the strictest sense: it is
+     not in `chatStyle`, so the serializer never sees it, it is not in the draft,
+     and `textSize` is untouched — the overlay's own size setting still means
+     what it meant. All this decides is how large the preview *surface* is drawn.
+
+     Held here rather than inside the preview so the control and the frame agree
+     without the preview needing state of its own, which two suites assert it has
+     none of. */
+  const [previewScale, setPreviewScale] = useState<PreviewScale>(PREVIEW_SCALE_DEFAULT);
+
+  /* Summarised for the feed's live region rather than announced per chip: the
+     count is what changes meaningfully, and nine separate announcements while
+     someone works through the picker would be noise. */
+  const enabledSourceCount = PREVIEW_SOURCES.filter((source) => feed.sources[source]).length;
+
+  /* What the fixture preview renders: the samples, then anything composed, then
+     whatever the feed has generated. A new array only when one of those three
+     actually changes, so typing in a settings field does not re-convert every
+     message.
+
+     The pin fixture is held out while the feed says the pin is not currently
+     offered. That is the whole pin mechanism: `ClassicChatPreview` decides
+     whether to pin by looking for SAMPLE_PIN_ID in this array, so removing the
+     fixture retires the banner and returning it brings a fresh one — with no
+     clock or random source inside the preview, which two existing suites assert
+     it has none of. */
+  const previewMessages = useMemo(() => {
+    const fixtures = feed.pinVisible
+      ? SAMPLE_CHAT_MESSAGES
+      : SAMPLE_CHAT_MESSAGES.filter((message) => message.id !== SAMPLE_PIN_ID);
+    if (customMessages.length === 0 && feed.messages.length === 0) return fixtures;
+    return [...fixtures, ...customMessages, ...feed.messages];
+  }, [customMessages, feed.messages, feed.pinVisible]);
+
+  /* Appends rather than replaces, and never mutates: the fixture list is shared at
+     module scope, and the preview compares message arrays by identity. */
+  const addCustomMessage = useCallback((message: UnifiedMessage) => {
+    setCustomMessages((current) => [...current, message]);
+  }, []);
+
+  /* Reset and Clear land on the same state today, and that is not an oversight
+     worth "simplifying" away: they differ in what else they do and in when they
+     are offered. Clear is about the composed messages alone and is disabled when
+     there are none; Reset also empties the composer's own fields and is always
+     available, so it is the one button that always returns the card to how it
+     looked on arrival. Keeping them separate means adding a control that mutates
+     the sample list has one obvious place to hook into. */
+  const clearCustomMessages = useCallback(() => setCustomMessages([]), []);
+  const resetPreviewMessages = useCallback(() => setCustomMessages([]), []);
+
+  /* The live Counter rotation. Generator-only in the same way the chat feed is:
+     it produces `PlatformStatuses` — the shape the live overlay folds real
+     /api/viewers results into — and hands them to the same production renderer
+     the fixtures went through. No request, no polling, no provider connection,
+     and nothing it produces is serialized.
+
+     Declared above the manual fields because typing in one switches the mode. */
+  const counterSim = useCounterPreviewSimulator();
+
+  /* Pulled out by itself so the callback below can depend on it. It is a
+     `useState` setter, so its identity is stable for the life of the component —
+     depending on the whole `counterSim` object instead would rebuild that
+     callback on every render, since the hook returns a fresh object each time. */
+  const { setMode: setCounterMode } = counterSim;
+
+  /* Sample viewer counts, as typed. Strings rather than numbers, because the
+     field has to be able to hold "" — the state the renderer draws as an em dash
+     — and a numeric state would have to encode that absence some other way.
+     Generator-only, exactly like the composed messages: never serialized, never
+     written to the draft, never sent to /api/viewers. */
+  const [sampleCounts, setSampleCounts] = useState<Record<ViewerPlatform, string>>(
+    () => initialSampleCountFields(),
+  );
+
+  const setSampleCount = useCallback(
+    (platform: ViewerPlatform, raw: string) => {
+      /* Rejected keystrokes are dropped rather than corrected: silently rewriting
+         what someone typed is worse than refusing it, and the field is already
+         constrained to seven digits. An empty field is always allowed through —
+         it is a meaningful value here, not an invalid one. */
+      if (raw !== '' && parseCounterCount(raw) === null) return;
+      /* Typing is the switch into Manual. Without this the rotation would
+         overwrite the typed value at the next tick and the field would look
+         broken; there is no reading of "edit a number but keep cycling" that a
+         person would actually want. Restore simulation goes back. */
+      setCounterMode('manual');
+      setSampleCounts((current) => ({ ...current, [platform]: raw }));
+    },
+    [setCounterMode],
+  );
+
+  const restoreSampleCounts = useCallback(
+    () => setSampleCounts(initialSampleCountFields()),
+    [],
+  );
+
+  /* The statuses the manual fields describe. Every field is parsed through the
+     shared helper, so a blank field becomes 'live-unknown' and the renderer's own
+     unavailable presentation is what appears — no second reading of the counts
+     here. */
+  const manualStatuses = useMemo(() => {
+    const counts: Partial<Record<ViewerPlatform, number>> = {};
+    for (const platform of PLATFORM_ORDER) {
+      const parsed = parseCounterCount(sampleCounts[platform]);
+      if (parsed !== null) counts[platform] = parsed;
+    }
+    return sampleCounterStatuses(counts);
+  }, [sampleCounts]);
+
+  /* Which numbers the preview shows.
+     The rotation's statuses win while it is live and has produced a state, and
+     the manual fields are the fallback in every other case. The order matters
+     twice over: `counterSim.statuses` is null until the first tick, so the very
+     first paint — server and client alike — is the deterministic fixture set and
+     there is no hydration mismatch; and switching to Manual hands control back
+     to the fields immediately rather than after the pending delay expires. */
+  const counterStatuses =
+    counterSim.mode === 'live' && counterSim.statuses !== null
+      ? counterSim.statuses
+      : manualStatuses;
 
   /* Rendered origin. Kept out of the initial state so the server-rendered markup
      and the first client render agree; the effect corrects it immediately. */
@@ -247,25 +464,46 @@ export default function ClassicGenerator({
   /* Live state for the draft write. A ref rather than dependencies, so
      `persistDraft` keeps a stable identity — it is handed to the connection
      panel, and a new function on every keystroke would re-render it for nothing. */
-  const live = useRef({ chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite });
-  live.current = { chatStyle, counterStyle, channels, previewWhite, counterPreviewWhite };
+  const live = useRef({
+    chatStyle,
+    counterStyle,
+    channels,
+    chatBgMode,
+    chatBgColor,
+    counterBgMode,
+    counterBgColor,
+  });
+  live.current = {
+    chatStyle,
+    counterStyle,
+    channels,
+    chatBgMode,
+    chatBgColor,
+    counterBgMode,
+    counterBgColor,
+  };
 
   /* Both tools' drafts, written immediately before the OAuth navigation.
      Two keys, because the storage is keyed per tool and the two styles are
      different shapes — and because the Counter's settings must survive an OAuth
      round trip the chat side initiated, which is the whole reason this writes
-     twice rather than once. */
+     twice rather than once.
+
+     The background is the mode's own value — a named id for the three fixed
+     backdrops, the hex string itself for Custom — so a chosen colour survives
+     the round trip too. Still preview-only: `background` is never read into a
+     tool's style and never serialized into an overlay URL. */
   const persistDraft = useCallback(() => {
     const l = live.current;
     writeWorkspaceDraft(multichatTool.id, {
       style: l.chatStyle,
       channels: l.channels,
-      background: l.previewWhite ? 'light' : 'checker',
+      background: effectivePreviewBackground(l.chatBgMode, l.chatBgColor),
     });
     writeWorkspaceDraft(counterTool.id, {
       style: l.counterStyle,
       channels: l.channels,
-      background: l.counterPreviewWhite ? 'light' : 'checker',
+      background: effectivePreviewBackground(l.counterBgMode, l.counterBgColor),
     });
   }, []);
 
@@ -281,11 +519,18 @@ export default function ClassicGenerator({
 
     if (chatDraft) {
       setChatStyle(multichatTool.normalize(chatDraft.style as Partial<MultichatWorkspaceStyle>));
-      if (chatDraft.background === 'light') setPreviewWhite(true);
+      /* The backdrop is preview-only, so it is restored into its own state and
+         never handed to the tool's normalizer. An unknown string falls back to
+         Transparent rather than throwing — see previewBackgroundFromDraft. */
+      const chatBg = previewBackgroundFromDraft(chatDraft.background);
+      setChatBgMode(chatBg.mode);
+      setChatBgColor(chatBg.customColor);
     }
     if (counterDraft) {
       setCounterStyle(counterTool.normalize(counterDraft.style as Partial<ViewerCounterStyle>));
-      if (counterDraft.background === 'light') setCounterPreviewWhite(true);
+      const counterBg = previewBackgroundFromDraft(counterDraft.background);
+      setCounterBgMode(counterBg.mode);
+      setCounterBgColor(counterBg.customColor);
     }
 
     /* Channels are shared, so they are restored from whichever draft has them —
@@ -519,16 +764,12 @@ export default function ClassicGenerator({
                   value={channels[platform.key] ?? ''}
                   onChange={(e) => changeChannel(platform.key, e.target.value)}
                 />
-                {/* Only Twitch has a connection: it is the one platform whose
-                    native pins need authorization. */}
-                {platform.key === 'twitch' ? (
-                  <ClassicTwitchConnect
-                    runtime={runtime}
-                    onRuntimeChange={setRuntime}
-                    onUseConnectedChannel={(login) => changeChannel('twitch', login)}
-                    onBeforeLeave={persistDraft}
-                  />
-                ) : null}
+                {/* No per-field connection here any more: Twitch is a plain
+                    channel-name field like the other three. The Twitch account
+                    connection is optional and only for native Twitch pinned
+                    messages, so it lives beside the pin controls in Chat
+                    settings rather than under this input, where it read as
+                    though Twitch chat needed a login. */}
               </div>
             );
           })}
@@ -537,7 +778,7 @@ export default function ClassicGenerator({
         <p className="platform-hint">
           Fill in any one — or combine platforms into a single overlay. These
           channels feed both the chat overlay and the viewer counter. No login
-          needed.
+          is required for chat or viewer counts.
         </p>
       </section>
     );
@@ -550,27 +791,32 @@ export default function ClassicGenerator({
         className="card panel-chat-output"
         aria-labelledby="chat-output-heading"
       >
-        <h2 id="chat-output-heading" className="section-title">
-          Chat overlay
-        </h2>
-
-        <div className="preview-label">
-          <span>Preview</span>
-          <button
-            type="button"
-            onClick={() => setPreviewWhite((p) => !p)}
-            aria-pressed={previewWhite}
-          >
-            {previewWhite ? 'Light background' : 'Transparent background'}
-          </button>
+        {/* One header row rather than a heading stacked over a second "Preview"
+            label: the badge sits inline with the title, which is a row shorter and
+            drops a word that only repeated the heading. The h2 keeps its id so the
+            section stays labelled, and the badge keeps saying what is on screen —
+            the preview's own aria-label says the same to a screen reader. Without
+            it the samples read as somebody's real chat. A marker, not a warning. */}
+        <div className="preview-head">
+          <h2 id="chat-output-heading" className="section-title">
+            Chat overlay
+          </h2>
+          {!chatConfigured && <span className="preview-badge">Preview data</span>}
         </div>
 
         {/* The backdrop is on the wrapper, never inside the overlay document and
             never in the URL: it exists to eyeball transparency, and it cannot
-            reach OBS. */}
+            reach OBS. The overlay's own bgColor, when set, wins — the surface then
+            shows what OBS will actually paint rather than a backdrop behind it. */}
         <div
-          className={`preview-surface ${previewWhite ? 'white' : 'checkered'}`}
-          style={chatStyle.bgColor ? { background: chatStyle.bgColor } : undefined}
+          className={`preview-surface ${previewSurfaceClass(chatBgMode)}`}
+          style={
+            chatStyle.bgColor
+              ? { background: chatStyle.bgColor }
+              : chatBgMode === 'custom'
+                ? { background: chatBgColor }
+                : undefined
+          }
         >
           {chatConfigured ? (
             /* The real overlay at the exact URL below, so the preview and the
@@ -583,11 +829,93 @@ export default function ClassicGenerator({
               height={MULTICHAT_OBS_SIZE.height}
             />
           ) : (
-            <p className="preview-empty">
-              Enter a channel above to see the live overlay here.
-            </p>
+            /* No channel yet, so there is no live overlay to show — and an empty
+               frame says nothing about styling, which is the whole reason someone
+               is on this page. Fixtures go through the production renderer
+               instead, so all twenty-four settings are visible immediately. The
+               frame here is a local blank document, not the overlay URL, so
+               nothing connects, polls, or authenticates. */
+            <ClassicChatPreview
+              query={chatQuery}
+              messages={previewMessages}
+              cosmetics={previewCosmetics}
+              width={MULTICHAT_OBS_SIZE.width}
+              height={MULTICHAT_OBS_SIZE.height}
+              /* Not part of `chatQuery`, and that is the whole point: the zoom
+                 reaches the frame while the renderer's config comes only from
+                 the serialized URL above. */
+              scale={previewScale}
+            />
           )}
         </div>
+
+        {/* Offered whether or not a channel is configured: the backdrop sits
+            behind the live overlay iframe just as it does behind the fixtures, so
+            judging transparency against a scene colour is useful in both states. */}
+        <ClassicPreviewBackgroundControl
+          idPrefix="chat"
+          legend="Preview background"
+          mode={chatBgMode}
+          customColor={chatBgColor}
+          onModeChange={setChatBgMode}
+          onCustomColorChange={setChatBgColor}
+        />
+
+        {/* Paired with the fixture preview, because it composes lines *for* that
+            preview. With a channel configured the panel above is the real overlay
+            showing real chat, and a composed message would have nowhere to
+            appear — a control that visibly did nothing would be worse than no
+            control. */}
+        {!chatConfigured && (
+          <ClassicPreviewFeedControls
+            enabled={feed.enabled}
+            paused={feed.paused}
+            speed={feed.speed}
+            running={feed.running}
+            messageCount={feed.messages.length}
+            onEnabledChange={feed.setEnabled}
+            onTogglePaused={feed.togglePaused}
+            onSpeedChange={feed.setSpeed}
+            onReset={feed.reset}
+            statusDetail={`${enabledSourceCount} of ${PREVIEW_SOURCES.length} fixture sources on.`}
+            /* The scale control sits beside the speed band, since both are short
+               named enums: pairing them in one wrapping row is what shortens this
+               block. Reset lives inside the control, which already returns to the
+               default through this same setter — a second path would be one more
+               thing to keep in agreement. */
+            segControls={
+              <ClassicPreviewScaleControl
+                scale={previewScale}
+                onScaleChange={setPreviewScale}
+              />
+            }
+          >
+            <ClassicPreviewBadgePicker
+              sources={feed.sources}
+              onToggleSource={feed.toggleSource}
+              onEnableAll={feed.enableAllSources}
+              onDisableAll={feed.disableAllSources}
+              onRandomize={feed.randomizeSources}
+              onReset={feed.resetSources}
+            />
+            {/* The badge refresh sits beside the source picker, never inside it:
+                the picker's fieldset owns the fixture-source chips and its own
+                live region, and folding a second control into it would break the
+                one-status-line contract that suite asserts. One action and one
+                status line — it composes no message and reaches no URL; the
+                loaded badges appear in the feed beside usernames, not here. */}
+            <ClassicPreviewBadgeRefresh library={badgeLibrary} />
+          </ClassicPreviewFeedControls>
+        )}
+
+        {!chatConfigured && (
+          <ClassicPreviewComposer
+            onAdd={addCustomMessage}
+            onReset={resetPreviewMessages}
+            onClear={clearCustomMessages}
+            customCount={customMessages.length}
+          />
+        )}
 
         <p className="card-note">{multichatTool.previewNote}</p>
 
@@ -645,19 +973,17 @@ export default function ClassicGenerator({
 
         <div className="preview-label">
           <span>Preview</span>
-          {/* Independent of the chat preview's background: they are separate
-              browser sources and may be checked against different scenes. */}
-          <button
-            type="button"
-            onClick={() => setCounterPreviewWhite((p) => !p)}
-            aria-pressed={counterPreviewWhite}
-          >
-            {counterPreviewWhite ? 'Light background' : 'Transparent background'}
-          </button>
+          {/* The same marker the chat preview carries, for the same reason: four
+              plausible numbers with nothing saying otherwise read as a real
+              audience. */}
+          {!counterConfigured && <span className="preview-badge">Preview data</span>}
         </div>
 
         <div
-          className={`preview-surface ${counterPreviewWhite ? 'white' : 'checkered'}`}
+          className={`preview-surface ${previewSurfaceClass(counterBgMode)}`}
+          style={
+            counterBgMode === 'custom' ? { background: counterBgColor } : undefined
+          }
         >
           {counterConfigured ? (
             <OverlayPreviewFrame
@@ -667,11 +993,59 @@ export default function ClassicGenerator({
               height={counterTool.obs.height}
             />
           ) : (
-            <p className="preview-empty">
-              Enter a channel above to see the live counter here.
-            </p>
+            /* No channel yet, so there is no live counter to show — and a frame
+               holding nothing, or only dashes, says nothing about how the six
+               settings look. Sample counts go through the production renderer
+               instead. The frame here is a local blank document, not the overlay
+               URL, so nothing fetches /api/viewers and nothing polls. */
+            <ClassicCounterPreview
+              query={counterQuery}
+              statuses={counterStatuses}
+              width={counterTool.obs.width}
+              height={counterTool.obs.height}
+            />
           )}
         </div>
+
+        {/* Offered in both states for the same reason as the chat backdrop: the
+            colour sits behind the live counter iframe just as it does behind the
+            sample counts. */}
+        <ClassicPreviewBackgroundControl
+          idPrefix="counter"
+          legend="Preview background"
+          mode={counterBgMode}
+          customColor={counterBgColor}
+          onModeChange={setCounterBgMode}
+          onCustomColorChange={setCounterBgColor}
+        />
+
+        {/* Paired with the fixture preview, because this is what feeds it. With a
+            channel configured the panel above is the real overlay showing real
+            numbers, and simulating a count would have nowhere to appear. */}
+        {!counterConfigured && (
+          <ClassicCounterFeedControls
+            enabled={counterSim.enabled}
+            paused={counterSim.paused}
+            speed={counterSim.speed}
+            mode={counterSim.mode}
+            running={counterSim.running}
+            seenCount={counterSim.seenCount}
+            combinationLabel={
+              counterSim.combination === null
+                ? ''
+                : combinationLabel(counterSim.combination, COUNTER_PLATFORM_LABEL)
+            }
+            counts={sampleCounts}
+            platformLabel={COUNTER_PLATFORM_LABEL}
+            onEnabledChange={counterSim.setEnabled}
+            onTogglePaused={counterSim.togglePaused}
+            onSpeedChange={counterSim.setSpeed}
+            onAdvance={counterSim.advance}
+            onRestore={counterSim.restore}
+            onCountChange={setSampleCount}
+            onRestoreCounts={restoreSampleCounts}
+          />
+        )}
 
         <p className="card-note">{counterTool.previewNote}</p>
 
@@ -739,13 +1113,13 @@ export default function ClassicGenerator({
           Chat settings
         </h2>
 
-        {/* Two columns once the settings half is wide enough for them, one below
-            that — grid tracks over one unchanged tree, so reading and tab order
-            follow this DOM order at every width and no control exists twice.
-            Two rather than three: this panel is one column of the grid rather
-            than the page's full width, and a third track put two words per line
-            on the longer labels. */}
-        <div className="form_table cols-2">
+        {/* Three columns once the row is wide enough (~1600px), two at the
+            settings-half breakpoint below that, one on narrow — grid tracks over
+            one unchanged tree, so reading and tab order follow this DOM order at
+            every width and no control exists twice. The third track waits for
+            ~1600px because a settings panel is half a tool row now, and two
+            tracks already sit near the readable floor at the row breakpoint. */}
+        <div className="form_table cols-3">
           {/* How it is drawn. */}
           <div className="form_col">
             <p className="col-heading">Text</p>
@@ -790,6 +1164,31 @@ export default function ClassicGenerator({
             {chat(MC_MOD_ACTION)}
             {chat(MC_SHOW_PIN)}
             {chatStyle.showPinEnabled ? chat(MC_PIN_PLATFORMS) : null}
+            {/* Optional Twitch account connection lives here, beside the pin
+                platforms it serves — not under the Twitch channel input, where
+                it read as though Twitch chat needed a login. It is gated on the
+                pin switch, not on Twitch being selected in pinPlatforms: that
+                chip stays disabled until a matching connection exists, so
+                gating the Connect control on the chip would strand a fresh user
+                with no way to connect. The help text keeps it clear the account
+                is only for native Twitch pins. */}
+            {chatStyle.showPinEnabled ? (
+              <div className="mc-pin-connect">
+                <ClassicTwitchConnect
+                  runtime={runtime}
+                  onRuntimeChange={setRuntime}
+                  onUseConnectedChannel={(login) =>
+                    changeChannel('twitch', login)
+                  }
+                  onBeforeLeave={persistDraft}
+                  describedBy="mc-pin-connect-help"
+                />
+                <p className="classic-help" id="mc-pin-connect-help">
+                  Connect your Twitch account only to display native Twitch
+                  pinned messages. Chat and viewer counts do not require login.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
 

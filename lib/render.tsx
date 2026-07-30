@@ -7,6 +7,7 @@
 import React from 'react';
 import type { SevenTVEmote, ParsedMessage, KickChannel } from './kick';
 import type { UnifiedMessage, Platform } from './types';
+import { handleAssetError } from './render/imageFallback';
 
 /* StreamNook PROVIDERS metadata (types/providers.ts) — brand colors/labels */
 export const PROVIDERS: Record<Platform, { color: string; label: string }> = {
@@ -151,7 +152,13 @@ export function readableColor(hex: string): string {
 }
 
 function emoteImg(key: string, src: string, alt: string, upscale = false): React.ReactNode {
-  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} />;
+  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} onError={handleAssetError} />;
+}
+
+/* Every badge <img> goes through here so the load-failure fallback is attached
+   in one place rather than repeated at each of the badge sites below. */
+function badgeImg(key: string, src: string, alt: string, className = 'ck-badge-img'): React.ReactNode {
+  return <img key={key} className={className} src={src} alt={alt} onError={handleAssetError} />;
 }
 
 /* Word-level 7TV swap for a plain-text segment (Kick), with zero-width
@@ -180,7 +187,7 @@ function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: stri
     } else {
       nodes.push(
         <span key={`${keyBase}-zws-${i}`} style={{ display: 'inline-block', position: 'relative', verticalAlign: 'middle' }}>
-          <img className={`ck-emote${emote.upscale ? ' ck-upscale' : ''}`} src={emote.image} alt={emote.name} style={{ display: 'block' }} />
+          <img className={`ck-emote${emote.upscale ? ' ck-upscale' : ''}`} src={emote.image} alt={emote.name} style={{ display: 'block' }} onError={handleAssetError} />
           {zeroWidths.map((zw, zi) => (
             <span key={zi} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{zw}</span>
           ))}
@@ -348,40 +355,40 @@ export function renderBadges(
       // TikTok badge art is frequently non-square (fan club, top gifter):
       // lock height only so it aligns with square badges without squishing
       const wide = msg.platform === 'tiktok';
-      out.push(<img key={key} className={wide ? 'ck-badge-img ck-badge-wide' : 'ck-badge-img'} src={b.url} alt={b.type} />);
+      out.push(badgeImg(key, b.url, b.type, wide ? 'ck-badge-img ck-badge-wide' : 'ck-badge-img'));
       continue;
     }
     if (msg.platform === 'kick') {
       const simple = SIMPLE_KICK_BADGES[b.type];
-      if (simple) { out.push(<img key={key} className="ck-badge-img" src={simple} alt={b.type} />); continue; }
+      if (simple) { out.push(badgeImg(key, simple, b.type)); continue; }
       if (b.type === 'subscriber') {
         const sorted = [...subscriberBadges].sort((a, c) => c.months - a.months);
         const match = sorted.find(sb => (b.count ?? 0) >= sb.months);
-        out.push(<img key={key} className="ck-badge-img" src={match?.badge_image.src ?? '/badges/subscriber.svg'} alt="subscriber" />);
+        out.push(badgeImg(key, match?.badge_image.src ?? '/badges/subscriber.svg', 'subscriber'));
         continue;
       }
-      if (b.type === 'sub_gifter') { out.push(<img key={key} className="ck-badge-img" src={kickGifterSrc(b.count ?? 0)} alt="gifter" />); continue; }
+      if (b.type === 'sub_gifter') { out.push(badgeImg(key, kickGifterSrc(b.count ?? 0), 'gifter')); continue; }
       if (b.type === 'gift_rank') {
         const rank = b.count ?? 1;
-        out.push(<img key={key} className="ck-badge-img" src={rank <= 1 ? '/badges/gift-rank-1.png' : rank === 2 ? '/badges/gift-rank-2.png' : '/badges/gift-rank-3.png'} alt={b.type} />);
+        out.push(badgeImg(key, rank <= 1 ? '/badges/gift-rank-1.png' : rank === 2 ? '/badges/gift-rank-2.png' : '/badges/gift-rank-3.png', b.type));
         continue;
       }
       if (b.type === 'kicks_rank') {
         const rank = b.count ?? 1;
-        out.push(<img key={key} className="ck-badge-img" src={rank <= 1 ? '/badges/kicks-rank-1.png' : rank === 2 ? '/badges/kicks-rank-2.png' : '/badges/kicks-rank-3.png'} alt={b.type} />);
+        out.push(badgeImg(key, rank <= 1 ? '/badges/kicks-rank-1.png' : rank === 2 ? '/badges/kicks-rank-2.png' : '/badges/kicks-rank-3.png', b.type));
         continue;
       }
     } else if (msg.platform === 'twitch') {
       const uuid = TWITCH_BADGE_IDS[b.type];
       if (uuid) {
-        out.push(<img key={key} className="ck-badge-img" src={`https://static-cdn.jtvnw.net/badges/v1/${uuid}/2`} alt={b.type} />);
+        out.push(badgeImg(key, `https://static-cdn.jtvnw.net/badges/v1/${uuid}/2`, b.type));
         continue;
       }
     } else {
       const yt = YT_ICON_BADGES[b.type];
-      if (yt) { out.push(<img key={key} className="ck-badge-img" src={yt} alt={b.type} />); continue; }
-      if (b.type === 'moderator') { out.push(<img key={key} className="ck-badge-img" src="/badges/moderator.svg" alt="moderator" />); continue; }
-      if (b.type === 'subscriber') { out.push(<img key={key} className="ck-badge-img" src="/badges/subscriber.svg" alt="subscriber" />); continue; }
+      if (yt) { out.push(badgeImg(key, yt, b.type)); continue; }
+      if (b.type === 'moderator') { out.push(badgeImg(key, '/badges/moderator.svg', 'moderator')); continue; }
+      if (b.type === 'subscriber') { out.push(badgeImg(key, '/badges/subscriber.svg', 'subscriber')); continue; }
     }
   }
   return out;

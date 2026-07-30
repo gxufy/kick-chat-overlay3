@@ -4,7 +4,7 @@
  * clears the pinned message only if that key still matches what is on screen.
  * The key is built in one place as `twitch:${message.id}` and the on-screen id is
  * built somewhere else entirely as `${platform}:${id}` — two independent
- * expressions, hundreds of lines apart, that must agree exactly.
+ * expressions, now in two different modules, that must agree exactly.
  *
  * If they ever stop agreeing the failure is silent and bad: the comparison never
  * matches, so a Twitch pin is never cleared and stays on screen after the
@@ -13,12 +13,24 @@
  * Asserted by reading the real source, following the pattern in
  * multichatCommands.test.ts — a test that restated the format instead would pass
  * happily while the two call sites drifted apart.
+ *
+ * The id half moved to lib/multichatMessageModel when the UnifiedMessage →
+ * ParsedMessage conversion was extracted so the generator preview could reuse it.
+ * That made this coupling *more* worth asserting, not less: the two expressions
+ * are now in separate files and can be edited without the other in view. So this
+ * reads whichever file owns each half rather than relaxing the assertion.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SOURCE = readFileSync(resolve(__dirname, '../../pages/multichat.tsx'), 'utf8');
+
+/** The module that now owns UnifiedMessage → ParsedMessage, id included. */
+const MODEL_SOURCE = readFileSync(
+  resolve(__dirname, '../../lib/multichatMessageModel.tsx'),
+  'utf8',
+);
 
 describe('ownership key construction', () => {
   /* Both expressions are located by their surrounding code rather than quoted,
@@ -28,7 +40,15 @@ describe('ownership key construction', () => {
   });
 
   it('builds the on-screen id from platform and id', () => {
-    expect(SOURCE).toContain('id: `${um.platform}:${um.id}`');
+    expect(MODEL_SOURCE).toContain('id: `${um.platform}:${um.id}`');
+  });
+
+  /* The overlay must actually delegate to that module. Without this, the id
+     assertion above could pass against an extracted helper the route no longer
+     calls, while the route built ids some other way. */
+  it('builds on-screen messages through the shared conversion', () => {
+    expect(SOURCE).toContain('buildParsedMessage');
+    expect(SOURCE).toContain("from '../lib/multichatMessageModel'");
   });
 
   /* The two formats agree only because `platform` is literally 'twitch' for a

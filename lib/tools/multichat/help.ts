@@ -62,9 +62,9 @@ export const MULTICHAT_HELP: readonly ToolHelpSection[] = [
     entries: [
       {
         syntax: 'The preview is the real overlay',
-        summary: 'Not a mock-up or a sample feed.',
+        summary: 'The same renderer in both of its states.',
         detail:
-          'It connects to the channels you enter and shows their actual messages, so it stays empty while those channels are offline or nobody is chatting. An empty preview is not an error.',
+          'Before you enter a channel it draws sample messages marked “Preview data”, so every setting has something to act on straight away. Enter a channel and it becomes the live overlay at the exact URL below, connected to the real platforms — which means it stays empty while those channels are offline or nobody is chatting. An empty preview at that point is not an error. The samples are never part of the URL and never reach OBS.',
       },
       {
         syntax: 'Copy gives you the OBS URL',

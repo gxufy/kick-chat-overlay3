@@ -19,8 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
-import { counterTool } from '@/lib/tools/counter/config';
-import { COUNTER_CATALOG } from '@/lib/tools/counter/settings';
+import { counterTool } from '@/features/counter/config';
+import { COUNTER_CATALOG } from '@/features/counter/settings';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
 import {
   DEFAULT_STYLE,

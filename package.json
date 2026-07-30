@@ -8,8 +8,10 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:oauth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-oauth-config.mts",
-    "verify:oauth:local": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-oauth-local.mts"
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test",
+    "verify:oauth": "node scripts/verify-oauth-config.mjs",
+    "verify:oauth:local": "node scripts/verify-oauth-local.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

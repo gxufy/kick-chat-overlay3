@@ -25,13 +25,13 @@ vi.mock('next/router', () => ({
   useRouter: () => ({ isReady: true, query, replace }),
 }));
 
-vi.mock('../../components/ChatOverlay', () => ({
+vi.mock('../../src/components/overlay/ChatOverlay', () => ({
   __esModule: true,
   default: () => <div data-testid="chat-overlay" />,
   FONT_FAMILIES: {},
 }));
 
-vi.mock('../../components/classic/ClassicGenerator', () => ({
+vi.mock('../../src/components/classic/ClassicGenerator', () => ({
   __esModule: true,
   default: () => <div data-testid="classic-generator" />,
 }));
@@ -49,21 +49,21 @@ function connectorStub(platform: string) {
   };
 }
 
-vi.mock('../../lib/connectors/kick', () => ({
+vi.mock('../../src/lib/connectors/kick', () => ({
   createKickConnector: () => connectorStub('kick'),
 }));
-vi.mock('../../lib/connectors/twitch', () => ({
+vi.mock('../../src/lib/connectors/twitch', () => ({
   createTwitchConnector: () => connectorStub('twitch'),
 }));
-vi.mock('../../lib/connectors/youtube', () => ({
+vi.mock('../../src/lib/connectors/youtube', () => ({
   createYouTubeConnector: () => connectorStub('youtube'),
 }));
-vi.mock('../../lib/connectors/tiktok', () => ({
+vi.mock('../../src/lib/connectors/tiktok', () => ({
   createTikTokConnector: () => connectorStub('tiktok'),
 }));
 
 const cosmetics = { wants: 0, stops: 0 };
-vi.mock('../../lib/cosmetics', () => ({
+vi.mock('../../src/lib/cosmetics', () => ({
   createCosmeticsFetcher: () => {
     return {
       want: () => { cosmetics.wants += 1; },
@@ -77,7 +77,7 @@ vi.mock('../../lib/cosmetics', () => ({
    spending a real credential against a real endpoint. */
 const pollerStops = vi.fn();
 const startPoller = vi.fn(() => pollerStops);
-vi.mock('../../lib/twitchPinPoller', () => ({
+vi.mock('../../src/lib/twitchPinPoller', () => ({
   startTwitchPinPoller: (...args: unknown[]) => startPoller(...(args as [])),
 }));
 

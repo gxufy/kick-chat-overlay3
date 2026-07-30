@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach } from 'vitest';
-import ChatOverlay from '@/components/ChatOverlay';
+import ChatOverlay from '@/components/overlay/ChatOverlay';
 import { PROVIDERS, sourceTag, type SourceTagMode } from '@/lib/render';
 import { MULTICHAT_SOURCE_TAGS, MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';

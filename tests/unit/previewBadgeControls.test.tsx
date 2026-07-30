@@ -26,11 +26,11 @@ import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import ClassicPreviewBadgePicker from '@/components/classic/ClassicPreviewBadgePicker';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
-import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
-import { SAMPLE_COSMETICS, sampleMessages } from '@/lib/tools/multichat/samples';
-import { PREVIEW_EMOTE_TOKENS } from '@/lib/tools/multichat/previewAssets';
+import { multichatTool } from '@/features/multichat/config';
+import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { MULTICHAT_CATALOG } from '@/features/multichat/settings';
+import { SAMPLE_COSMETICS, sampleMessages } from '@/features/multichat/samples';
+import { PREVIEW_EMOTE_TOKENS } from '@/features/multichat/previewAssets';
 import { resetAssetErrorLog } from '@/lib/render/imageFallback';
 import {
   PREVIEW_SOURCES,
@@ -43,9 +43,9 @@ import {
   seededRandom,
   type PreviewSource,
   type PreviewSourceState,
-} from '@/lib/tools/multichat/previewSimulator';
+} from '@/features/multichat/previewSimulator';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
-import type { ToolChannels } from '@/lib/tools/registry';
+import type { ToolChannels } from '@/features/registry';
 import type { MultichatPlatform } from '@/lib/multichatConfig';
 import type { UnifiedMessage } from '@/lib/types';
 

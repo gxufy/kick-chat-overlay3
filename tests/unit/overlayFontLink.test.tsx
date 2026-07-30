@@ -18,7 +18,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import ChatOverlay from '@/components/ChatOverlay';
+import ChatOverlay from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 
 vi.mock('next/head', () => ({

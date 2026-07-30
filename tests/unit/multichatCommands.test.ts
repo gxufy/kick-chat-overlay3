@@ -25,7 +25,7 @@ import {
 import { MULTICHAT_TRIGGERS, YT_PRESETS } from '@/lib/multichatCommandRuntime';
 
 const SOURCE = readFileSync(
-  join(process.cwd(), 'lib', 'multichatCommandRuntime.ts'),
+  join(process.cwd(), 'src', 'lib', 'multichatCommandRuntime.ts'),
   'utf8',
 );
 

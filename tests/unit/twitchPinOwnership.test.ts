@@ -24,11 +24,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const SOURCE = readFileSync(resolve(__dirname, '../../pages/multichat.tsx'), 'utf8');
+const SOURCE = readFileSync(resolve(__dirname, '../../src/pages/multichat.tsx'), 'utf8');
 
 /** The module that now owns UnifiedMessage → ParsedMessage, id included. */
 const MODEL_SOURCE = readFileSync(
-  resolve(__dirname, '../../lib/multichatMessageModel.tsx'),
+  resolve(__dirname, '../../src/lib/multichatMessageModel.tsx'),
   'utf8',
 );
 

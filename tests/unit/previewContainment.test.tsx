@@ -40,24 +40,24 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import ClassicCounterPreview from '@/components/classic/ClassicCounterPreview';
-import ChatOverlay from '@/components/ChatOverlay';
+import ChatOverlay from '@/components/overlay/ChatOverlay';
 import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { counterTool } from '@/lib/tools/counter/config';
-import { MULTICHAT_OBS_SIZE } from '@/lib/tools/multichat/obs';
+import { multichatTool } from '@/features/multichat/config';
+import { counterTool } from '@/features/counter/config';
+import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_PIN_BY,
   sampleMessages,
-} from '@/lib/tools/multichat/samples';
+} from '@/features/multichat/samples';
 import {
   SAMPLE_COUNTER_COUNTS,
   sampleCounterStatuses,
-} from '@/lib/tools/counter/samples';
+} from '@/features/counter/samples';
 import { safeParseMultichatConfig } from '@/lib/multichatConfig';
 import { PLATFORM_ORDER } from '@/lib/viewerCounterConfig';
 import type { MultichatPlatform } from '@/lib/multichatConfig';
-import type { ToolChannels } from '@/lib/tools/registry';
+import type { ToolChannels } from '@/features/registry';
 
 /* next/head is deliberately NOT mocked — see the header. next/link is, because a
    real Link wants a router in context and routing is not what this file is

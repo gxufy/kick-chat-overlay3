@@ -3,13 +3,12 @@
  * `npm run verify:oauth` inspects the process environment as-is (a PM2 / VPS / CI
  * check); `npm run verify:oauth:local` first lets Next's loader read a local .env
  * file and then runs the identical check. Both are driven here through their real
- * `node … scripts/*.mts` invocation rather than by importing the module, for two
- * reasons: the scripts are .mts leaves that tsc never compiles (Node requires the
- * explicit .ts import extension the tsconfig forbids), and running them as the
- * shipped command is what actually proves the exit code, the printed verdict, and
- * the --disable-warning flag that keeps MODULE_TYPELESS_PACKAGE_JSON off the
- * output. A controlled environment is handed to the child, so nothing here depends
- * on the machine's own OAuth variables or on a real .env.local.
+ * `node scripts/*.mjs` invocation rather than by importing the module: they are
+ * plain-JS ESM leaves that bare Node runs with no TypeScript loader (which is the
+ * point — CI on Node 20 has no loader), and running them as the shipped command is
+ * what actually proves the exit code and the printed verdict. A controlled
+ * environment is handed to the child, so nothing here depends on the machine's own
+ * OAuth variables or on a real .env.local.
  *
  * The overriding safety property is that neither command prints a value — only
  * variable *names* and a present/absent verdict. Every configured value below
@@ -44,14 +43,11 @@ const KEYS = Object.keys(COMPLETE);
 
 /* Vitest runs from the repo root, so that is where the scripts are resolved from
    and the cwd the process-environment check is invoked in. The package.json
-   invocation is mirrored exactly, --disable-warning included. */
+   invocation is mirrored exactly: bare `node <script>.mjs`, no extra flags. */
 const REPO = process.cwd();
-const CONFIG_SCRIPT = join(REPO, 'scripts', 'verify-oauth-config.mts');
-const LOCAL_SCRIPT = join(REPO, 'scripts', 'verify-oauth-local.mts');
-const NODE_ARGS = (script: string) => [
-  '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
-  script,
-];
+const CONFIG_SCRIPT = join(REPO, 'scripts', 'verify-oauth-config.mjs');
+const LOCAL_SCRIPT = join(REPO, 'scripts', 'verify-oauth-local.mjs');
+const NODE_ARGS = (script: string) => [script];
 
 /* A base environment with every OAuth variable and NODE_ENV stripped, so a test
    controls the whole contract and the machine's own settings never leak in. Node
@@ -121,9 +117,9 @@ describe('verify:oauth (process environment)', () => {
   });
 
   it('does not print the MODULE_TYPELESS_PACKAGE_JSON warning', () => {
-    /* The scripts import a .ts helper, which Node type-strips; the flag in the
-       package.json command is what keeps the resulting warning off the output an
-       operator reads. Asserting its absence pins that the flag stays. */
+    /* The scripts are .mjs — unambiguous ESM — so Node never has to guess a
+       typeless .js file's module kind and this warning cannot arise. Asserting
+       its absence pins that the scripts stay .mjs and no bare .js creeps in. */
     const { out } = run(CONFIG_SCRIPT, { ...baseEnv(), ...COMPLETE }, REPO);
     expect(out).not.toContain('MODULE_TYPELESS_PACKAGE_JSON');
   });

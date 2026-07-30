@@ -6,13 +6,13 @@
  * single derivation that keeps a query and a fragment apart.
  */
 import { describe, expect, it } from 'vitest';
-import { TOOLS, TOOL_IDS, findTool } from '@/lib/tools/registry';
+import { TOOLS, TOOL_IDS, findTool } from '@/features/registry';
 import { buildOverlayUrl, overlayFragment } from '@/lib/tools/toolContext';
 import {
   COUNTER_PLATFORMS,
   counterTool,
-} from '@/lib/tools/counter/config';
-import { COUNTER_CATALOG } from '@/lib/tools/counter/settings';
+} from '@/features/counter/config';
+import { COUNTER_CATALOG } from '@/features/counter/settings';
 import {
   DEFAULT_STYLE,
   PLATFORM_ORDER,

@@ -29,8 +29,8 @@ import {
   parseViewerCounterConfig,
 } from '@/lib/viewerCounterConfig';
 import { buildOverlayUrl, overlayFragment } from '@/lib/tools/toolContext';
-import { multichatTool } from '@/lib/tools/multichat/config';
-import { counterTool } from '@/lib/tools/counter/config';
+import { multichatTool } from '@/features/multichat/config';
+import { counterTool } from '@/features/counter/config';
 
 const BASE = 'https://multichat-gxufy.vercel.app';
 

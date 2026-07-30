@@ -15,7 +15,7 @@ Everything runs from the URL's query string, so there is no account to make and
 nothing to log into. A second, independent overlay shows live viewer counts.
 
 The one optional exception is native Twitch pinned messages, which need a
-connected Twitch account — see [DEPLOY.md](DEPLOY.md). Everything else works
+connected Twitch account — see [DEPLOY.md](docs/DEPLOY.md). Everything else works
 anonymously.
 
 ## Features
@@ -94,7 +94,7 @@ so the preview and the URL you copy can never disagree.
   not through the URL.
 - **Native Twitch pins** are previewed through the same pin card the overlay
   renders. In OBS they need a connected Twitch account whose login matches the
-  channel you typed — see [DEPLOY.md](DEPLOY.md). No secret is ever read in the
+  channel you typed — see [DEPLOY.md](docs/DEPLOY.md). No secret is ever read in the
   browser; token handling is entirely server-side.
 
 ## Commands
@@ -164,11 +164,11 @@ shows nothing until it has measured something.
 ## Fonts
 
 The overlay fetches only the one Google font your `font=` value names
-(`lib/overlayFonts.ts`), never the whole set, so OBS does not download faces it
+(`src/lib/overlayFonts.ts`), never the whole set, so OBS does not download faces it
 will not render. `segoe`, `impact`, and `default` need no network request, and
 `alsina` is self-hosted. Fonts load through an `@import` inside `next/head`'s
 inline `<style>` rather than a stylesheet link, which is what the Pages Router
-expects outside `pages/_document.tsx`.
+expects outside `src/pages/_document.tsx`.
 
 ## Hosting
 
@@ -181,12 +181,18 @@ serverless deploy. Optionally set `TIKTOK_SIGN_API_KEY` from
 [Euler Stream](https://www.eulerstream.com/) to raise TikTok signing limits.
 
 Full deployment, environment variables, the Supabase schema for Twitch pins, and
-OAuth setup are in [DEPLOY.md](DEPLOY.md).
+OAuth setup are in [DEPLOY.md](docs/DEPLOY.md).
 
 ## Stack
 
 Next.js 14 · TypeScript · Pusher (Kick) · anonymous IRC (Twitch) · InnerTube
 (YouTube) · tiktok-live-connector (TikTok) · 7TV GQL + EventAPI · BTTV · FFZ
+
+## Documentation
+
+Developer docs live in [`docs/`](docs/): [architecture and the enforced import
+boundaries](docs/ARCHITECTURE.md), [testing](docs/TESTING.md),
+[deployment](docs/DEPLOY.md), and [privacy / token handling](docs/PRIVACY.md).
 
 ---
 

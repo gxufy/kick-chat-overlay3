@@ -1176,15 +1176,15 @@ resilience fix on the emote path or generator-only preview state.
 
 ### Safe local OAuth configuration check
 
-- [x] `scripts/verify-oauth-config.mts`, wired as `npm run verify:oauth`. Reads
+- [x] `scripts/verify-oauth-config.mjs`, wired as `npm run verify:oauth`. Reads
       `process.env` only — never `.env.local`, never any secret's value — and
       reports each of the six required variables as present or MISSING by name,
       prints the public production and local callback URLs, and exits non-zero
       when a variable is absent or `TWITCH_REDIRECT_URI`'s path is wrong. It reuses
-      `lib/server/oauthConfig.ts` as the authoritative list, so it cannot drift
-      from what the OAuth routes check. Opt-in dotenv checking is documented in the
-      script header as `node --env-file=.env.local scripts/verify-oauth-config.mts`.
-      (`2627b54`)
+      `lib/server/oauthConfigContract.mjs` as the authoritative list, so it cannot
+      drift from what the OAuth routes check. Opt-in dotenv checking is documented
+      in the script header as `node --env-file=.env.local scripts/verify-oauth-config.mjs`.
+      (`2627b54`, later made CI-portable as `.mjs`)
 
 Documented in `DEPLOY.md`'s build/verification section. The check confirms only
 that the configuration contract is satisfied; whether a real authorization round
@@ -1252,16 +1252,17 @@ state or a new read-only script.
 
 ### A safe local OAuth verifier
 
-- [x] `npm run verify:oauth:local` (`scripts/verify-oauth-local.mts`) loads
+- [x] `npm run verify:oauth:local` (`scripts/verify-oauth-local.mjs`) loads
       `.env.local` through `@next/env`'s `loadEnvConfig` — the same loader
       `next dev` uses — then runs the shared report. It prints only the **names**
       of the files it loaded, never their contents, and never modifies or commits
       anything. (`cadd44e`)
 - [x] `verify:oauth` and `verify:oauth:local` share one report body
-      (`scripts/oauthConfigReport.mts`) and the one authoritative variable list
-      (`lib/server/oauthConfig.ts`), so their verdicts cannot drift. The
-      `MODULE_TYPELESS_PACKAGE_JSON` warning is suppressed with
-      `node --disable-warning=…`, not a repo-wide `"type": "module"`.
+      (`scripts/oauthConfigReport.mjs`) and the one authoritative variable list
+      (`lib/server/oauthConfigContract.mjs`, read by the OAuth routes through
+      `lib/server/oauthConfig.ts`), so their verdicts cannot drift. The scripts are
+      plain-JS `.mjs`, so bare Node runs them with no loader and no repo-wide
+      `"type": "module"` — which is what makes the CI check portable on Node 20.
 - [x] `tests/unit/oauthConfigReport.test.ts` drives both scripts as subprocesses,
       asserting exit codes, the per-variable MISSING lines, both public callback
       URLs, the "does not confirm credentials" caveat, that a distinctive secret

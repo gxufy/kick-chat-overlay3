@@ -31,7 +31,7 @@ vi.mock('next/router', () => ({
   useRouter: () => ({ isReady, query, replace }),
 }));
 
-vi.mock('../../components/ChatOverlay', () => ({
+vi.mock('../../src/components/overlay/ChatOverlay', () => ({
   __esModule: true,
   default: () => <div data-testid="chat-overlay" />,
   FONT_FAMILIES: {},
@@ -40,7 +40,7 @@ vi.mock('../../components/ChatOverlay', () => ({
 /* The generator is stubbed for the same reason the overlay is: this file tests
    the branch, and the generator's own behaviour has its own suite. The stub
    records the prop that decides where the page starts. */
-vi.mock('../../components/classic/ClassicGenerator', () => ({
+vi.mock('../../src/components/classic/ClassicGenerator', () => ({
   __esModule: true,
   default: ({ focusCounter }: { focusCounter?: boolean }) => (
     <div data-testid="classic-generator" data-focus-counter={String(Boolean(focusCounter))} />
@@ -50,26 +50,26 @@ vi.mock('../../components/classic/ClassicGenerator', () => ({
 /* Connectors open sockets and timers on start; none of that is under test. Each
    factory builds its own stub inline — these calls are hoisted above every
    top-level binding, so a shared const would not exist yet when they run. */
-vi.mock('../../lib/connectors/kick', () => ({
+vi.mock('../../src/lib/connectors/kick', () => ({
   createKickConnector: () => ({ start: () => {}, stop: () => {} }),
 }));
-vi.mock('../../lib/connectors/twitch', () => ({
+vi.mock('../../src/lib/connectors/twitch', () => ({
   createTwitchConnector: () => ({ start: () => {}, stop: () => {} }),
 }));
-vi.mock('../../lib/connectors/youtube', () => ({
+vi.mock('../../src/lib/connectors/youtube', () => ({
   createYouTubeConnector: () => ({ start: () => {}, stop: () => {} }),
 }));
-vi.mock('../../lib/connectors/tiktok', () => ({
+vi.mock('../../src/lib/connectors/tiktok', () => ({
   createTikTokConnector: () => ({ start: () => {}, stop: () => {} }),
 }));
-vi.mock('../../lib/cosmetics', () => ({
+vi.mock('../../src/lib/cosmetics', () => ({
   createCosmeticsFetcher: () => ({ want: () => {}, stop: () => {} }),
 }));
 
 /* The pin poller is counted, not just silenced: a generator visit must never
    start one, and the only way to show that is to observe that it was not called. */
 const startPoller = vi.fn(() => () => {});
-vi.mock('../../lib/twitchPinPoller', () => ({
+vi.mock('../../src/lib/twitchPinPoller', () => ({
   startTwitchPinPoller: (...args: unknown[]) => startPoller(...(args as [])),
 }));
 

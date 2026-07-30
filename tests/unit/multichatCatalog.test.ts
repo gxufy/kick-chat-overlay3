@@ -33,9 +33,9 @@ import {
   multichatTool,
   normalizeMultichatStyle,
   toMultichatChannels,
-} from '@/lib/tools/multichat/config';
-import { MULTICHAT_CATALOG } from '@/lib/tools/multichat/settings';
-import { TOOLS, TOOL_IDS, findTool } from '@/lib/tools/registry';
+} from '@/features/multichat/config';
+import { MULTICHAT_CATALOG } from '@/features/multichat/settings';
+import { TOOLS, TOOL_IDS, findTool } from '@/features/registry';
 
 /** Workspace defaults — what the catalog and descriptor are built on. */
 const D = MULTICHAT_WORKSPACE_DEFAULTS;

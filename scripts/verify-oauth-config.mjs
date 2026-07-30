@@ -25,14 +25,14 @@
  *     plausibly. A pass here is not "production OAuth works"; that is only ever
  *     established by a human completing the flow.
  *
- * The verdict, presentation, and exit code all live in oauthConfigReport.mts, and
- * that reuses the one authoritative contract (lib/server/oauthConfig.ts), so
- * neither this command nor its local companion can drift from what the OAuth
+ * The verdict, presentation, and exit code all live in oauthConfigReport.mjs, and
+ * that reuses the one authoritative contract (lib/server/oauthConfigContract.mjs),
+ * so neither this command nor its local companion can drift from what the OAuth
  * routes actually require.
  *
  * Exit status: 0 when the contract is satisfied and the redirect path is right;
  * 1 otherwise, so it can gate a deploy step.
  */
-import { runOAuthConfigReport } from './oauthConfigReport.mts';
+import { runOAuthConfigReport } from './oauthConfigReport.mjs';
 
 process.exit(runOAuthConfigReport());

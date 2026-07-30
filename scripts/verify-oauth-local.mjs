@@ -2,7 +2,7 @@
  *
  * WHAT THIS IS FOR
  *
- * The companion to verify-oauth-config.mts. That one inspects whatever is already
+ * The companion to verify-oauth-config.mjs. That one inspects whatever is already
  * exported in the process environment — a PM2 service, a VPS shell, a CI job.
  * This one first lets Next load the local .env files the same way `next dev` and
  * `next start` do, then runs the identical check against the result. It answers,
@@ -30,16 +30,16 @@
  *     A pass here is not "OAuth works"; that is only ever established by a human
  *     completing the flow.
  *
- * The verdict, presentation, and exit code all live in oauthConfigReport.mts, which
- * reuses the one authoritative contract (lib/server/oauthConfig.ts), so this
- * command and its process-environment companion can never drift apart or restate
- * the required list differently.
+ * The verdict, presentation, and exit code all live in oauthConfigReport.mjs,
+ * which reuses the one authoritative contract (lib/server/oauthConfigContract.mjs),
+ * so this command and its process-environment companion can never drift apart or
+ * restate the required list differently.
  *
  * Exit status: 0 when the contract is satisfied and the redirect path is right;
  * 1 otherwise, so it can gate a deploy step.
  */
 import nextEnv from '@next/env';
-import { runOAuthConfigReport } from './oauthConfigReport.mts';
+import { runOAuthConfigReport } from './oauthConfigReport.mjs';
 
 /* @next/env is CommonJS; the named function lives on the default export. */
 const { loadEnvConfig } = nextEnv;

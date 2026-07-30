@@ -336,9 +336,10 @@ Both print the identical report — each variable name with a present/MISSING
 verdict and **never its value**, the two public callback URLs, and a warning if
 `TWITCH_REDIRECT_URI` does not end in `/api/twitch/oauth/callback`. Both exit `0`
 only when all six are set and the redirect path is well-formed, and `1` otherwise.
-They share one report body (`scripts/oauthConfigReport.mts`) and the one
-authoritative variable list (`lib/server/oauthConfig.ts`), so their verdicts
-cannot drift.
+They share one report body (`scripts/oauthConfigReport.mjs`) and the one
+authoritative variable list (`lib/server/oauthConfigContract.mjs`, which the
+OAuth routes read through `lib/server/oauthConfig.ts`), so their verdicts cannot
+drift.
 
 The difference is the environment each inspects:
 

@@ -7,9 +7,10 @@
  * exit code they choose is one thing, and it lives here so the two can never
  * drift apart or restate the contract differently.
  *
- * This module reuses lib/server/oauthConfig.ts — the one authoritative list of
- * required variables and the inspection helpers — rather than naming any
- * variable itself, so it stays in step with what the OAuth routes actually read.
+ * This module reuses lib/server/oauthConfigContract.mjs — the one authoritative
+ * list of required variables and the inspection helpers, which the OAuth routes
+ * read through oauthConfig.ts — rather than naming any variable itself, so it
+ * stays in step with what those routes actually read.
  *
  * SAFETY. Like the contract it draws on, this prints variable *names* and a
  * present/absent verdict only. It never reads a value out of the environment —
@@ -28,18 +29,18 @@ import {
   TWITCH_OAUTH_PRODUCTION_CALLBACK,
   missingTwitchOAuthEnv,
   twitchRedirectUriPathLooksWrong,
-} from '../src/lib/server/oauthConfig.ts';
+} from '../src/lib/server/oauthConfigContract.mjs';
 
 /**
  * Print the configuration verdict and return the process exit code: 0 when every
  * required variable is present and the redirect path is well formed, 1 otherwise,
  * so either entry script can gate a deploy step on it.
  */
-export function runOAuthConfigReport(): number {
+export function runOAuthConfigReport() {
   /* Presence, one line per variable. Deriving the missing set once and testing
      membership keeps this in step with missingTwitchOAuthEnv()'s own rules —
      crucially, that a whitespace-only value counts as absent. */
-  const missing = new Set<string>(missingTwitchOAuthEnv());
+  const missing = new Set(missingTwitchOAuthEnv());
   const pathLooksWrong = twitchRedirectUriPathLooksWrong();
 
   console.log('Twitch OAuth configuration check');

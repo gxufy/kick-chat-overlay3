@@ -12,8 +12,7 @@ only for native Twitch pinned messages.
 
 Type a command as the **first word** of a chat message. Kick, Twitch, YouTube
 and TikTok all reach the same dispatcher, so a command works from any connected
-platform. Moderator or broadcaster permission is required. `!kickchat` is
-accepted as an alias.
+platform. Moderator or broadcaster permission is required.
 
 | Command | What it does |
 | :--- | :--- |
@@ -57,15 +56,15 @@ registry, so it always matches what the overlay implements.
 
 ## Supported Services
 
+<!-- prettier-ignore-start -->
 | Service | Features |
 | :--- | :--- |
-| **Twitch** | Chat, native and third-party emotes, badges, viewer count, moderation events, and optional native pinned messages through OAuth. |
-| **Kick** | Chat, emotes, badges, viewer count, pinned messages and moderation events. |
-| **YouTube** | Live chat, memberships and paid events, badges, viewer count and pinned messages. |
-| **TikTok** | Live chat, gifts, follows and shares, source handling, plus viewer count and pinned messages where currently supported. |
-| **7TV** | Global, channel and personal emotes where supported, live set updates, zero-width emotes, paints, paint shadows and cosmetic badges. |
-| **BTTV** | Global and channel emotes, with live set updates where supported. |
-| **FFZ** | Global and channel emotes, with supported badge overrides. |
+| <img src="https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png" width="20" /> **[TwitchTV](https://www.twitch.tv/)** | **Emotes:** Global, Channel, Follow, Sub, Bit<br>**Badges:** Sub Badges, Bit Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
+| <img src="https://kick.com/favicon.ico" width="20" /> **[Kick](https://kick.com/)** | **Emotes:** Global, Channel, Sub<br>**Badges:** Sub Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
+| <img src="https://7tv.app/favicon.svg" width="20" /> **[7TV](https://7tv.app/)** | **Emotes:** Global, Channel, Personal/Special Sets, Auto Set Updates, Zero-Width<br>**User Customization:** Paints, Badges, Personal/Special Emote Sets |
+| <img src="https://betterttv.com/favicon.png" width="20" /> **[BTTV](https://betterttv.com/)** | **Emotes:** Global, Channel, Auto Set Updates |
+| <img src="https://www.frankerfacez.com/static/images/favicon-32.png" width="20" /> **[FFZ](https://www.frankerfacez.com/)** | **Emotes:** Global, Channel<br>**User Customization:** Global + Channel Badges |
+<!-- prettier-ignore-end -->
 
 ## OBS Setup
 
@@ -89,6 +88,4 @@ sources**. Add either, both or neither.
 ---
 
 Built by [gxufy](https://guns.lol/gxufy). Not affiliated with Kick, Twitch,
-YouTube or TikTok. Inspired by [ChatIS](https://chatis.is2511.com/),
-[unified-chat-lite](https://github.com/Kimsec/unified-chat-lite) and
-[UChat](https://github.com/Fiszh/UChat).
+YouTube or TikTok.

@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import ViewerCounterDisplay from '../components/overlay/ViewerCounterDisplay';
+import { counterReadyMessage } from '../lib/counterPreviewReadiness';
 import {
   SERVER_PLATFORMS,
   channelPollKey,
@@ -62,6 +63,25 @@ export default function Counter() {
   useEffect(() => {
     if (!router.isReady) return;
 
+    /* A genuine channel change starts over, visibly.
+     *
+     * React has already run the previous cleanup by the time this body executes
+     * — the old request is aborted and the old timer is cleared — so this is the
+     * point at which the previous channel's numbers stop being anything but
+     * stale. They are cleared here rather than left until the new poll commits,
+     * because leaving them would show one channel's audience under another
+     * channel's name for a whole round trip. Nothing renders in their place: the
+     * `started` gate below is what the overlay already uses to avoid showing a
+     * count it has not measured, and a channel change puts it back in exactly
+     * that state.
+     *
+     * Both setters no-op when there is nothing to clear, so an ordinary first
+     * mount costs no extra render. `statuses` is compared by key count rather
+     * than by identity — the object is replaced on every commit, so an identity
+     * check would always be true and would always re-render. */
+    setStatuses((current) => (Object.keys(current).length === 0 ? current : {}));
+    setStarted(false);
+
     const channels = parseChannelPollKey(pollKey);
     const configured = Object.keys(channels) as ViewerPlatform[];
     if (configured.length === 0) return;
@@ -73,6 +93,12 @@ export default function Counter() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
+    /* Whether this effect run has already announced itself. The readiness
+       signal describes the first commit for this pollKey, so later polls in the
+       same run are not re-announced — the parent has long since revealed the
+       frame, and a message per poll would be noise on the generator's window
+       every ten seconds for as long as the tab is open. */
+    let announced = false;
 
     /** Merge one poll's outcomes with the staleness policy. */
     function commit(fresh: Partial<Record<ViewerPlatform, PlatformCountStatus>>) {
@@ -186,6 +212,38 @@ export default function Counter() {
       if (cancelled) return;
       commit(fresh);
       setStarted(true);
+
+      /* There are real numbers on screen now, so an embedding generator may
+       * stop showing its samples. Sent here rather than on mount or on load
+       * because those both happen before any provider has been asked anything —
+       * that is the whole reason a message exists instead of an iframe event.
+       *
+       * Narrow on purpose:
+       *   - nothing is sent unless this document is actually framed, so the
+       *     ordinary OBS and browser cases post nothing at all;
+       *   - the target origin is our own, so a cross-origin embedder — anyone
+       *     who put this URL in their own page — receives nothing rather than a
+       *     message describing someone's stream;
+       *   - the pollKey travels with it, so a parent can tell a commit for the
+       *     configuration it currently displays from one belonging to a channel
+       *     it has already moved on from.
+       *
+       * The parent validates all of it again on arrival. This is a hint that
+       * data has committed, not a channel the parent trusts. */
+      if (!announced && typeof window !== 'undefined' && window.parent !== window) {
+        announced = true;
+        try {
+          window.parent.postMessage(
+            counterReadyMessage(pollKey),
+            window.location.origin,
+          );
+        } catch {
+          /* A frame whose parent has gone away, or an origin the browser
+             refuses to post to. The overlay's own rendering does not depend on
+             this succeeding, so there is nothing to recover and nothing worth
+             logging. */
+        }
+      }
 
       // Schedule the next poll only now that this one has settled, so polls
       // can never overlap.

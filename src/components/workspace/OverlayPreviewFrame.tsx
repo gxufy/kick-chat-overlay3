@@ -10,7 +10,7 @@
  * Appearance changes navigate the iframe too — there is no parent/overlay
  * message protocol, so every settled URL is a fresh document load.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Ref } from 'react';
 
 /** How long the incoming URL must hold still before the iframe navigates. */
 export const PREVIEW_DEBOUNCE_MS = 350;
@@ -21,6 +21,7 @@ export default function OverlayPreviewFrame({
   title,
   height,
   onMountedChange,
+  frameRef,
 }: {
   /** The generated overlay URL — identical to the one Copy provides. */
   url: string;
@@ -38,6 +39,18 @@ export default function OverlayPreviewFrame({
    * embedded overlay to report status. Nothing crosses the iframe boundary.
    */
   onMountedChange?: (mounted: boolean) => void;
+  /**
+   * Handle on the iframe element itself.
+   *
+   * Exists so a parent that listens for messages can require
+   * `event.source === frame.contentWindow` — identifying the one document it
+   * embedded, rather than trusting any same-origin sender. Nothing is written
+   * through it and no method is called on it here.
+   *
+   * Null while no iframe is mounted, which is the honest answer during the
+   * debounce and whenever nothing is configured.
+   */
+  frameRef?: Ref<HTMLIFrameElement>;
 }) {
   /* The last settled URL, or null when there is nothing valid to show.
      Deliberately never seeded from `url`: at mount `url` is the channel-less
@@ -74,6 +87,7 @@ export default function OverlayPreviewFrame({
 
   return (
     <iframe
+      ref={frameRef}
       src={settledUrl}
       title={title}
       scrolling="no"

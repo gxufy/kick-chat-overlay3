@@ -38,6 +38,23 @@ vi.mock('next/router', () => ({
 type Handler = () => unknown | null;
 const handlers: { match: (url: string) => boolean; handler: Handler }[] = [];
 let requests: string[] = [];
+/* The abort signal of every request made, in order, so a test can assert that
+   changing channels abandoned the request that was already in flight rather than
+   letting its result land under the new channel's name. */
+let signals: (AbortSignal | null | undefined)[] = [];
+/* Held requests. Null for every test that does not care: the poll loop schedules
+   its successor only after settling, so a request that never resolves is the only
+   way to observe what the loop does while one is outstanding. */
+let gate: Promise<void> | null = null;
+
+/** A promise plus its resolver, for holding a request open across assertions. */
+function deferred() {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
 
 function respond(match: (url: string) => boolean, handler: Handler) {
   handlers.unshift({ match, handler });
@@ -73,13 +90,17 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'Date'] });
   handlers.length = 0;
   requests = [];
+  signals = [];
+  gate = null;
   query = {};
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(typeof input === 'string' ? input : (input as Request).url ?? input);
       requests.push(url);
+      signals.push(init?.signal);
       if (init?.signal?.aborted) throw new Error('aborted');
+      if (gate) await gate;
       const entry = handlers.find((h) => h.match(url));
       const body = entry?.handler() ?? null;
       if (body === null) throw new Error('network');
@@ -324,6 +345,122 @@ describe('the poll loop', () => {
     window.location.hash = '';
   });
 
+  it('polls immediately on mount rather than waiting out an interval', () => {
+    /* Synchronous assertion on purpose: the request must already have been made
+       by the time the effect returns, with no timer in between. An overlay that
+       waits 10 seconds for its first number is blank for 10 seconds in OBS. */
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    render(<CounterPage />);
+    expect(requests.length).toBe(1);
+  });
+
+  it('keeps polling well past the first result', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    const afterFirst = requests.length;
+    await nextPoll();
+    await nextPoll();
+    await nextPoll();
+    expect(requests.length).toBe(afterFirst * 4);
+  });
+
+  it('waits for the outstanding request to settle before timing the next one', async () => {
+    /* The interval is measured from settle, not from send. With a request held
+       open, no amount of elapsed time may produce a second one. */
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    const held = deferred();
+    gate = held.promise;
+
+    render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(requests.length).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(COUNTER_POLL_INTERVAL_MS * 3); });
+    expect(requests.length).toBe(1);
+
+    gate = null;
+    await act(async () => { held.release(); await vi.advanceTimersByTimeAsync(0); });
+    expect(requests.length).toBe(1);
+  });
+
+  it('waits the full interval after settling, then polls again', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    expect(requests.length).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(COUNTER_POLL_INTERVAL_MS - 1); });
+    expect(requests.length).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2); });
+    expect(requests.length).toBe(2);
+  });
+
+  it('aborts the request in flight when the channel changes', async () => {
+    query = { kick: 'first' };
+    kickLive(1);
+    const held = deferred();
+    gate = held.promise;
+
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const firstSignal = signals[0];
+    expect(firstSignal?.aborted).toBe(false);
+
+    gate = null;
+    query = { kick: 'second' };
+    await act(async () => { rerender(<CounterPage />); await vi.advanceTimersByTimeAsync(0); });
+
+    expect(firstSignal?.aborted).toBe(true);
+    held.release();
+  });
+
+  it('polls the new channel immediately on a channel change', async () => {
+    query = { kick: 'first' };
+    kickLive(1);
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const before = requests.length;
+
+    query = { kick: 'second' };
+    rerender(<CounterPage />);
+    expect(requests.length).toBe(before + 1);
+    expect(requests[requests.length - 1]).toContain('second');
+  });
+
+  it('does not restart polling for an appearance-only change', async () => {
+    /* Colour, size and layout are not the loop's business. Restarting on them
+       would make a settings drag issue a request per frame. */
+    query = { kick: 'somechannel', fontSize: '40' };
+    kickLive(1);
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const before = requests.length;
+
+    query = { kick: 'somechannel', fontSize: '41', color: 'ff0000', combined: 'true' };
+    rerender(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(requests.length).toBe(before);
+  });
+
+  it('aborts the request in flight on unmount', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    const held = deferred();
+    gate = held.promise;
+
+    const { unmount } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(signals[0]?.aborted).toBe(false);
+
+    unmount();
+    expect(signals[0]?.aborted).toBe(true);
+    held.release();
+  });
+
   it('opens no websocket and no event source', async () => {
     /* The counter is a polling overlay. A socket here would be chat machinery
        leaking into a tool that does not need it. */
@@ -338,5 +475,191 @@ describe('the poll loop', () => {
     await nextPoll();
     expect(ws).not.toHaveBeenCalled();
     expect(es).not.toHaveBeenCalled();
+  });
+});
+
+describe('a channel change discards the old channel’s numbers', () => {
+  it('shows nothing at all until the new channel has its own measurement', async () => {
+    /* The failure this prevents: 500 viewers measured for `first` staying on
+       screen after the overlay is pointed at `second`, which is a number
+       attributed to a channel it was never measured from. */
+    query = { kick: 'first' };
+    kickLive(500);
+    const { container, rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(text(container)).toContain('500');
+
+    const held = deferred();
+    gate = held.promise;
+    query = { kick: 'second' };
+    rerender(<CounterPage />);
+
+    expect(text(container)).toBe('');
+    expect(container.querySelector('svg')).toBeNull();
+    held.release();
+  });
+
+  it('does not carry a stale offline state into the new channel', async () => {
+    query = { kick: 'first' };
+    kickOffline();
+    const { container, rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    const held = deferred();
+    gate = held.promise;
+    query = { kick: 'second' };
+    rerender(<CounterPage />);
+    expect(text(container)).toBe('');
+    held.release();
+  });
+
+  it('does not blank the display for an appearance-only change', async () => {
+    /* The reset is keyed on the channels, not on the query. Restyling a live
+       overlay must not flash it empty. */
+    query = { kick: 'somechannel', fontSize: '40' };
+    kickLive(750);
+    const { container, rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(text(container)).toContain('750');
+
+    query = { kick: 'somechannel', fontSize: '41' };
+    rerender(<CounterPage />);
+    expect(text(container)).toContain('750');
+  });
+
+  it('renders the new channel’s number once it arrives', async () => {
+    query = { kick: 'first' };
+    kickLive(500);
+    const { container, rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    handlers.length = 0;
+    kickLive(42);
+    query = { kick: 'second' };
+    await act(async () => { rerender(<CounterPage />); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+
+    const rendered = text(container);
+    expect(rendered).toContain('42');
+    expect(rendered).not.toContain('500');
+  });
+});
+
+describe('readiness postMessage emission', () => {
+  /* In jsdom, window.parent === window (no real iframe nesting). The /counter
+     page only posts when window.parent !== window, so we need a fake parent to
+     make the branch reachable. Each test restores the original value. */
+  let fakeParent: { postMessage: ReturnType<typeof vi.fn> };
+  let originalParent: Window;
+
+  beforeEach(() => {
+    fakeParent = { postMessage: vi.fn() };
+    originalParent = window.parent;
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      get: () => fakeParent,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      get: () => originalParent,
+    });
+  });
+
+  it('emits a ready message after the first poll commits', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+  });
+
+  it('emits the correct message type and pollKey', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    const [msg] = fakeParent.postMessage.mock.calls[0] as [unknown, string];
+    expect((msg as { type: string }).type).toBe('gxufy:counter-poll-committed');
+    expect((msg as { pollKey: string }).pollKey).toContain('kick:somechannel');
+  });
+
+  it('posts to the current origin', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    const [, origin] = fakeParent.postMessage.mock.calls[0] as [unknown, string];
+    expect(origin).toBe(window.location.origin);
+  });
+
+  it('emits only once per pollKey even after multiple polls', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    await nextPoll();
+    await nextPoll();
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+  });
+
+  it('does not emit before the first poll settles', async () => {
+    /* Held open rather than merely un-awaited: readiness means a committed poll,
+       so the assertion has to be made while one is genuinely outstanding. */
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    const held = deferred();
+    gate = held.promise;
+
+    render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(requests.length).toBe(1);
+    expect(fakeParent.postMessage).not.toHaveBeenCalled();
+
+    gate = null;
+    await act(async () => { held.release(); await vi.advanceTimersByTimeAsync(0); });
+  });
+
+  it('does not emit when the page is the top frame', async () => {
+    /* Restore window.parent === window for this test only. */
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      get: () => originalParent,
+    });
+    query = { kick: 'somechannel' };
+    kickLive(1);
+    await mount();
+    expect(fakeParent.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('emits again with the new pollKey when the channel changes', async () => {
+    query = { kick: 'first' };
+    kickLive(1);
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+    const firstKey = (fakeParent.postMessage.mock.calls[0] as [{ pollKey: string }, string])[0].pollKey;
+
+    handlers.length = 0;
+    kickLive(2);
+    query = { kick: 'second' };
+    await act(async () => { rerender(<CounterPage />); await vi.advanceTimersByTimeAsync(0); });
+    expect(fakeParent.postMessage).toHaveBeenCalledTimes(2);
+    const secondKey = (fakeParent.postMessage.mock.calls[1] as [{ pollKey: string }, string])[0].pollKey;
+    expect(secondKey).not.toBe(firstKey);
+    expect(secondKey).toContain('kick:second');
+  });
+
+  it('does not re-emit for an appearance-only change', async () => {
+    query = { kick: 'somechannel', fontSize: '40' };
+    kickLive(1);
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+
+    query = { kick: 'somechannel', fontSize: '41' };
+    rerender(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
   });
 });

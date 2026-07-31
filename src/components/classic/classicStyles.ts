@@ -321,6 +321,21 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
    real overlay. Deliberately quiet — it sits in the label row at the same size as
    the row's own text, states a fact, and is not styled as a warning. */
 .preview-badge { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 0.66rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
+/* Live region in the label row, empty except while a configured overlay's first
+   poll is in flight. Styled as plain label text so the row does not reflow when
+   the text arrives and leaves. */
+.preview-loading { font-size: 0.66rem; color: var(--dim); letter-spacing: .04em; font-weight: 600; text-transform: none; }
+.preview-loading:empty { display: none; }
+
+/* Sample and live previews stacked in one surface, so the samples can stay on
+   screen while the live overlay loads and runs its first poll behind them.
+   The live layer is absolutely positioned only while it is hidden; once ready it
+   returns to normal flow and gives the surface its height.
+   Uses visibility rather than opacity, so the hidden frame is out of the
+   accessibility tree and the tab order; rather than display:none, so it still
+   lays out at its real size and the document inside it renders and polls. */
+.preview-swap { position: relative; }
+.preview-swap-live[data-live-ready="false"] { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
 
 /* Custom preview messages, inside the chat output card.
    Compact on purpose: this sits under a 600px preview in a card that also holds

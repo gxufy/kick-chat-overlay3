@@ -16,7 +16,6 @@ import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import ViewerCounterDisplay from '../components/overlay/ViewerCounterDisplay';
-import { counterReadyMessage } from '../lib/counterPreviewReadiness';
 import {
   SERVER_PLATFORMS,
   channelPollKey,
@@ -101,12 +100,6 @@ export default function Counter() {
        pending abort timer after unmount is a leak whether or not it fires. */
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
-    /* Whether this effect run has already announced itself. The readiness
-       signal describes the first commit for this pollKey, so later polls in the
-       same run are not re-announced — the parent has long since revealed the
-       frame, and a message per poll would be noise on the generator's window
-       every ten seconds for as long as the tab is open. */
-    let announced = false;
 
     /** Merge one poll's outcomes with the staleness policy. */
     function commit(fresh: Partial<Record<ViewerPlatform, PlatformCountStatus>>) {
@@ -255,37 +248,18 @@ export default function Counter() {
       commit(fresh);
       setStarted(true);
 
-      /* There are real numbers on screen now, so an embedding generator may
-       * stop showing its samples. Sent here rather than on mount or on load
-       * because those both happen before any provider has been asked anything —
-       * that is the whole reason a message exists instead of an iframe event.
+      /* This page tells an embedder nothing.
        *
-       * Narrow on purpose:
-       *   - nothing is sent unless this document is actually framed, so the
-       *     ordinary OBS and browser cases post nothing at all;
-       *   - the target origin is our own, so a cross-origin embedder — anyone
-       *     who put this URL in their own page — receives nothing rather than a
-       *     message describing someone's stream;
-       *   - the pollKey travels with it, so a parent can tell a commit for the
-       *     configuration it currently displays from one belonging to a channel
-       *     it has already moved on from.
+       * It briefly posted a readiness message to its parent, so the generator
+       * could keep sample counts up until a real poll had committed and then
+       * swap them out. The generator no longer waits for anything: it shows this
+       * document as soon as it exists, exactly as it does for the chat overlay,
+       * so the message had one consumer and that consumer is gone.
        *
-       * The parent validates all of it again on arrival. This is a hint that
-       * data has committed, not a channel the parent trusts. */
-      if (!announced && typeof window !== 'undefined' && window.parent !== window) {
-        announced = true;
-        try {
-          window.parent.postMessage(
-            counterReadyMessage(pollKey),
-            window.location.origin,
-          );
-        } catch {
-          /* A frame whose parent has gone away, or an origin the browser
-             refuses to post to. The overlay's own rendering does not depend on
-             this succeeding, so there is nothing to recover and nothing worth
-             logging. */
-        }
-      }
+       * Worth not reintroducing. The overlay is the same document in OBS, in a
+       * browser tab and in the preview, and a handshake that only matters when
+       * framed is a second behaviour for one of those three — which is how the
+       * preview and the real overlay drifted apart in the first place. */
 
       // Schedule the next poll only now that this one has settled, so polls
       // can never overlap.

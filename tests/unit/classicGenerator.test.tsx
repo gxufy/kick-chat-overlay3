@@ -1328,19 +1328,16 @@ describe('the Demo interface is gone', () => {
   it('renders previews only as real overlay iframes', () => {
     /* The claim is that nothing here is a mock-up: what a preview shows a
        configured channel is the overlay itself, at its own URL, not a picture of
-       one. So every frame that loads a document loads it from this origin.
-       Frames without a src are the sample previews, which render the production
-       overlay components into a local blank document — also not mock-ups, and
-       covered by their own tests. The counter keeps one on screen behind the live
-       frame until the overlay reports its first committed poll, which is why the
-       count of frames is not asserted here. */
+       one. Two frames, both loading from this origin — one per tool, with no
+       third frame layered behind either of them. The exact count matters: a
+       revision that kept a sample preview mounted underneath the live counter is
+       what this asserts is gone. */
     mount();
     typeChannel('kick', 'somechannel');
     settle();
     const frames = Array.from(document.querySelectorAll('iframe'));
-    const loaded = frames.filter((frame) => frame.hasAttribute('src'));
-    expect(loaded.length).toBeGreaterThanOrEqual(2);
-    for (const frame of loaded) {
+    expect(frames).toHaveLength(2);
+    for (const frame of frames) {
       expect(frame.getAttribute('src')?.startsWith(BASE)).toBe(true);
     }
   });

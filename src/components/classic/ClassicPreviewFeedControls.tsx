@@ -140,10 +140,16 @@ export default function ClassicPreviewFeedControls({
       {/* One live region for the feed, and deliberately not one per message:
           announcing every fake line would make the page unusable with a screen
           reader. It states the run state and the count, which is what changes
-          meaningfully — and it is polite, so it waits for a pause in speech. */}
+          meaningfully — and it is polite, so it waits for a pause in speech.
+
+          `statusDetail` is carried in the off sentence as well as the running one.
+          Off is the default now, and the source picker is live in that state — it
+          decides what the next generated message will draw from — so a summary that
+          only spoke while the feed ran would be silent exactly when someone is most
+          likely to be setting it up. */}
       <p className="preview-feed-status" role="status">
         {!enabled
-          ? 'Live preview feed off.'
+          ? `Live preview feed off.${statusDetail ? ` ${statusDetail}` : ''}`
           : paused
             ? `Live preview feed paused. ${messageCount} simulated messages.`
             : running

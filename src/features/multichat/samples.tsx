@@ -61,6 +61,7 @@ import {
   PREVIEW_EMOTE_TOKENS,
   PREVIEW_SEVENTV_BADGE_IMAGE,
   PREVIEW_TIKTOK_MOD_BADGE,
+  PREVIEW_TIKTOK_SUB_BADGE,
 } from './previewAssets';
 
 /* A fixed instant, so timestamps are stable across runs and machines.
@@ -108,27 +109,35 @@ function nativeEmote(text: string, token: string, url: string): UnifiedEmote {
  * showing in a preview rather than discovering in OBS.
  */
 export const SAMPLE_SEVENTV_EMOTES: readonly SevenTVEmote[] = [
+  /* width/height mirror each fixture's declared intrinsic size rather than a
+     uniform 32. The renderer sizes from CSS and never reads these, but a
+     provider sends the real dimensions here, and a fixture that misreports them
+     would be the wrong thing to test any future consumer of the field against.
+     They vary because the art does — see previewAssets. */
   {
     name: PREVIEW_EMOTE_TOKENS.sevenTV,
     image: PREVIEW_EMOTE_LAUGH,
-    height: 32,
-    width: 32,
+    height: 128,
+    width: 128,
     zeroWidth: false,
     upscale: false,
   },
   {
     name: PREVIEW_EMOTE_TOKENS.sevenTVAlt,
     image: PREVIEW_EMOTE_GRIN,
-    height: 32,
-    width: 32,
+    /* The wide one: 3:2, so a stretched render is visible. */
+    height: 128,
+    width: 192,
     zeroWidth: false,
     upscale: false,
   },
   {
     name: PREVIEW_EMOTE_TOKENS.sevenTVZeroWidth,
     image: PREVIEW_EMOTE_RAIN,
-    height: 32,
-    width: 32,
+    /* Wider than the base it overlays, which is how it shows that an overlay
+       adds no width to the line no matter its own. */
+    height: 144,
+    width: 192,
     zeroWidth: true,
     upscale: false,
   },
@@ -140,14 +149,16 @@ export const SAMPLE_SEVENTV_EMOTES: readonly SevenTVEmote[] = [
   {
     name: PREVIEW_EMOTE_TOKENS.bttv,
     image: PREVIEW_EMOTE_CAT,
-    height: 32,
-    width: 32,
+    height: 128,
+    width: 128,
     zeroWidth: false,
     upscale: false,
   },
   {
     name: PREVIEW_EMOTE_TOKENS.ffz,
     image: PREVIEW_EMOTE_SMILE,
+    /* Below the renderer's height cap on purpose — a provider 1x variant. The
+       row shows it landing at the same height as its neighbours anyway. */
     height: 32,
     width: 32,
     zeroWidth: false,
@@ -162,40 +173,67 @@ export const SAMPLE_SEVENTV_BADGE: SevenTVBadge = {
 };
 
 /**
- * A 7TV name paint: a three-stop linear gradient with one soft shadow.
+ * A 7TV name paint: a five-stop linear gradient with two composed shadows.
  *
  * Colours are packed RGBA decimals, the form `decimalToRGBA` decodes, because
  * that is what the 7TV API returns and what the production paint builder
- * expects. The single shadow is what the paintShadows toggle removes — with it
- * off the gradient must survive and only the drop-shadow disappear, which one
- * shadow demonstrates unambiguously.
+ * expects.
+ *
+ * Five stops rather than three, in hues far enough apart that the gradient
+ * cannot be mistaken for a flat username colour at overlay size. Three
+ * neighbouring warm tones could be — and a paint that reads as one colour proves
+ * nothing about a paint renderer.
+ *
+ * Two shadows rather than one, because the filter is a composed chain and one
+ * shadow cannot show that the chain is built correctly. They are also chosen for
+ * different backgrounds: the violet glow carries the name against a dark or
+ * transparent scene, the tight dark shadow gives it an edge against a light one.
+ * Both disappear together when paintShadows is off, and the gradient must
+ * survive that untouched.
  */
 export const SAMPLE_SEVENTV_PAINT: SevenTVPaint = {
   id: 'sample-7tv-paint',
   func: 'LINEAR_GRADIENT',
   angle: 90,
   repeat: false,
-  /* rgba(0,0,0,0.6) — alpha lives in the low byte. */
-  shadows: [{ color: 153, x_offset: 1, y_offset: 1, radius: 2 }],
+  /* Alpha lives in the low byte: 217 → 0.851, 140 → 0.549. */
+  shadows: [
+    { color: 2824206297, x_offset: 0, y_offset: 0, radius: 4 }, // #a855f7 glow
+    { color: 140, x_offset: 1, y_offset: 1, radius: 2 }, // near-black edge
+  ],
   stops: [
-    { color: 4284444159, at: 0 }, // #ff5f6d
-    { color: 4290998783, at: 0.5 }, // #ffc371
-    { color: 1206238463, at: 1 }, // #47e5bc
+    { color: 4282084351, at: 0 }, // #ff3b6b
+    { color: 4289739519, at: 0.25 }, // #ffb03a
+    { color: 1256095999, at: 0.5 }, // #4ade80
+    { color: 951974143, at: 0.75 }, // #38bdf8
+    { color: 2824206335, at: 1 }, // #a855f7
   ],
 };
 
 /**
  * Which sample chatter owns which cosmetics, keyed as the fetcher keys them.
  *
- * `${platform}:${senderId}`, so the conversion's own lookup applies them. Only
- * the paint sample is entitled, which is what makes the cosmetics toggle
- * visible: with it off that name falls back to a plain colour while every other
- * sample is unchanged.
+ * `${platform}:${senderId}`, so the conversion's own lookup applies them. Two
+ * senders, deliberately asymmetric, because `badge` and `paint` are independent
+ * fields of one entitlement and a single sample carrying both could not show
+ * that:
+ *
+ *   sample-paint-sender  badge *and* paint — the full 7TV cosmetic set
+ *   sample-roles-sender  badge only — a 7TV badge sitting beside three official
+ *                        Twitch badges, which is what proves the two resolvers
+ *                        compose rather than replace one another
+ *
+ * Both are entitled only while sevenTVCosmeticsEnabled is on, so the toggle
+ * removes a badge here and a badge-plus-gradient there while every official
+ * badge in the same lines stays put.
  */
 export const SAMPLE_ENTITLEMENTS: Entitlements = {
   'twitch:sample-paint-sender': {
     badge: SAMPLE_SEVENTV_BADGE.id,
     paint: SAMPLE_SEVENTV_PAINT.id,
+  },
+  'twitch:sample-roles-sender': {
+    badge: SAMPLE_SEVENTV_BADGE.id,
   },
 };
 
@@ -239,17 +277,22 @@ export const SAMPLE_COSMETICS: MessageCosmetics = {
  */
 export const SAMPLE_GROUPS = [
   'plain',
+  'bot',
   'badges',
+  'roles',
   'mention',
   'emotes',
   'paint',
   'moderation',
-  'multiline',
   'event',
   'unicode',
   'owner',
   'pin',
 ] as const;
+
+/* Which of those groups the default six-row showcase spends its viewport on. The
+   rest are real fixtures with real tests; they are simply not what a visitor
+   should be looking at when the page paints. See SAMPLE_LIBRARY_MESSAGES. */
 
 export type SampleGroup = (typeof SAMPLE_GROUPS)[number];
 
@@ -269,20 +312,209 @@ const KICK_GREEN = '#53fc18';
 const UNICODE_TEXT = 'ありがとう! спасибо! شكرا! ¡qué buena racha! 🎉🐉 é Kappa';
 
 /**
- * Every sample, in display order.
+ * The default showcase: six rows, and six is a measurement rather than a taste.
  *
- * Order is not cosmetic. Mention colouring only applies to a chatter who has
- * already been seen, exactly as in a live stream, so the mention sample sits
- * after the Kick author it names — reordering these would silently stop
- * demonstrating mentions. Consecutive messages come from different platforms,
- * which is what makes the source-tag setting visibly meaningful, and every
- * platform appears at least twice. All three properties are asserted in
- * tests/unit/multichatSamples.test.tsx.
+ * THE VIEWPORT IS THE SPECIFICATION. The sample frame lays out at 899×370 internal
+ * CSS pixels before its 0.75 transform (674×278 as drawn), and one single-line
+ * chat row occupies 55 of those 370. Six rows are 330, which fits with room over
+ * the top; a seventh is 385 and ChatOverlay's #chat_container — `position:
+ * absolute; bottom: 0; overflow: hidden` — would clip it mid-line. So the row
+ * budget is six *complete* rows, and every entry below has to earn one.
+ *
+ * That constraint is why this array is short and why each line is dense. Every row
+ * carries several capabilities at once, the way a real chatter does: a moderator
+ * who is also a founder and a subscriber and wears a 7TV badge is one believable
+ * line and four demonstrations. Splitting those apart would spend the viewport on
+ * a test matrix, and the seventh row does not exist to spend.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. No event card, no pin, no long wrapping post, no
+ * unbadged filler. Each of those is a real fixture with real tests, and each costs
+ * either the whole of the top of the frame (an opaque pin banner) or two rows of
+ * six (anything that wraps). They live in {@link SAMPLE_LIBRARY_MESSAGES}.
+ *
+ * Two ordering rules still bind. Mention colouring only applies to a chatter
+ * already seen, exactly as in a live stream, so the mention sits after the Twitch
+ * author it names — moving it above would silently stop demonstrating mentions.
+ * And consecutive rows come from different platforms, which is what makes the
+ * source-tag setting visibly meaningful.
+ *
+ * Every body is short enough to stay on one line at the default width and
+ * settings. A row that wrapped would evict one of the six, which is exactly how an
+ * earlier revision lost its broadcaster and VIP badges off the top.
  */
 export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
   {
+    group: 'badges',
+    label: 'Twitch broadcaster who also subscribes, with a 7TV and a native emote',
+    message: {
+      platform: 'twitch',
+      id: 'sample-badges',
+      senderId: 'sample-badges-sender',
+      username: 'purplereign',
+      color: '#a970ff',
+      /* Declared as types, resolved by the production Twitch badge table into
+         real CDN art. Two badges rather than one, because badge *order* and the
+         spacing between them are only visible when more than one is drawn. */
+      badges: [{ type: 'broadcaster' }, { type: 'subscriber' }],
+      /* Two emotes from two different mechanisms in one short line. OMEGALUL is a
+         word the production third-party swap replaces; Kappa arrives as a native
+         platform emote at a character offset, which is a different code path and
+         the one the sevenTVEmotesEnabled setting must *not* touch. Having both
+         here means the difference between them is visible in a single row.
+         First in the array as well as first on screen: this is the chatter the
+         mention row below names, and a mention only colours for someone the
+         conversion has already seen. */
+      text: 'clip that OMEGALUL Kappa',
+      emotes: [nativeEmote('clip that OMEGALUL Kappa', PREVIEW_EMOTE_TOKENS.nativeTwitch, PREVIEW_EMOTE_NATIVE)],
+      timestamp: at(0),
+      kind: 'chat',
+    },
+  },
+  {
+    group: 'emotes',
+    label: 'Kick moderator and subscriber whose reaction carries every provider emote path',
+    message: {
+      platform: 'kick',
+      id: 'sample-emotes',
+      senderId: 'sample-emotes-sender',
+      username: 'emotefiend',
+      color: '#b6ff6f',
+      /* Both Kick badge kinds on one believable line — a mod who also subscribes.
+         count 8 clears the 6-month tier, so the Kick highest-tier-reached lookup
+         has to actually choose rather than fall through to generic art. */
+      badges: [{ type: 'moderator' }, { type: 'subscriber', count: 8 }],
+      /* Bare tokens, never <img> — the production word-swap turns each into an
+         image and leaves them as readable text when third-party emotes are off.
+         RainTime follows OMEGALUL because it is the zero-width fixture: the
+         renderer layers it over the emote *before* it, so it needs a base to sit
+         on or the behaviour it exists to show never happens. The remaining tokens
+         name BTTV and FFZ, which production merges into this same list and swaps
+         through this same path — one row, four providers, one code path. */
+      text: 'no chance OMEGALUL RainTime KEKW catJAM PepeLaugh',
+      emotes: [],
+      timestamp: at(1),
+      kind: 'chat',
+    },
+  },
+  {
+    group: 'roles',
+    label: 'Twitch moderator with three official badges and a 7TV badge beside them',
+    message: {
+      platform: 'twitch',
+      id: 'sample-roles',
+      /* Entitled to the 7TV badge but no paint. The 7TV badge is appended after
+         the official ones by the conversion, so this line is what shows the two
+         resolvers composing — official art from the Twitch table, cosmetic art
+         from the entitlement, side by side in one row. */
+      senderId: 'sample-roles-sender',
+      username: 'emberwatch',
+      color: '#ff7b54',
+      /* founder is the extra official badge beyond the four role badges, and
+         subscriber carries a month count so the tier lookup runs here too. */
+      badges: [{ type: 'moderator' }, { type: 'founder' }, { type: 'subscriber', count: 24 }],
+      text: 'two years now',
+      emotes: [],
+      timestamp: at(2),
+      kind: 'chat',
+    },
+  },
+  {
+    group: 'mention',
+    label: 'YouTube moderator and verified viewer mentioning the Twitch broadcaster',
+    message: {
+      platform: 'youtube',
+      id: 'sample-mention',
+      senderId: 'sample-mention-sender',
+      username: 'RedButtonRadio',
+      color: '',
+      /* Deliberately out of YT_BADGE_ORDER (verified sorts ahead of moderator).
+         A fixture already in the right order could not tell a working sort from
+         a missing one. */
+      badges: [{ type: 'moderator' }, { type: 'verified' }],
+      avatar: 'https://yt3.ggpht.com/sample-mod=s64-c-k-c0x00ffffff-no-rj',
+      /* Resolves to purplereign's colour, which only works because that row is
+         first — mentions colour from chatters already seen. No punctuation
+         directly after the token: renderMentions strips a trailing comma to *look
+         up* the chatter but colours the word as written, so '@purplereign,' would
+         put the comma inside the coloured strong. */
+      text: 'welcome @purplereign',
+      emotes: [],
+      timestamp: at(3),
+      kind: 'chat',
+    },
+  },
+  {
+    group: 'moderation',
+    label: 'TikTok moderator and subscriber, both badges pre-resolved art',
+    message: {
+      platform: 'tiktok',
+      id: 'sample-moderation',
+      senderId: 'sample-moderation-sender',
+      username: 'tiktokmod',
+      color: '#25f4ee',
+      /* Both badges carry a url, which is how TikTok delivers them: there is no
+         TikTok lookup table because the connector sends finished art. That is
+         also the branch that adds ck-badge-wide, so non-square art is not
+         squished — and a type without a url here would fall through to the
+         YouTube table and draw the wrong icon entirely. */
+      badges: [
+        { type: 'moderator', url: PREVIEW_TIKTOK_MOD_BADGE },
+        { type: 'subscriber', url: PREVIEW_TIKTOK_SUB_BADGE },
+      ],
+      avatar: 'https://p16-sign-va.tiktokcdn.com/sample-avatar~c5_100x100.jpeg',
+      text: 'keep it civil in here please',
+      emotes: [],
+      timestamp: at(4),
+      kind: 'chat',
+    },
+  },
+  {
+    group: 'paint',
+    label: 'Twitch VIP entitled to a 7TV paint and badge',
+    message: {
+      platform: 'twitch',
+      id: 'sample-paint',
+      /* Matches SAMPLE_ENTITLEMENTS, which is how the paint is attached — the
+         same senderId lookup the live cosmetics fetcher uses. Last of the six on
+         purpose: the gradient is the least self-evident thing here, and the last
+         row is the one the bottom-anchored container can never clip. */
+      senderId: 'sample-paint-sender',
+      username: 'paintedname',
+      color: '#ffffff',
+      /* VIP completes the four Twitch role badges across the showcase —
+         broadcaster and subscriber on the first row, moderator on the third. */
+      badges: [{ type: 'vip' }, { type: 'subscriber' }],
+      text: 'that transition is so clean',
+      emotes: [],
+      timestamp: at(5),
+      kind: 'chat',
+    },
+  },
+];
+
+/**
+ * The fixtures that are real but must not occupy the default viewport.
+ *
+ * Everything here is exercised by tests, available to explicit demonstrations, and
+ * excluded from what the generator paints on arrival — because each one costs more
+ * than the row it would take. An event card and a long bot post are two rows of
+ * six. The pinned banner is opaque, top-anchored and about three rows tall, so it
+ * covers the showcase rather than joining it. An unbadged greeting spends a row
+ * demonstrating the absence of a feature.
+ *
+ * They are not lesser fixtures. The Unicode line is the only place a native emote
+ * sits after an astral-plane pair, the owner line is the only gold name pill, and
+ * the two event cards are the only proof that a card takes its border colour from
+ * its platform. `sampleAllMessages()` returns the showcase followed by these, and
+ * that is what a test asserting on any of the above should mount.
+ *
+ * Timestamps continue the showcase's sequence, so the concatenation is still
+ * strictly ascending and one second apart.
+ */
+export const SAMPLE_LIBRARY_MESSAGES: readonly SampleMessage[] = [
+  {
     group: 'plain',
-    label: 'Plain Kick message',
+    label: 'Plain Kick message, the only unbadged line',
     message: {
       platform: 'kick',
       id: 'sample-plain',
@@ -292,127 +524,39 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
       badges: [],
       text: 'first time catching the stream live, this is sick',
       emotes: [],
-      timestamp: at(0),
+      timestamp: at(6),
       kind: 'chat',
     },
   },
   {
-    group: 'badges',
-    label: 'Twitch broadcaster, badges resolved from the real UUID table',
+    group: 'bot',
+    label: 'Twitch bot command response, long enough to wrap onto several lines',
     message: {
       platform: 'twitch',
-      id: 'sample-badges',
-      senderId: 'sample-badges-sender',
-      username: 'purplereign',
-      color: '#a970ff',
-      /* Types only. renderBadges maps these to official Twitch badge art, so
-         the preview cannot show a badge the overlay would not. */
-      badges: [{ type: 'broadcaster' }, { type: 'subscriber' }],
-      text: 'welcome in everyone, mods are up',
-      emotes: [],
-      timestamp: at(1),
-      kind: 'chat',
-    },
-  },
-  {
-    group: 'mention',
-    label: 'YouTube message mentioning the Kick chatter above',
-    message: {
-      platform: 'youtube',
-      id: 'sample-mention',
-      senderId: 'sample-mention-sender',
-      username: 'RedButtonRadio',
-      /* YouTube carries no colour, so this exercises the deterministic fallback
-         palette rather than a supplied hex. */
-      color: '',
-      badges: [{ type: 'verified' }],
-      avatar: 'https://yt3.ggpht.com/sample-avatar=s64-c-k-c0x00ffffff-no-rj',
-      text: '@greenscreen agreed, the new layout is much better',
-      emotes: [],
-      timestamp: at(2),
-      kind: 'chat',
-    },
-  },
-  {
-    group: 'emotes',
-    label: 'Kick message with 7TV emotes, including a zero-width overlay',
-    message: {
-      platform: 'kick',
-      id: 'sample-emotes',
-      senderId: 'sample-emotes-sender',
-      username: 'emotefiend',
-      color: '#7ae2ff',
-      badges: [{ type: 'subscriber', count: 8 }],
-      /* Plain words. The production word-swap turns the ones that match an emote
-         fixture into images, and RainTime overlays the emote before it. OMEGALUL
-         and KEKW are 7TV tokens, catJAM is BTTV's and PepeLaugh is FFZ's — all
-         merged into one list and swapped by the same path in production. */
-      text: 'that clip had me OMEGALUL RainTime KEKW catJAM PepeLaugh',
-      emotes: [],
-      timestamp: at(3),
-      kind: 'chat',
-    },
-  },
-  {
-    group: 'paint',
-    label: 'Twitch chatter entitled to a 7TV paint and badge',
-    message: {
-      platform: 'twitch',
-      id: 'sample-paint',
-      /* Matches SAMPLE_ENTITLEMENTS, which is how the paint is attached — the
-         same senderId lookup the live cosmetics fetcher uses. */
-      senderId: 'sample-paint-sender',
-      username: 'paintedname',
-      color: '#ffffff',
-      badges: [{ type: 'subscriber' }],
-      text: 'gradient name, courtesy of 7TV',
-      emotes: [],
-      timestamp: at(4),
-      kind: 'chat',
-    },
-  },
-  {
-    group: 'moderation',
-    label: 'TikTok moderator with pre-resolved badge art',
-    message: {
-      platform: 'tiktok',
-      id: 'sample-moderation',
-      senderId: 'sample-moderation-sender',
-      username: 'tiktokmod',
-      color: '#25f4ee',
-      /* A url'd badge, which is how TikTok delivers them — and the path that
-         adds ck-badge-wide so non-square art is not squished. */
-      badges: [{ type: 'moderator', url: PREVIEW_TIKTOK_MOD_BADGE }],
-      avatar: 'https://p16-sign-va.tiktokcdn.com/sample-avatar~c5_100x100.jpeg',
-      text: 'keep it civil in here please',
-      emotes: [],
-      timestamp: at(5),
-      kind: 'chat',
-    },
-  },
-  {
-    group: 'multiline',
-    label: 'Kick message long enough to wrap onto several lines',
-    message: {
-      platform: 'kick',
-      id: 'sample-multiline',
-      senderId: 'sample-multiline-sender',
-      username: 'longwinded',
-      color: '#b6ff6f',
-      badges: [{ type: 'subscriber', count: 7 }],
+      id: 'sample-bot',
+      senderId: 'sample-bot-sender',
+      username: 'overlaybot',
+      color: '#8f8f9d',
+      /* Channel bots are almost always moderators, so this doubles as the
+         simplest possible badge case: one official badge, resolved from a type. */
+      badges: [{ type: 'moderator' }],
       /* Deliberately one long run rather than an embedded newline. The overlay's
          message body sets wordBreak but never white-space: pre-wrap, so a '\n'
          would collapse to a space and render as a single line — a fixture built
          that way would claim to demonstrate wrapping while demonstrating
-         nothing. Length is what actually exercises the multi-line path: line
-         height, the indent under the name, and how stroke and shadow look on a
-         second and third line. */
+         nothing. Length is what exercises the multi-line path: line height, the
+         indent under the name, and how stroke and shadow look on a second line.
+         Four rows of the six-row budget on its own, which is why it is a library
+         fixture rather than a showcase one.
+
+         A '!' command is also the honest thing to put behind prefixBL — that
+         setting exists to hide bot chatter, and the field's own placeholder
+         suggests a prefix like this one. */
       text:
-        'so the way I have this set up is one browser source for chat and a second one for the counter, ' +
-        'which means I can move them independently and the counter never inherits the chat font — took me ' +
-        'far too long to work out, so posting it here for the next person who asks',
+        '!setup — one browser source for chat and a second for the counter, both sized to the ' +
+        'scene, so they move independently and the counter never inherits the chat font',
       emotes: [],
-      timestamp: at(6),
+      timestamp: at(7),
       kind: 'chat',
     },
   },
@@ -426,13 +570,12 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
       username: 'GoldTierViewer',
       color: '',
       badges: [],
-      /* kind 'system' with a category is what the overlay renders as an event
-         card: provider-coloured left border, gradient wash, no name colon.
-         'cheer' is the category the YouTube connector really emits for a super
-         chat — the connector is the authority on that, not this file. */
+      /* kind 'system' with a category renders as an event card: provider-coloured
+         left border, gradient wash, no name colon. 'cheer' is the category the
+         YouTube connector emits for a super chat — not this file's decision. */
       text: 'GoldTierViewer sent a $20.00 Super Chat',
       emotes: [],
-      timestamp: at(7),
+      timestamp: at(8),
       kind: 'system',
       category: 'cheer',
     },
@@ -448,38 +591,14 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
       color: '#25f4ee',
       badges: [],
       avatar: 'https://p16-sign-va.tiktokcdn.com/sample-gifter~c5_100x100.jpeg',
-      /* A second card on a different platform, because the card takes its border
-         and wash from the provider colour — one example cannot show that the
-         colour actually follows the platform. */
+      /* A second event card on a different platform: the card takes its border
+         colour from the provider, so one example cannot show that the colour
+         actually follows the platform. */
       text: 'giftgiver sent Rose ×10',
       emotes: [],
-      timestamp: at(8),
+      timestamp: at(9),
       kind: 'system',
       category: 'gift',
-    },
-  },
-  {
-    group: 'unicode',
-    label: 'Twitch message in mixed scripts, with an emote after astral characters',
-    message: {
-      platform: 'twitch',
-      id: 'sample-unicode',
-      senderId: 'sample-unicode-sender',
-      /* A non-Latin display name as well as non-Latin body text: the name and
-         the body take different paths (a name can be a pill, can be painted, and
-         can be hidden by hideNames), so testing only one leaves the other
-         unproven. */
-      username: 'ユキ_yuki',
-      color: '#ff9edb',
-      badges: [],
-      text: UNICODE_TEXT,
-      /* The emote sits *after* an astral-plane pair and a combining accent, so
-         its offsets are only correct under codepoint indexing. A renderer that
-         sliced by UTF-16 code unit would tear the text here — which is the whole
-         reason this sample carries a native emote at all. */
-      emotes: [nativeEmote(UNICODE_TEXT, PREVIEW_EMOTE_TOKENS.nativeTwitch, PREVIEW_EMOTE_NATIVE)],
-      timestamp: at(9),
-      kind: 'chat',
     },
   },
   {
@@ -496,28 +615,74 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
          only exercised by a sample that actually carries the badge. */
       badges: [{ type: 'owner' }],
       avatar: 'https://yt3.ggpht.com/sample-owner=s64-c-k-c0x00ffffff-no-rj',
-      text: 'thanks for hanging out, back tomorrow at the usual time',
+      text: 'welcome in, plenty of clips to get through today',
       emotes: [],
       timestamp: at(10),
       kind: 'chat',
     },
   },
   {
-    group: 'pin',
-    label: 'Kick message designated as the pinned one',
+    group: 'unicode',
+    label: 'Twitch message in mixed scripts, with an emote after astral characters',
     message: {
-      platform: 'kick',
-      id: 'sample-pin',
-      senderId: 'sample-pin-sender',
-      username: 'pinnedviewer',
-      color: KICK_GREEN,
-      badges: [{ type: 'moderator' }],
-      text: 'read the pinned message before asking, thanks',
-      emotes: [],
+      platform: 'twitch',
+      id: 'sample-unicode',
+      senderId: 'sample-unicode-sender',
+      /* A non-Latin display name as well as non-Latin body text: the name and
+         the body take different paths (a name can be a pill, can be painted, and
+         can be hidden by hideNames), so testing only one leaves the other
+         unproven. */
+      username: 'ユキ_yuki',
+      color: '#ff9edb',
+      /* premium is an official Twitch badge that is not a role, so it shows the
+         non-role category without spending a line on it. */
+      badges: [{ type: 'premium' }],
+      text: UNICODE_TEXT,
+      /* The emote sits *after* an astral-plane pair and a combining accent, so
+         its offsets are only correct under codepoint indexing. A renderer that
+         sliced by UTF-16 code unit would tear the text here — which is the whole
+         reason this sample carries a native emote at all. */
+      emotes: [nativeEmote(UNICODE_TEXT, PREVIEW_EMOTE_TOKENS.nativeTwitch, PREVIEW_EMOTE_NATIVE)],
       timestamp: at(11),
       kind: 'chat',
     },
   },
+  {
+    group: 'pin',
+    label: 'TikTok message designated as the pinned one',
+    message: {
+      /* A library fixture, never part of the default six. The banner is opaque and
+         top-anchored and stays for the whole five-second pin window, so it does
+         not sit beside the showcase — it covers roughly half of it, leaving a
+         ~180px readable band. It is offered once the feed is generating, where a
+         pin arriving and retiring is the behaviour worth watching.
+
+         TikTok rather than Twitch: the default pinPlatforms are kick/youtube/tiktok, and
+         syncMultichatStyle strips twitch until an account is connected, so a
+         Twitch pin fixture would silently render as an ordinary list row instead
+         of a banner. Badges here resolve through renderBadges like anywhere else,
+         which for TikTok means they must carry url art. */
+      platform: 'tiktok',
+      id: 'sample-pin',
+      senderId: 'sample-pin-sender',
+      username: 'pinnedviewer',
+      color: '#ff5c8d',
+      badges: [
+        { type: 'moderator', url: PREVIEW_TIKTOK_MOD_BADGE },
+        { type: 'subscriber', url: PREVIEW_TIKTOK_SUB_BADGE },
+      ],
+      text: 'read the pinned message before asking, thanks',
+      emotes: [],
+      timestamp: at(12),
+      kind: 'chat',
+    },
+  },
+];
+
+/** Showcase then library — every fixture this module defines, in one order. */
+export const SAMPLE_ALL_MESSAGES: readonly SampleMessage[] = [
+  ...SAMPLE_MESSAGES,
+  ...SAMPLE_LIBRARY_MESSAGES,
 ];
 
 /* ------------------------------------------------------------------ */
@@ -533,21 +698,55 @@ export const SAMPLE_MESSAGES: readonly SampleMessage[] = [
  * render the same line twice.
  */
 export const SAMPLE_PIN_ID = 'sample-pin';
-export const SAMPLE_PIN_BY = 'tiktokmod';
+/* The broadcaster pinning a moderator's message — the ordinary way a pin happens,
+   and it names a chatter the preview actually shows rather than inventing one. */
+export const SAMPLE_PIN_BY = 'purplereign';
 
-/** Just the messages, in display order — what the preview converts. */
+/**
+ * The default showcase, as messages — what the generator paints on arrival.
+ *
+ * Deliberately not the whole catalog. Six rows is what the frame can draw without
+ * clipping one, so this is the set that fits, and it is what the preview receives
+ * unless something explicitly asks for more.
+ */
 export function sampleMessages(): UnifiedMessage[] {
   return SAMPLE_MESSAGES.map((sample) => sample.message);
 }
 
-/** The sample designated as pinned, or null if the id ever stops matching. */
-export function samplePin(): UnifiedPin | null {
-  const found = SAMPLE_MESSAGES.find((sample) => sample.message.id === SAMPLE_PIN_ID);
-  return found ? { message: found.message, pinnedBy: SAMPLE_PIN_BY } : null;
+/**
+ * Every fixture, showcase and library alike.
+ *
+ * For tests and explicit demonstrations that need the event cards, the wrapping
+ * bot post, the Unicode line, the owner pill or the pin. Rendering this in the
+ * default preview would overflow the frame, which is the reason for the split.
+ */
+export function sampleAllMessages(): UnifiedMessage[] {
+  return SAMPLE_ALL_MESSAGES.map((sample) => sample.message);
 }
 
-/** Platforms represented in the sample set, in first-appearance order. */
+/** The library fixture the preview pins, for a caller offering the banner. */
+export function samplePinMessage(): UnifiedMessage | null {
+  const found = SAMPLE_ALL_MESSAGES.find((sample) => sample.message.id === SAMPLE_PIN_ID);
+  return found ? found.message : null;
+}
+
+/** The sample designated as pinned, or null if the id ever stops matching. */
+export function samplePin(): UnifiedPin | null {
+  const message = samplePinMessage();
+  return message ? { message, pinnedBy: SAMPLE_PIN_BY } : null;
+}
+
+/** Platforms represented across every fixture, in first-appearance order. */
 export function samplePlatforms(): Platform[] {
+  const seen: Platform[] = [];
+  for (const { message } of SAMPLE_ALL_MESSAGES) {
+    if (!seen.includes(message.platform)) seen.push(message.platform);
+  }
+  return seen;
+}
+
+/** Platforms the default six-row showcase reaches, in first-appearance order. */
+export function showcasePlatforms(): Platform[] {
   const seen: Platform[] = [];
   for (const { message } of SAMPLE_MESSAGES) {
     if (!seen.includes(message.platform)) seen.push(message.platform);

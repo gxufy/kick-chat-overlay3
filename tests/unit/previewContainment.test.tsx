@@ -48,6 +48,7 @@ import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_PIN_BY,
+  sampleAllMessages,
   sampleMessages,
 } from '@/features/multichat/samples';
 import {
@@ -119,11 +120,16 @@ const allCss = (doc: Document) =>
     .map((el) => el.textContent ?? '')
     .join('\n');
 
+/* The full catalog rather than the six-row default, deliberately. This suite is
+   about content not escaping the frame, so it wants every shape the preview can
+   draw — the pin banner and its timers, the event cards, the Unicode line — not
+   only the shapes that fit on screen at once. A leak through the pin card would go
+   unnoticed against a fixture set that has no pin. */
 const mountChat = (style: Partial<Record<string, unknown>> = {}) =>
   render(
     <ClassicChatPreview
       query={chatQuery(style)}
-      messages={sampleMessages()}
+      messages={sampleAllMessages()}
       cosmetics={SAMPLE_COSMETICS}
       width={MULTICHAT_OBS_SIZE.width}
       height={MULTICHAT_OBS_SIZE.height}

@@ -185,11 +185,19 @@ function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: stri
     if (zeroWidths.length === 0) {
       nodes.push(emoteImg(`${keyBase}-em-${i}`, emote.image, emote.name, emote.upscale));
     } else {
+      /* One grid cell holds the base plus every overlay. The base is a grid
+         item, so its width resolves from the capped height and aspect ratio
+         (a shrink-to-fit inline-block instead measured the emote's negative
+         compaction margin into the wrapper and clipped 6px off the base).
+         Overlays are absolutely positioned, so no layer — however wide —
+         adds inline width or shifts the base. Geometry lives in .ck-zw* CSS
+         so the overlay and OBS share one rule set. */
       nodes.push(
-        <span key={`${keyBase}-zws-${i}`} style={{ display: 'inline-block', position: 'relative', verticalAlign: 'middle' }}>
-          <img className={`ck-emote${emote.upscale ? ' ck-upscale' : ''}`} src={emote.image} alt={emote.name} style={{ display: 'block' }} onError={handleAssetError} />
+        <span key={`${keyBase}-zws-${i}`} className="ck-zw">
+          <img className={`ck-emote ck-zw-base${emote.upscale ? ' ck-upscale' : ''}`}
+               src={emote.image} alt={emote.name} onError={handleAssetError} />
           {zeroWidths.map((zw, zi) => (
-            <span key={zi} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{zw}</span>
+            <span key={zi} className="ck-zw-layer">{zw}</span>
           ))}
         </span>
       );

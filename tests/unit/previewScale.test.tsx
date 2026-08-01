@@ -32,7 +32,11 @@ import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame'
 import { multichatTool } from '@/features/multichat/config';
 import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import { MULTICHAT_CATALOG } from '@/features/multichat/settings';
-import { SAMPLE_COSMETICS, sampleMessages } from '@/features/multichat/samples';
+import {
+  SAMPLE_COSMETICS,
+  sampleAllMessages,
+  sampleMessages,
+} from '@/features/multichat/samples';
 import { workspaceDraftKey } from '@/lib/workspaceStorage';
 import type { ToolChannels } from '@/features/registry';
 import type { MultichatPlatform } from '@/lib/multichatConfig';
@@ -74,17 +78,29 @@ function transformFactor(title = CHAT_TITLE): number {
 const viewportPercent = (title = CHAT_TITLE) =>
   Number.parseFloat(frameEl(title).style.width);
 
-const mountPreview = (scale?: number, style: Partial<Record<string, unknown>> = {}) =>
+const mountWith = (
+  messages: ReturnType<typeof sampleMessages>,
+  scale?: number,
+  style: Partial<Record<string, unknown>> = {},
+) =>
   render(
     <ClassicChatPreview
       query={queryFor(style)}
-      messages={sampleMessages()}
+      messages={messages}
       cosmetics={SAMPLE_COSMETICS}
       width={MULTICHAT_OBS_SIZE.width}
       height={MULTICHAT_OBS_SIZE.height}
       {...(scale === undefined ? {} : { scale })}
     />,
   );
+
+/** The default six-row showcase, which is what the generator hands the preview. */
+const mountPreview = (scale?: number, style: Partial<Record<string, unknown>> = {}) =>
+  mountWith(sampleMessages(), scale, style);
+
+/** Every fixture, for the one test that needs the pin card and an event card. */
+const mountAll = (scale?: number, style: Partial<Record<string, unknown>> = {}) =>
+  mountWith(sampleAllMessages(), scale, style);
 
 /* ------------------------------------------------------------------ */
 /* The steps themselves                                               */
@@ -218,8 +234,12 @@ describe('the whole preview surface scales, not just the text', () => {
        are class-less divs carrying inline styles, so `.ck-pin` matches nothing —
        their own visible output is the only honest handle. The pin card also sits
        *outside* #chat_container, which is exactly why it is worth naming here:
-       anything that scaled the list alone would miss it. */
-    mountPreview(65);
+       anything that scaled the list alone would miss it.
+
+       Over the full catalog: the pin and the event cards are library fixtures, kept
+       out of the six-row default so they cannot cover the badge and paint rows. The
+       scaling behaviour asserted here is theirs whenever they are drawn. */
+    mountAll(65);
     const doc = frameDoc();
 
     const pinLabel = Array.from(doc.querySelectorAll('span')).find(

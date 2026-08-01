@@ -74,7 +74,7 @@ import {
 import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import { multichatTool } from '@/features/multichat/config';
-import { SAMPLE_PIN_ID, sampleMessages } from '@/features/multichat/samples';
+import { sampleMessages, samplePinMessage } from '@/features/multichat/samples';
 import { counterTool } from '@/features/counter/config';
 import {
   SAMPLE_COUNTER_COUNTS,
@@ -125,6 +125,11 @@ const COPIED_MS = 2000;
    message for nothing. The list is never mutated — custom messages are appended
    into a new array — so one shared frozen-in-practice value is correct. */
 const SAMPLE_CHAT_MESSAGES = sampleMessages();
+
+/* The pin fixture, which is a library fixture rather than a showcase row. Held
+   here so the feed can offer a banner without the fixture occupying the default
+   six-row viewport. Null-safe because the accessor resolves it by id. */
+const SAMPLE_PIN_MESSAGE = samplePinMessage();
 
 /* The built-in counts as field strings, for the editable preview inputs.
    A fresh object per call, deliberately: this seeds state and backs Restore, and
@@ -298,16 +303,17 @@ export default function ClassicGenerator({
      actually changes, so typing in a settings field does not re-convert every
      message.
 
-     The pin fixture is held out while the feed says the pin is not currently
-     offered. That is the whole pin mechanism: `ClassicChatPreview` decides
-     whether to pin by looking for SAMPLE_PIN_ID in this array, so removing the
-     fixture retires the banner and returning it brings a fresh one — with no
-     clock or random source inside the preview, which two existing suites assert
-     it has none of. */
+     The pin fixture is *added* only while the feed says a pin is currently
+     offered, which is never on arrival. It is a library fixture, not one of the
+     six showcase rows, precisely so the default viewport is not covered: the
+     banner is opaque, top-anchored and about three rows tall. That is also the
+     whole pin mechanism — `ClassicChatPreview` decides whether to pin by looking
+     for SAMPLE_PIN_ID in this array, so appending the fixture raises a banner and
+     dropping it retires one, with no clock or random source inside the preview,
+     which two existing suites assert it has none of. */
   const previewMessages = useMemo(() => {
-    const fixtures = feed.pinVisible
-      ? SAMPLE_CHAT_MESSAGES
-      : SAMPLE_CHAT_MESSAGES.filter((message) => message.id !== SAMPLE_PIN_ID);
+    const pin = feed.pinVisible ? SAMPLE_PIN_MESSAGE : null;
+    const fixtures = pin ? [...SAMPLE_CHAT_MESSAGES, pin] : SAMPLE_CHAT_MESSAGES;
     if (customMessages.length === 0 && feed.messages.length === 0) return fixtures;
     return [...fixtures, ...customMessages, ...feed.messages];
   }, [customMessages, feed.messages, feed.pinVisible]);

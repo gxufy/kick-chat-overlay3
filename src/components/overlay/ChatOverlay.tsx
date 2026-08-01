@@ -326,20 +326,58 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             display: inline;
           }
 
-          /* Emote sizing — exact from chatis size_*.css .emote +
-             style.css (.emote{vertical-align:middle} .emote-container
-             {display:inline-block}). object-fit + auto dims keep 7TV/
-             BTTV/FFZ art on one baseline regardless of aspect ratio. */
-          .ck-body img,
+          /* Emote sizing. height is pinned to the configured size rather than
+             left auto: providers ship the same emote at 1x-4x, and with
+             height:auto a low-resolution source drew shorter than its
+             neighbours instead of at the configured size. width stays auto so
+             the aspect ratio decides it — wide emotes stay wide, square ones
+             stay square, and max-width only clamps the extremes, where
+             object-fit letterboxes instead of stretching. */
+          /* Scoped to .ck-emote, not to every descendant img. Every emote path
+             carries that class — ordinary, native, zero-width base, zero-width
+             overlay — so this is the same set of images as before, but a
+             non-emote image that ever lands in a body is no longer force-sized.
+             That mattered less when height was auto; a pinned height would
+             actively distort anything it caught. Badges, avatars and source
+             marks are siblings of .ck-body and were never in scope. */
           .ck-body img.ck-emote {
             max-width:      ${emoteMaxW};
             max-height:     ${emoteMaxH};
-            height:         auto;
+            height:         ${emoteMaxH};
             width:          auto;
             object-fit:     contain;
             margin-right:   ${sz.emoteMR};
             vertical-align: middle;
             display:        inline-block;
+          }
+
+          /* Zero-width stack: base + overlays in one grid cell. The base is
+             the only in-flow item, so the cell keeps its full width and the
+             compaction margin moves to the wrapper — inside it, that negative
+             margin was clipping the base. Overlays are out of flow and
+             centred, so they add no width regardless of their own. */
+          .ck-body .ck-zw {
+            display:        inline-grid;
+            position:       relative;
+            vertical-align: middle;
+            line-height:    0;
+            margin-right:   ${sz.emoteMR};
+          }
+          .ck-body .ck-zw > img.ck-zw-base {
+            grid-area:      1 / 1;
+            margin-right:   0;
+          }
+          .ck-body .ck-zw > .ck-zw-layer {
+            position:        absolute;
+            inset:           0;
+            display:         flex;
+            align-items:     center;
+            justify-content: center;
+            pointer-events:  none;
+          }
+          .ck-body .ck-zw > .ck-zw-layer > img.ck-emote {
+            margin-right:   0;
+            max-width:      none;
           }
 
           /* Upscale emotes — fill full line-height (chatis upscale class) */
@@ -525,9 +563,17 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
     ? { background:pill[0], color:pill[1], borderRadius:'0.4em', padding:'0 0.35em',
         WebkitTextStroke:'0px', textShadow:'none',
         }    : isPaint
-    ? { background:msg.identity.background, filter:msg.identity.filter,
+    /* backgroundImage, not the background shorthand: the shorthand resets
+       backgroundSize, so the paint only sized correctly because React happened
+       to emit the two in declaration order. 100% 100% rather than cover
+       matters for image paints — cover crops the art to the glyph box, this
+       stretches it across the name the way 7TV serves it. Gradients are
+       unaffected either way. The name carries no text-shadow: the paint's own
+       drop-shadow filter is the shadow, and an inherited one muddies it. */
+    ? { backgroundImage:msg.identity.background, filter:msg.identity.filter,
         WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
-        backgroundClip:'text', backgroundSize:'cover',
+        backgroundClip:'text', backgroundSize:'100% 100%',
+        backgroundRepeat:'no-repeat',
         WebkitTextStroke:'0px', textShadow:'none' }
     : { color:msg.identity.color, };
 

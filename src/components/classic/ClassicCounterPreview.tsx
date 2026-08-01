@@ -50,7 +50,6 @@ export default function ClassicCounterPreview({
   statuses,
   width,
   height,
-  loading = false,
 }: {
   /** The counter query string, from the tool's own serializer. */
   query: string;
@@ -60,16 +59,6 @@ export default function ClassicCounterPreview({
   width: number;
   /** Canonical OBS height the tool declares, for the frame's aspect ratio. */
   height: number;
-  /**
-   * Render as a configured channel's loading fallback rather than as samples.
-   *
-   * Only the labelling differs — the caller supplies statuses derived from the
-   * configured platforms and the renderer is the same one. The flag exists
-   * because the wording is the whole point of the distinction: announcing
-   * "sample viewer counts" over a real channel's pills is the misdescription
-   * this state was added to remove.
-   */
-  loading?: boolean;
 }) {
   const style = useMemo(() => styleFromQuery(query), [query]);
 
@@ -82,17 +71,11 @@ export default function ClassicCounterPreview({
        label says what the numbers *are* and the title says what the frame is. */
     <div
       role="group"
-      aria-label={
-        loading
-          ? 'Loading live viewer counts for the configured channels'
-          : 'Preview data — sample viewer counts, not live numbers'
-      }
-      data-testid={loading ? 'counter-loading-preview' : 'counter-fixture-preview'}
+      aria-label="Preview data — sample viewer counts, not live numbers"
+      data-testid="counter-fixture-preview"
     >
       <IsolatedPreviewFrame
-        title={
-          loading ? 'Viewer Counter loading preview' : 'Viewer Counter sample preview'
-        }
+        title="Viewer Counter sample preview"
         width={width}
         height={height}
         testId="counter-preview-frame"

@@ -10,7 +10,7 @@
  * Appearance changes navigate the iframe too — there is no parent/overlay
  * message protocol, so every settled URL is a fresh document load.
  */
-import { useEffect, useState, type Ref } from 'react';
+import { useEffect, useState } from 'react';
 
 /** How long the incoming URL must hold still before the iframe navigates. */
 export const PREVIEW_DEBOUNCE_MS = 350;
@@ -20,8 +20,6 @@ export default function OverlayPreviewFrame({
   configured,
   title,
   height,
-  onMountedChange,
-  frameRef,
 }: {
   /** The generated overlay URL — identical to the one Copy provides. */
   url: string;
@@ -31,26 +29,6 @@ export default function OverlayPreviewFrame({
   title: string;
   /** Fixed viewport height in pixels. */
   height: number;
-  /**
-   * Reports whether this component currently renders an iframe, so a parent
-   * can show a waiting hint during the debounce.
-   *
-   * This is the frame describing its own render state — not a channel for the
-   * embedded overlay to report status. Nothing crosses the iframe boundary.
-   */
-  onMountedChange?: (mounted: boolean) => void;
-  /**
-   * Handle on the iframe element itself.
-   *
-   * Exists so a parent that listens for messages can require
-   * `event.source === frame.contentWindow` — identifying the one document it
-   * embedded, rather than trusting any same-origin sender. Nothing is written
-   * through it and no method is called on it here.
-   *
-   * Null while no iframe is mounted, which is the honest answer during the
-   * debounce and whenever nothing is configured.
-   */
-  frameRef?: Ref<HTMLIFrameElement>;
 }) {
   /* The last settled URL, or null when there is nothing valid to show.
      Deliberately never seeded from `url`: at mount `url` is the channel-less
@@ -75,19 +53,10 @@ export default function OverlayPreviewFrame({
      overlay mounts and no polling starts. The `configured` half is checked on
      every render, so clearing the last channel removes the iframe immediately
      rather than after the debounce. */
-  const mounted = configured && settledUrl !== null;
-
-  /* Reported from an effect rather than during render, so the parent's state
-     update never happens mid-render. */
-  useEffect(() => {
-    onMountedChange?.(mounted);
-  }, [mounted, onMountedChange]);
-
-  if (!mounted) return null;
+  if (!configured || settledUrl === null) return null;
 
   return (
     <iframe
-      ref={frameRef}
       src={settledUrl}
       title={title}
       scrolling="no"

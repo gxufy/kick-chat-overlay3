@@ -50,20 +50,6 @@ export type CounterSimulatorOptions = {
   random?: RandomSource;
   /** Start running. False in a test that wants to arm the rotation by hand. */
   enabled?: boolean;
-  /**
-   * Hold the rotation still without touching the user's controls.
-   *
-   * Set while a real channel is configured. The simulated statuses are not what
-   * the preview shows then, so a rotation would be invisible work — and while
-   * the loading fallback is on screen it would be worse than invisible if
-   * anything downstream ever read it again.
-   *
-   * Deliberately separate from `enabled`, `paused` and `mode`: those are the
-   * user's settings, and suspension must not consume them. Clearing the last
-   * channel resumes whatever was set before, with no Restore needed. Like
-   * `hidden`, it gates `running` only.
-   */
-  suspended?: boolean;
 };
 
 export type CounterSimulatorState = {
@@ -83,8 +69,7 @@ export type CounterSimulatorState = {
   readonly speed: PreviewSpeed;
   readonly mode: CounterPreviewMode;
   /**
-   * True while a timer is armed — enabled, live, not paused, tab visible, and
-   * not suspended by a configured channel.
+   * True while a timer is armed — enabled, live, not paused, and tab visible.
    */
   readonly running: boolean;
   setEnabled: (next: boolean) => void;
@@ -105,7 +90,7 @@ function documentHidden(): boolean {
 export function useCounterPreviewSimulator(
   options: CounterSimulatorOptions = {},
 ): CounterSimulatorState {
-  const { enabled: initialEnabled = true, suspended = false } = options;
+  const { enabled: initialEnabled = true } = options;
   /* Read here rather than defaulted in the signature so the identity is stable
      across renders — the scheduling effect lists it as a dependency, and a new
      function each render would restart the rotation on every render. */
@@ -159,7 +144,7 @@ export function useCounterPreviewSimulator(
     return () => document.removeEventListener('visibilitychange', sync);
   }, []);
 
-  const running = enabled && !paused && !hidden && !suspended && mode === 'live';
+  const running = enabled && !paused && !hidden && mode === 'live';
 
   useEffect(() => {
     if (!running) return;

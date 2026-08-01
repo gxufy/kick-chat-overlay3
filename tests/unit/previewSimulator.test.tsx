@@ -53,18 +53,27 @@ import {
   type ChatSimulatorOptions,
   type ChatSimulatorState,
 } from '@/components/classic/useChatPreviewSimulator';
-import { SAMPLE_EPOCH, SAMPLE_MESSAGES } from '@/features/multichat/samples';
+import * as previewSimulatorModule from '@/features/multichat/previewSimulator';
+import { SAMPLE_ALL_MESSAGES, SAMPLE_EPOCH } from '@/features/multichat/samples';
 import type { Platform } from '@/lib/types';
 
 /* ------------------------------------------------------------------ */
 /* Harness                                                            */
 /* ------------------------------------------------------------------ */
 
-/** Mount the hook and expose its latest state without rendering a preview. */
+/**
+ * Mount the hook and expose its latest state without rendering a preview.
+ *
+ * Defaults `enabled: true`, which is *not* the hook's own default. The product
+ * default is a feed that never starts, and the suite below asserts that directly
+ * in its own group; every other test here is about a feed that is running, so
+ * arming it from mount keeps those tests about cadence rather than about the
+ * switch. Pass `enabled: false` to get the arrival state.
+ */
 function mountSimulator(options: ChatSimulatorOptions = {}) {
   const seen: ChatSimulatorState[] = [];
   function Probe() {
-    seen.push(useChatPreviewSimulator(options));
+    seen.push(useChatPreviewSimulator({ enabled: true, ...options }));
     return null;
   }
   const view = render(<Probe />);
@@ -209,8 +218,8 @@ describe('a generated message', () => {
   it('keeps its ids clear of the fixture and composer namespaces', () => {
     /* buildParsedMessage keys React on `${platform}:${id}`, so an overlap with a
        fixture id would make React reuse the wrong node for a different message. */
-    const fixtureIds = new Set(SAMPLE_MESSAGES.map((entry) => entry.message.id));
-    expect(fixtureIds.size).toBe(SAMPLE_MESSAGES.length);
+    const fixtureIds = new Set(SAMPLE_ALL_MESSAGES.map((entry) => entry.message.id));
+    expect(fixtureIds.size).toBe(SAMPLE_ALL_MESSAGES.length);
     const random = seededRandom(6);
     for (let i = 1; i <= 100; i += 1) {
       const { id } = generateMessage(i, sources, random);
@@ -534,7 +543,10 @@ describe('the pin cadence', () => {
 /* ------------------------------------------------------------------ */
 
 describe('the feed hook', () => {
-  it('starts armed, with the switch on and nothing generated yet', () => {
+  it('is armed but silent the moment it is switched on', () => {
+    /* `enabled: true` from the harness — the switch has been turned on. Running,
+       unpaused, and nothing generated yet: the first message waits for a drawn
+       delay like every one after it. */
     const view = mountSimulator({ random: seededRandom(2) });
     expect(view.state.enabled).toBe(true);
     expect(view.state.paused).toBe(false);
@@ -542,7 +554,7 @@ describe('the feed hook', () => {
     expect(view.state.messages).toHaveLength(0);
   });
 
-  it('appends a message per interval without being asked', () => {
+  it('appends a message per interval once it is running', () => {
     const view = mountSimulator({ random: seededRandom(2) });
     advance(3);
     expect(view.state.messages).toHaveLength(3);
@@ -557,6 +569,22 @@ describe('the feed hook', () => {
     const view = mountSimulator({ random: seededRandom(2) });
     act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MIN_MS - 1));
     expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('delivers its first message on an ordinary drawn delay, with no hold', () => {
+    /* An earlier revision made the first tick wait nine seconds so the curated
+       fixtures could be read first. That is now the *feed being off* rather than
+       the feed being slow, so the first message obeys the same band as the rest:
+       within the maximum, and turning the switch on gets a feed that moves. */
+    const view = mountSimulator({ random: seededRandom(2) });
+    act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MAX_MS));
+    expect(view.state.messages.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('exports no hold constant for the first tick to consult', () => {
+    /* The whole mechanism is gone, not merely unused: a constant left behind is a
+       standing invitation to reintroduce the behaviour it once configured. */
+    expect(Object.keys(previewSimulatorModule)).not.toContain('SHOWCASE_HOLD_MS');
   });
 
   it('bounds its own history at CHAT_HISTORY_MAX', () => {
@@ -657,10 +685,11 @@ describe('the feed hook', () => {
     expect(view.state.messages).toHaveLength(4);
     act(() => void view.state.reset());
     expect(view.state.messages).toHaveLength(0);
-    /* The pin fixture is offered again, which is what "restores the built-in
-       fixture set" means from the hook's side: the preview shows the fixtures
-       whenever nothing generated is present. */
-    expect(view.state.pinVisible).toBe(true);
+    /* The banner is retired rather than re-offered. Reset restores the arrival
+       state, and on arrival the curated showcase has nothing covering it — an
+       opaque three-row banner over a six-row demonstration is the thing the
+       default is designed to avoid. */
+    expect(view.state.pinVisible).toBe(false);
     advance(1);
     expect(view.state.messages.map((message) => message.id)).toEqual(['sim-1']);
     /* And the replayed sequence starts the showcase over: the first line after a
@@ -700,7 +729,7 @@ describe('the feed hook', () => {
        created without a matching cleanup survives that and the feed then runs at
        double rate — the classic symptom of this bug. */
     function Probe() {
-      useChatPreviewSimulator({ random: seededRandom(2) });
+      useChatPreviewSimulator({ enabled: true, random: seededRandom(2) });
       return null;
     }
     render(
@@ -714,7 +743,7 @@ describe('the feed hook', () => {
   it('appends one message per interval under Strict Mode, not two', () => {
     const seen: ChatSimulatorState[] = [];
     function Probe() {
-      seen.push(useChatPreviewSimulator({ random: seededRandom(2) }));
+      seen.push(useChatPreviewSimulator({ enabled: true, random: seededRandom(2) }));
       return null;
     }
     render(
@@ -757,12 +786,13 @@ describe('the feed hook', () => {
        that re-armed the timer would reset the wait, and holding a chip down would
        stop the feed entirely. */
     const view = mountSimulator({ random: seededRandom(2) });
+    const delivered = view.state.messages.length;
     act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MIN_MS));
     act(() => void view.state.toggleSource('kickBadges'));
     expect(view.state.sources.kickBadges).toBe(false);
     /* Still inside the original wait, so the pending message must still land. */
     act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MAX_MS - CHAT_INTERVAL_MIN_MS + 1));
-    expect(view.state.messages.length).toBeGreaterThan(0);
+    expect(view.state.messages.length).toBeGreaterThan(delivered);
     expect(vi.getTimerCount()).toBe(1);
   });
 
@@ -858,5 +888,312 @@ describe('the feed hook', () => {
       return ids;
     };
     expect(run()).toEqual(run());
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The arrival state                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The hook's own defaults, with nothing passed — what the generator actually gets.
+ *
+ * Every test in this group mounts through `bare()` rather than the harness above,
+ * because the harness deliberately arms the feed and the question here is what
+ * happens when nobody asks for anything. A regression that reintroduced autostart
+ * would leave the rest of the suite green: it only ever describes a running feed.
+ */
+function bare(options: ChatSimulatorOptions = {}) {
+  const seen: ChatSimulatorState[] = [];
+  function Probe() {
+    seen.push(useChatPreviewSimulator(options));
+    return null;
+  }
+  const view = render(<Probe />);
+  return {
+    ...view,
+    get state() {
+      return seen[seen.length - 1]!;
+    },
+  };
+}
+
+describe('the feed on arrival, with nobody having asked for it', () => {
+  it('has the switch off', () => {
+    expect(bare().state.enabled).toBe(false);
+  });
+
+  it('is not running, without being paused either', () => {
+    /* Off is not the same state as paused: paused implies something to resume, and
+       the controls render the two differently. */
+    const view = bare();
+    expect(view.state.running).toBe(false);
+    expect(view.state.paused).toBe(false);
+  });
+
+  it('schedules no timer at all', () => {
+    /* The load-bearing assertion. There is nothing to cancel because nothing was
+       ever armed — which is why the curated showcase cannot be pushed off the top
+       of a bottom-anchored, top-clipping list by a message nobody requested. */
+    bare();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('offers no pin banner over the showcase', () => {
+    /* The banner is opaque, top-anchored and about three rows of the six tall. */
+    expect(bare().state.pinVisible).toBe(false);
+  });
+
+  it('generates nothing after two minutes of wall clock', () => {
+    const view = bare();
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('generates nothing after ten minutes of wall clock', () => {
+    /* "Indefinitely" cannot be tested, so this tests two orders of magnitude past
+       the nine seconds the previous revision managed. */
+    const view = bare();
+    act(() => void vi.advanceTimersByTime(600_000));
+    expect(view.state.messages).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('generates nothing when every timer that exists is run to completion', () => {
+    /* Stronger than any duration: if some timer were pending at any delay, this
+       would fire it. Nothing is pending, so this is a no-op. */
+    const view = bare();
+    act(() => void vi.runOnlyPendingTimers());
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('stays still under Strict Mode, where a stray timer would survive a remount', () => {
+    function Probe() {
+      useChatPreviewSimulator({});
+      return null;
+    }
+    render(
+      <StrictMode>
+        <Probe />
+      </StrictMode>,
+    );
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('holds the same state across a visibility round trip', () => {
+    /* Backgrounding and returning is the obvious way a "resume" path could arm a
+       feed that was never started. */
+    const view = bare();
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect(view.state.enabled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('stays off through a reset', () => {
+    /* Reset restores content. It is not a start button, and someone pressing it on
+       a still preview is asking for the showcase back, not for movement. */
+    const view = bare();
+    act(() => void view.state.reset());
+    expect(view.state.enabled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('stays off through a source change', () => {
+    const view = bare();
+    act(() => void view.state.toggleSource('twitchBadges'));
+    act(() => void view.state.randomizeSources());
+    expect(view.state.enabled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stays off through a speed change', () => {
+    /* Choosing a cadence is not choosing to start — the control is visible while
+       the feed is off, and picking from it should not begin generating. */
+    const view = bare();
+    act(() => void view.state.setSpeed('fast'));
+    expect(view.state.speed).toBe('fast');
+    expect(view.state.enabled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Turning it on, and off again                                       */
+/* ------------------------------------------------------------------ */
+
+describe('the switch', () => {
+  it('arms exactly one timer when it is turned on', () => {
+    const view = bare({ random: seededRandom(2) });
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void view.state.setEnabled(true));
+    expect(vi.getTimerCount()).toBe(1);
+    expect(view.state.running).toBe(true);
+  });
+
+  it('draws the first delay from the ordinary band, not a special one', () => {
+    /* Within the maximum and not before the minimum: the same band every later
+       message uses. The nine-second hold this replaced would fail both halves. */
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MIN_MS - 1));
+    expect(view.state.messages).toHaveLength(0);
+    act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MAX_MS - CHAT_INTERVAL_MIN_MS + 1));
+    expect(view.state.messages.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps the ordinary cadence after the first message', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    const first = view.state.messages.length;
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(first + 1);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('cancels the pending message when it is turned off', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    const delivered = view.state.messages.length;
+    act(() => void view.state.setEnabled(false));
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(delivered);
+  });
+
+  it('does not turn itself back on', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void view.state.setEnabled(false));
+    setVisibility('hidden');
+    setVisibility('visible');
+    act(() => void vi.advanceTimersByTime(300_000));
+    expect(view.state.enabled).toBe(false);
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('still holds exactly one timer after being cycled', () => {
+    /* Off, on, off, on. Each pass leaves one scheduler, never two: a duplicate
+       would double the feed rate and there would be no way to stop the orphan. */
+    const view = bare({ random: seededRandom(2) });
+    for (let i = 0; i < 3; i += 1) {
+      act(() => void view.state.setEnabled(true));
+      expect(vi.getTimerCount()).toBe(1);
+      act(() => void view.state.setEnabled(false));
+      expect(vi.getTimerCount()).toBe(0);
+    }
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('delivers one message per interval after a re-enable, not two', () => {
+    /* The count is the real test for a duplicated chain: fake timer ids are
+       recycled, so a doubled feed can still report a single pending timer. */
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void view.state.setEnabled(false));
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(1);
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(2);
+  });
+
+  it('stops and restarts delivery through pause and resume', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    const delivered = view.state.messages.length;
+    act(() => void view.state.togglePaused());
+    expect(view.state.paused).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(delivered);
+    act(() => void view.state.togglePaused());
+    expect(view.state.paused).toBe(false);
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(delivered + 1);
+  });
+
+  it('feeds a speed change into the delay band it draws from', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void view.state.setSpeed('slow'));
+    const slow = chatDelayBounds('slow');
+    const fast = chatDelayBounds('fast');
+    /* Slow's band starts later than fast's ends, so a message landing inside
+       fast's whole window would prove the setting never reached the draw. */
+    expect(slow.min).toBeGreaterThan(fast.max);
+    act(() => void vi.advanceTimersByTime(fast.max));
+    expect(view.state.messages).toHaveLength(0);
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(1);
+  });
+
+  it('restores the curated showcase on reset while it is running', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages.length).toBeGreaterThan(0);
+    act(() => void view.state.reset());
+    expect(view.state.messages).toHaveLength(0);
+    expect(view.state.pinVisible).toBe(false);
+    /* The switch is left alone. Resetting a running feed is a request to start the
+       run over, not to end it, so it re-arms rather than going quiet. */
+    expect(view.state.enabled).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('draws the first delay after a reset from the ordinary band, with no hold', () => {
+    /* The nine-second hold this revision removed was re-earned on reset, so a reset
+       feed sat silent for nine seconds before its first line. Nothing but the hook
+       runs here, so the fake clock measures the drawn delay exactly. */
+    const view = bare({ random: seededRandom(4) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    act(() => void view.state.reset());
+    expect(view.state.messages).toHaveLength(0);
+    const band = chatDelayBounds('normal');
+    const started = Date.now();
+    act(() => void vi.advanceTimersToNextTimer());
+    const delay = Date.now() - started;
+    expect(view.state.messages).toHaveLength(1);
+    expect(delay).toBeGreaterThanOrEqual(band.min);
+    expect(delay).toBeLessThanOrEqual(band.max);
+  });
+
+  it('restores the curated showcase on reset while it is off, and stays off', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersToNextTimer());
+    act(() => void view.state.setEnabled(false));
+    act(() => void view.state.reset());
+    expect(view.state.messages).toHaveLength(0);
+    expect(view.state.enabled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => void vi.advanceTimersByTime(120_000));
+    expect(view.state.messages).toHaveLength(0);
+  });
+
+  it('drops a message already in flight when it is reset', () => {
+    /* Without the restart bump, a delay drawn before the reset would land after it
+       and push the just-restored showcase straight back up. */
+    const view = bare({ random: seededRandom(2) });
+    act(() => void view.state.setEnabled(true));
+    act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MIN_MS - 1));
+    act(() => void view.state.reset());
+    act(() => void vi.advanceTimersByTime(1));
+    expect(view.state.messages).toHaveLength(0);
   });
 });

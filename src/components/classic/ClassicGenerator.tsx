@@ -74,7 +74,7 @@ import {
 import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
 import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import { multichatTool } from '@/features/multichat/config';
-import { SAMPLE_PIN_ID, sampleMessages } from '@/features/multichat/samples';
+import { sampleMessages, samplePinMessage } from '@/features/multichat/samples';
 import { counterTool } from '@/features/counter/config';
 import {
   SAMPLE_COUNTER_COUNTS,
@@ -96,6 +96,11 @@ import {
   toggleSetting,
 } from '@/lib/tools/settingTypes';
 import { buildOverlayUrl } from '@/lib/tools/toolContext';
+import {
+  COUNTER_LOADING_MESSAGE,
+  counterUrlPollKey,
+  isCounterReadyMessage,
+} from '@/lib/counterPreviewReadiness';
 import { consumeWorkspaceDraft, writeWorkspaceDraft } from '@/lib/workspaceStorage';
 import { COUNTER_SECTION_ID } from '@/lib/multichatRouting';
 import { CANONICAL_ORIGIN } from '@/lib/domains.mjs';
@@ -120,6 +125,11 @@ const COPIED_MS = 2000;
    message for nothing. The list is never mutated — custom messages are appended
    into a new array — so one shared frozen-in-practice value is correct. */
 const SAMPLE_CHAT_MESSAGES = sampleMessages();
+
+/* The pin fixture, which is a library fixture rather than a showcase row. Held
+   here so the feed can offer a banner without the fixture occupying the default
+   six-row viewport. Null-safe because the accessor resolves it by id. */
+const SAMPLE_PIN_MESSAGE = samplePinMessage();
 
 /* The built-in counts as field strings, for the editable preview inputs.
    A fresh object per call, deliberately: this seeds state and backs Restore, and
@@ -293,16 +303,17 @@ export default function ClassicGenerator({
      actually changes, so typing in a settings field does not re-convert every
      message.
 
-     The pin fixture is held out while the feed says the pin is not currently
-     offered. That is the whole pin mechanism: `ClassicChatPreview` decides
-     whether to pin by looking for SAMPLE_PIN_ID in this array, so removing the
-     fixture retires the banner and returning it brings a fresh one — with no
-     clock or random source inside the preview, which two existing suites assert
-     it has none of. */
+     The pin fixture is *added* only while the feed says a pin is currently
+     offered, which is never on arrival. It is a library fixture, not one of the
+     six showcase rows, precisely so the default viewport is not covered: the
+     banner is opaque, top-anchored and about three rows tall. That is also the
+     whole pin mechanism — `ClassicChatPreview` decides whether to pin by looking
+     for SAMPLE_PIN_ID in this array, so appending the fixture raises a banner and
+     dropping it retires one, with no clock or random source inside the preview,
+     which two existing suites assert it has none of. */
   const previewMessages = useMemo(() => {
-    const fixtures = feed.pinVisible
-      ? SAMPLE_CHAT_MESSAGES
-      : SAMPLE_CHAT_MESSAGES.filter((message) => message.id !== SAMPLE_PIN_ID);
+    const pin = feed.pinVisible ? SAMPLE_PIN_MESSAGE : null;
+    const fixtures = pin ? [...SAMPLE_CHAT_MESSAGES, pin] : SAMPLE_CHAT_MESSAGES;
     if (customMessages.length === 0 && feed.messages.length === 0) return fixtures;
     return [...fixtures, ...customMessages, ...feed.messages];
   }, [customMessages, feed.messages, feed.pinVisible]);
@@ -611,6 +622,80 @@ export default function ClassicGenerator({
     multichatTool.configuredPlatforms(channels as ToolChannels<MultichatPlatform>).length > 0;
   const counterConfigured =
     counterTool.configuredPlatforms(channels as ToolChannels<ViewerPlatform>).length > 0;
+
+  /* ---------------------------------------------------------------- */
+  /* Counter preview readiness                                        */
+  /* ---------------------------------------------------------------- */
+
+  /* Whether the live counter frame has real numbers on screen.
+   *
+   * Until it does, the sample counts stay up. The alternative — swapping them
+   * out the moment a channel becomes valid — is what made this preview go blank
+   * for a debounce plus a network round trip, because the embedded page
+   * deliberately renders nothing until its first poll settles. See
+   * lib/counterPreviewReadiness. */
+  const [counterLiveReady, setCounterLiveReady] = useState(false);
+
+  /* The element, so a message can be attributed to the document we embedded
+     rather than to any same-origin sender. */
+  const counterFrameRef = useRef<HTMLIFrameElement | null>(null);
+
+  /* Which channels the URL now in the frame is for, derived from the URL through
+     the overlay's own parser — the same derivation the embedded page performs on
+     the same query string, so the two cannot disagree. */
+  const counterPollKey = useMemo(() => counterUrlPollKey(counterUrl), [counterUrl]);
+
+  /* Any change to the generated URL un-readies the preview, not only a channel
+     change. An appearance change navigates the frame too, and the freshly loaded
+     document is just as empty as a new channel's until its own first poll
+     commits — so gating on the channel alone would reintroduce the blank window
+     for every restyle. Runs before paint, so no stale-ready frame is ever
+     visible. */
+  useEffect(() => {
+    setCounterLiveReady(false);
+  }, [counterUrl]);
+
+  /* Nothing to listen for once the channels are gone. */
+  useEffect(() => {
+    if (!counterConfigured) return;
+
+    function onMessage(event: MessageEvent) {
+      /* Four independent checks, none of which the others imply.
+       *
+       *   origin — our own only. A message from any other origin is not from a
+       *     document we served, whatever it claims to be;
+       *   source — the window of the frame we mounted. Same-origin is not the
+       *     same as ours: other frames and other tabs on this origin can post
+       *     here too, and one of them saying "ready" says nothing about this
+       *     preview;
+       *   shape — event.data is whatever the sender structured-cloned, so it is
+       *     validated like any other untrusted input;
+       *   pollKey — the configuration currently on display. A commit for a
+       *     channel the user has already moved on from is exactly the stale case
+       *     that would reveal the wrong channel's numbers.
+       *
+       * Anything failing any of them is ignored in silence: unsolicited messages
+       * are ordinary on a page, not an error condition. */
+      if (event.origin !== window.location.origin) return;
+
+      const frame = counterFrameRef.current;
+      if (!frame || !event.source || event.source !== frame.contentWindow) return;
+
+      if (!isCounterReadyMessage(event.data)) return;
+      if (event.data.pollKey !== counterPollKey) return;
+
+      setCounterLiveReady(true);
+    }
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [counterConfigured, counterPollKey]);
+
+  /* Whether the sample counts are what the user is looking at right now: before
+     any channel, and during the wait for the live frame's first poll. Drives the
+     "Preview data" badge and the loading status together, so the badge cannot
+     disagree with what is on screen. */
+  const counterShowingSamples = !counterConfigured || !counterLiveReady;
 
   /* Whether the URL actually carries a connection fragment. Drives the warning
      beside Copy — the fragment is a live credential, so the user is told before
@@ -976,8 +1061,18 @@ export default function ClassicGenerator({
           <span>Preview</span>
           {/* The same marker the chat preview carries, for the same reason: four
               plausible numbers with nothing saying otherwise read as a real
-              audience. */}
-          {!counterConfigured && <span className="preview-badge">Preview data</span>}
+              audience. Shown whenever the samples are what is on screen —
+              including while a configured channel's first poll is still in
+              flight, because during that window they are still samples. */}
+          {counterShowingSamples && <span className="preview-badge">Preview data</span>}
+          {/* Permanently mounted and usually empty, rather than mounted with its
+              text when loading begins: a live region that appears already
+              populated is not reliably announced, while a text change inside an
+              existing one is. It sits here rather than in the counter feed card,
+              which asserts a single live region of its own. */}
+          <span className="preview-loading" role="status">
+            {counterConfigured && !counterLiveReady ? COUNTER_LOADING_MESSAGE : ''}
+          </span>
         </div>
 
         <div
@@ -986,26 +1081,49 @@ export default function ClassicGenerator({
             counterBgMode === 'custom' ? { background: counterBgColor } : undefined
           }
         >
-          {counterConfigured ? (
-            <OverlayPreviewFrame
-              url={counterUrl}
-              configured={counterConfigured}
-              title="Live viewer counter preview"
-              height={counterTool.obs.height}
-            />
-          ) : (
-            /* No channel yet, so there is no live counter to show — and a frame
-               holding nothing, or only dashes, says nothing about how the six
-               settings look. Sample counts go through the production renderer
-               instead. The frame here is a local blank document, not the overlay
-               URL, so nothing fetches /api/viewers and nothing polls. */
-            <ClassicCounterPreview
-              query={counterQuery}
-              statuses={counterStatuses}
-              width={counterTool.obs.width}
-              height={counterTool.obs.height}
-            />
-          )}
+          {/* Both previews are layered here rather than swapped.
+           *
+           * The live frame mounts as soon as a channel is valid and loads and
+           * polls exactly as it does in OBS — nothing about its lifecycle
+           * changes. What changes is only when it becomes *visible*: until the
+           * document inside it reports a committed poll, it is laid out but
+           * hidden, and the sample counts remain on screen in front of it. That
+           * is what closes the blank window, which spanned the frame's 350 ms
+           * debounce and the first viewer request together.
+           *
+           * Clearing the last channel removes the live layer in the same render,
+           * because `counterConfigured` is read during render rather than
+           * tracked in state. */}
+          <div className="preview-swap">
+            {counterConfigured && (
+              <div className="preview-swap-live" data-live-ready={counterLiveReady}>
+                <OverlayPreviewFrame
+                  url={counterUrl}
+                  configured={counterConfigured}
+                  title="Live viewer counter preview"
+                  height={counterTool.obs.height}
+                  frameRef={counterFrameRef}
+                />
+              </div>
+            )}
+
+            {/* No channel yet, so there is no live counter to show — and a frame
+                holding nothing, or only dashes, says nothing about how the six
+                settings look. Sample counts go through the production renderer
+                instead. The frame here is a local blank document, not the overlay
+                URL, so nothing fetches /api/viewers and nothing polls.
+
+                It stays for the loading window too, for the same reason it exists
+                at all: an empty surface tells the user their counter is broken. */}
+            {counterShowingSamples && (
+              <ClassicCounterPreview
+                query={counterQuery}
+                statuses={counterStatuses}
+                width={counterTool.obs.width}
+                height={counterTool.obs.height}
+              />
+            )}
+          </div>
         </div>
 
         {/* Offered in both states for the same reason as the chat backdrop: the

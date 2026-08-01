@@ -175,7 +175,15 @@ export function buildPaintStyle(
       `drop-shadow(${decimalToRGBA(shadow.color)} ${shadow.x_offset}px ${shadow.y_offset}px ${shadow.radius}px)`,
     );
   }
-  const background = `${prefix}${paint.func.toLowerCase().replace('_', '-')}(${parts.join(', ')})`;
+  /* Replace every underscore, not just the first: REPEATING_LINEAR_GRADIENT
+     would otherwise emit repeating-linear_gradient() and the whole paint would
+     be dropped as an invalid value. */
+  const func = paint.func.toLowerCase().replace(/_/g, '-');
+  const background =
+    paint.func === 'URL'
+      ? // quoted: an unquoted url() breaks on ")" or whitespace in the URL
+        `url("${parts[0].replace(/["\\]/g, (c) => `\\${c}`)}")`
+      : `${prefix}${func}(${parts.join(', ')})`;
   return { background, filter: shadows.join(' ') };
 }
 

@@ -16,6 +16,21 @@
  * restarted on every keystroke would reset its own cadence and never reach the
  * slow end of its interval band.
  *
+ * THE FEED IS OFF UNTIL ASKED. This is the load-bearing default, not a
+ * conservative one. The preview's fixtures are a curated showcase — badge
+ * combinations, a 7TV paint, one emote per provider — and ChatOverlay's list is
+ * `bottom: 0; overflow: hidden`, so every appended message pushes one of those
+ * rows past the top clipping edge. A feed that started by itself therefore
+ * dismantled the demonstration it was meant to animate, and it did so whatever
+ * delay the first tick waited: an earlier revision held that tick for nine seconds
+ * and the showcase was simply gone at ten. So nothing is scheduled on mount. The
+ * curated set stays exactly as it painted, for as long as the tab is open, until
+ * the Live preview feed switch is turned on — which is also how the reference
+ * implementation this preview was measured against behaves.
+ *
+ * The pin follows the same rule: `pinVisible` starts false, so the opaque
+ * top-anchored banner does not occupy the default viewport either.
+ *
  * ONE SCHEDULER. React Strict Mode double-invokes effects in development. The
  * chain here is a single `setTimeout` re-armed from its own callback, and the
  * cleanup both clears the pending timer and sets a cancelled flag — so the first
@@ -45,7 +60,11 @@ import type { UnifiedMessage } from '@/lib/types';
 export type ChatSimulatorOptions = {
   /** Randomness. Defaults to `Math.random`; tests pass a seeded source. */
   random?: RandomSource;
-  /** Start running. False in a test that wants to arm the feed by hand. */
+  /**
+   * Start running. Defaults to false: the generator wants the curated showcase
+   * standing still until someone asks for movement. A test that is about the
+   * running feed passes true and arms it from mount.
+   */
   enabled?: boolean;
 };
 
@@ -80,7 +99,10 @@ function documentHidden(): boolean {
 export function useChatPreviewSimulator(
   options: ChatSimulatorOptions = {},
 ): ChatSimulatorState {
-  const { enabled: initialEnabled = true } = options;
+  /* False, so `running` is false, so the scheduling effect returns before it can
+     arm anything. That is the whole mechanism keeping the default showcase still —
+     there is no timer to cancel because none was ever created. */
+  const { enabled: initialEnabled = false } = options;
   /* `Math.random` is read here rather than defaulted in the signature so the
      identity stays stable across renders — a new function each render would be a
      new effect dependency if it were ever used as one. */
@@ -94,8 +116,17 @@ export function useChatPreviewSimulator(
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState<PreviewSpeed>('normal');
   const [sources, setSources] = useState<PreviewSourceState>(() => allSourcesEnabled());
-  const [pinVisible, setPinVisible] = useState(true);
+  /* False on arrival. The pin banner is opaque, top-anchored and roughly three
+     rows tall, so offering it by default would cover half of a showcase whose
+     whole point is being visible. The countdown below turns it on once the feed
+     is generating, where a moving pin is what it is there to demonstrate. */
+  const [pinVisible, setPinVisible] = useState(false);
   const [hidden, setHidden] = useState(false);
+  /* Bumped by Reset alone, and a dependency of the scheduling effect, so Reset
+     discards the timer already in flight instead of letting a message drawn before
+     the reset land a moment after it. Without this the showcase Reset just restored
+     would be pushed up again by an interval nobody could see coming. */
+  const [restarts, setRestarts] = useState(0);
 
   /* Everything the tick reads without wanting to restart the timer. */
   const sourcesRef = useRef(sources);
@@ -157,6 +188,10 @@ export function useChatPreviewSimulator(
       schedule();
     };
 
+    /* One delay rule, for the first message and every one after it: a draw from
+       the selected speed's band. Turning the switch on is the request for a
+       moving feed, so making that first message wait longer than the cadence it
+       asked for would just look broken. */
     const schedule = () => {
       timer = setTimeout(tick, nextChatDelay(random, speed));
     };
@@ -166,7 +201,7 @@ export function useChatPreviewSimulator(
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [running, speed, random]);
+  }, [running, speed, random, restarts]);
 
   const reset = useCallback(() => {
     setMessages([]);
@@ -175,7 +210,15 @@ export function useChatPreviewSimulator(
        from its first step — with no prior line to dedup against. */
     previousRef.current = null;
     pinCountdownRef.current = nextPinGap(random);
-    setPinVisible(true);
+    /* Back to the arrival state, which is a curated showcase with no banner over
+       it — so the pin is retired here rather than re-offered. The switch itself is
+       deliberately untouched: Reset restores the *content*, and someone who turned
+       the feed on and then reset it asked to start the run over, not to end it. */
+    setPinVisible(false);
+    /* The bump discards the timer already in flight. Without it a message drawn
+       before the reset would land a moment after it and push the restored showcase
+       straight back up, from an interval nobody could see coming. */
+    setRestarts((current) => current + 1);
   }, [random]);
 
   const toggleSource = useCallback((source: PreviewSource) => {

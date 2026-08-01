@@ -13,7 +13,7 @@
  * where the claim is about behaviour (Enter submits, empty does not, Clear and
  * Reset). Scraping markup for the first kind would be testing the wrong thing.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
@@ -302,7 +302,7 @@ describe('the composer controls behave', () => {
     /* The samples are still there — Reset restores the preview, it does not
        empty it. */
     expect(bodies().length).toBeGreaterThan(0);
-    expect(bodies().join(' ')).toContain('first time catching the stream live');
+    expect(bodies().join(' ')).toContain('keep it civil in here please');
   });
 
   it('announces what happened, for anyone who cannot see the preview repaint', () => {
@@ -390,5 +390,92 @@ describe('composed messages stay in the preview', () => {
     compose('not transmitted', 'nobody');
     expect(seen).toEqual([]);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('the composer works while the automatic feed is off', () => {
+  /* Off is the default state, so this is the composer's ordinary operating
+     condition rather than an edge case. The two things it must not do are start
+     the simulator and flip its switch: someone adding one line asked for one line,
+     and getting a running feed instead would push the curated showcase off the top
+     of a frame they were mid-way through reading. */
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The Live preview feed switch, which is the state under test here. */
+  const feedSwitch = () => document.getElementById('preview-feed-enabled') as HTMLInputElement;
+
+  /* Timer counts are compared against a baseline rather than against zero. The
+     mounted generator legitimately owns a debounce timer for the URL fields, so
+     zero is the wrong expectation here — the claim is that composing adds no timer
+     of its own, and a delta says that precisely. The absolute "no simulator timer
+     on mount" case is asserted at the hook level, where nothing else is running. */
+
+  it('starts with the feed switch off', () => {
+    mountComposer();
+    expect(feedSwitch().checked).toBe(false);
+  });
+
+  it('appends the composed message with the feed still off', () => {
+    const before = (() => {
+      mountComposer();
+      return bodies().length;
+    })();
+    cleanup();
+    compose('added by hand', 'handadder');
+    expect(bodies()).toHaveLength(before + 1);
+    expect(bodies().join(' ')).toContain('added by hand');
+  });
+
+  it('leaves the feed switch off after adding a message', () => {
+    compose('added by hand', 'handadder');
+    expect(feedSwitch().checked).toBe(false);
+  });
+
+  it('arms no timer of its own when a message is added', () => {
+    const c = mountComposer();
+    const baseline = vi.getTimerCount();
+    fireEvent.change(c.text, { target: { value: 'added by hand' } });
+    fireEvent.click(c.add);
+    expect(vi.getTimerCount()).toBe(baseline);
+  });
+
+  it('generates nothing in the minutes after a composed message', () => {
+    /* The real assertion behind the timer count: whatever the mechanism, no line
+       appears that nobody typed. */
+    compose('added by hand', 'handadder');
+    const after = bodies().length;
+    act(() => void vi.advanceTimersByTime(300_000));
+    expect(bodies()).toHaveLength(after);
+  });
+
+  it('keeps the curated six rows underneath the composed line', () => {
+    /* Appended, not substituted. Six fixtures plus one composed message, with the
+       composed one last — and the showcase intact above it. */
+    compose('added by hand', 'handadder');
+    const rows = bodies();
+    expect(rows).toHaveLength(7);
+    expect(rows[rows.length - 1]).toContain('added by hand');
+    expect(rows.join(' ')).toContain('keep it civil in here please');
+  });
+
+  it('takes several composed messages without ever starting the feed', () => {
+    const c = mountComposer();
+    const baseline = vi.getTimerCount();
+    for (const text of ['one', 'two', 'three']) {
+      fireEvent.change(c.text, { target: { value: text } });
+      fireEvent.click(c.add);
+    }
+    expect(bodies()).toHaveLength(9);
+    expect(feedSwitch().checked).toBe(false);
+    expect(vi.getTimerCount()).toBe(baseline);
+    /* And still nothing generated after the fact. */
+    act(() => void vi.advanceTimersByTime(300_000));
+    expect(bodies()).toHaveLength(9);
   });
 });

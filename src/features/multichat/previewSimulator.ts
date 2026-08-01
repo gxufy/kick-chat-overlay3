@@ -71,6 +71,15 @@ export {
 export const CHAT_INTERVAL_MIN_MS = 1200;
 export const CHAT_INTERVAL_MAX_MS = 3500;
 
+/* NO FIRST-TICK HOLD, AND NO AUTOSTART TO NEED ONE. An earlier revision held the
+   first generated message back so the curated fixtures could be read before the
+   feed began pushing them off the top. That treated a symptom: the overlay is
+   bottom-anchored and clips at the top, so *any* generated message evicts a
+   curated row, and a hold only chose when the showcase started degrading. The feed
+   is now off until someone turns it on (see useChatPreviewSimulator), so the
+   curated set holds the screen indefinitely and every delay this module produces
+   is an ordinary drawn one. */
+
 /** A randomized delay for the next message, in the given speed's band. */
 export function nextChatDelay(random: RandomSource, speed: PreviewSpeed): number {
   return speedDelay(random, speed, CHAT_INTERVAL_MIN_MS, CHAT_INTERVAL_MAX_MS);

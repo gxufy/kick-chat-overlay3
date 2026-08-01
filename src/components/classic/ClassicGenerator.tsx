@@ -78,6 +78,7 @@ import { sampleMessages, samplePinMessage } from '@/features/multichat/samples';
 import { counterTool } from '@/features/counter/config';
 import {
   SAMPLE_COUNTER_COUNTS,
+  loadingCounterStatuses,
   parseCounterCount,
   sampleCounterStatuses,
 } from '@/features/counter/samples';
@@ -334,14 +335,32 @@ export default function ClassicGenerator({
   const clearCustomMessages = useCallback(() => setCustomMessages([]), []);
   const resetPreviewMessages = useCallback(() => setCustomMessages([]), []);
 
+  /* The platforms the Counter would actually poll for, from the tool's own
+     normalizer rather than from a truthiness check on the raw fields — a name
+     that is valid for chat is not necessarily valid here.
+     Derived this early because the simulator below has to know whether a real
+     channel exists before it arms anything. */
+  const counterPlatforms = useMemo(
+    () => counterTool.configuredPlatforms(channels as ToolChannels<ViewerPlatform>),
+    [channels],
+  );
+  const counterConfigured = counterPlatforms.length > 0;
+
   /* The live Counter rotation. Generator-only in the same way the chat feed is:
      it produces `PlatformStatuses` — the shape the live overlay folds real
      /api/viewers results into — and hands them to the same production renderer
      the fixtures went through. No request, no polling, no provider connection,
      and nothing it produces is serialized.
 
+     Suspended, not disabled, once a channel is configured: its rotation is
+     neither shown nor read then, and leaving a timer repainting statuses behind
+     the loading fallback is how sample platforms leaked into a real channel's
+     preview in the first place. Suspension does not touch the user's own
+     enabled/paused/speed choices, so clearing the last channel resumes exactly
+     the rotation they had set.
+
      Declared above the manual fields because typing in one switches the mode. */
-  const counterSim = useCounterPreviewSimulator();
+  const counterSim = useCounterPreviewSimulator({ suspended: counterConfigured });
 
   /* Pulled out by itself so the callback below can depend on it. It is a
      `useState` setter, so its identity is stable for the life of the component —
@@ -617,11 +636,11 @@ export default function ClassicGenerator({
 
   /* Each tool decides for itself what counts as configured — MultiChat accepts
      anything typed, the Counter validates against its own normalizer — so a name
-     that is valid for chat but not for the counter shows one preview, not two. */
+     that is valid for chat but not for the counter shows one preview, not two.
+     The Counter's own list is `counterPlatforms`, derived further up because the
+     preview simulator depends on it. */
   const chatConfigured =
     multichatTool.configuredPlatforms(channels as ToolChannels<MultichatPlatform>).length > 0;
-  const counterConfigured =
-    counterTool.configuredPlatforms(channels as ToolChannels<ViewerPlatform>).length > 0;
 
   /* ---------------------------------------------------------------- */
   /* Counter preview readiness                                        */
@@ -691,11 +710,26 @@ export default function ClassicGenerator({
     return () => window.removeEventListener('message', onMessage);
   }, [counterConfigured, counterPollKey]);
 
-  /* Whether the sample counts are what the user is looking at right now: before
-     any channel, and during the wait for the live frame's first poll. Drives the
-     "Preview data" badge and the loading status together, so the badge cannot
-     disagree with what is on screen. */
-  const counterShowingSamples = !counterConfigured || !counterLiveReady;
+  /* The two non-live states are different states, and conflating them was the bug.
+   *
+   * Both keep a fallback on screen, so an earlier revision drove both from one
+   * flag and handed the fallback the sample statuses either way. With a channel
+   * configured that meant the rotating sample set — a TikTok pill and a four-digit
+   * count — sat under "Loading live viewer count…" for a real Twitch channel.
+   *
+   *   samples  — nothing configured. Sample counts are the subject: they are what
+   *              the count editor and the rotation exist to show.
+   *   loading  — configured, first poll not committed. The configured platforms
+   *              are the subject, with no value yet. Nothing sampled appears. */
+  const counterShowingSamples = !counterConfigured;
+  const counterLoading = counterConfigured && !counterLiveReady;
+
+  /* Derived from the configured platforms alone — never from the simulator, which
+     is why no unconfigured icon can leak in no matter what it is doing. */
+  const counterLoadingStatuses = useMemo(
+    () => loadingCounterStatuses(counterPlatforms),
+    [counterPlatforms],
+  );
 
   /* Whether the URL actually carries a connection fragment. Drives the warning
      beside Copy — the fragment is a live credential, so the user is told before
@@ -1061,10 +1095,13 @@ export default function ClassicGenerator({
           <span>Preview</span>
           {/* The same marker the chat preview carries, for the same reason: four
               plausible numbers with nothing saying otherwise read as a real
-              audience. Shown whenever the samples are what is on screen —
-              including while a configured channel's first poll is still in
-              flight, because during that window they are still samples. */}
+              audience.
+              Only while they *are* samples. During a configured channel's first
+              poll the badge would be a lie in the other direction — the pills
+              belong to the real channel; it is the value that is missing — so
+              that window gets its own label instead. */}
           {counterShowingSamples && <span className="preview-badge">Preview data</span>}
+          {counterLoading && <span className="preview-badge">Loading live data</span>}
           {/* Permanently mounted and usually empty, rather than mounted with its
               text when loading begins: a live region that appears already
               populated is not reliably announced, while a text change inside an
@@ -1113,14 +1150,30 @@ export default function ClassicGenerator({
                 instead. The frame here is a local blank document, not the overlay
                 URL, so nothing fetches /api/viewers and nothing polls.
 
-                It stays for the loading window too, for the same reason it exists
-                at all: an empty surface tells the user their counter is broken. */}
+                Nothing sampled reaches the loading state below — including the
+                simulator's rotation, since these statuses are not derived from
+                it. */}
             {counterShowingSamples && (
               <ClassicCounterPreview
                 query={counterQuery}
                 statuses={counterStatuses}
                 width={counterTool.obs.width}
                 height={counterTool.obs.height}
+              />
+            )}
+
+            {/* An empty surface still tells the user their counter is broken, so
+                the loading window keeps a fallback — but built from the configured
+                platforms, each unavailable, which the renderer already draws as an
+                em dash. Same component, same production renderer, so the reveal
+                swaps values into place rather than relaying the pills. */}
+            {counterLoading && (
+              <ClassicCounterPreview
+                query={counterQuery}
+                statuses={counterLoadingStatuses}
+                width={counterTool.obs.width}
+                height={counterTool.obs.height}
+                loading
               />
             )}
           </div>

@@ -1,4 +1,5 @@
-/* The Viewer Counter preview never goes blank.
+/* The Viewer Counter preview never goes blank — and never lies about whose
+ * numbers are on screen.
  *
  * Two independent blank windows used to stack once a channel became valid: the
  * live frame's 350 ms debounce, and then the embedded /counter document, which
@@ -6,12 +7,19 @@
  * sample preview out at the start of the first and only had signals for the end
  * of it — so the surface was empty for the debounce plus a network round trip.
  *
- * The fix keeps the samples on screen until the frame itself says its first poll
- * for the current channel has committed. These tests pin that signal down: what
- * counts as one, what does not, and what happens on either side of it. The
- * negative cases are the point — a readiness check that accepts a message from
- * any origin, any window, or any channel is how a preview starts showing one
- * channel's number under another channel's name.
+ * Keeping the *samples* up across that window fixed the blankness and introduced
+ * a worse problem: a Twitch-only counter sat under "Loading live viewer count…"
+ * showing a TikTok pill and a four-digit count, none of which had anything to do
+ * with the channel that had just been typed. So there are now two distinct
+ * fallbacks, and which one is on screen is itself the assertion throughout this
+ * file: samples before anything is configured, and a loading fallback built from
+ * the configured platforms alone once something is.
+ *
+ * These tests pin the readiness signal down: what counts as one, what does not,
+ * and what happens on either side of it. The negative cases are the point — a
+ * readiness check that accepts a message from any origin, any window, or any
+ * channel is how a preview starts showing one channel's number under another
+ * channel's name.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
@@ -54,6 +62,15 @@ const liveFrame = () =>
 
 /** The sample preview, rendered through the production counter renderer. */
 const samples = () => document.querySelector('[data-testid="counter-fixture-preview"]');
+
+/** The configured channel's loading fallback. Mutually exclusive with `samples`:
+ *  the two are separate branches, so asserting on the right one is what
+ *  distinguishes "not blank" from "not misleading". */
+const loadingFallback = () =>
+  document.querySelector('[data-testid="counter-loading-preview"]');
+
+/** Whichever fallback is up, if either. What "never blank" actually means. */
+const anyFallback = () => samples() ?? loadingFallback();
 
 const loadingText = () =>
   document.querySelector('.panel-counter-output .preview-loading')?.textContent ?? '';
@@ -118,17 +135,25 @@ afterEach(() => {
 });
 
 describe('the surface is never blank', () => {
-  it('keeps the sample preview up in the same tick a valid channel is typed', () => {
+  it('keeps a fallback up in the same tick a valid channel is typed', () => {
     mount();
     typeChannel('twitch', 'shroud');
-    expect(samples()).not.toBeNull();
+    expect(anyFallback()).not.toBeNull();
   });
 
-  it('has not mounted the live frame yet at that point, so samples are all there is', () => {
+  it('switches to the loading fallback in that same tick, not the samples', () => {
+    mount();
+    expect(samples()).not.toBeNull();
+    typeChannel('twitch', 'shroud');
+    expect(samples()).toBeNull();
+    expect(loadingFallback()).not.toBeNull();
+  });
+
+  it('has not mounted the live frame yet at that point, so the fallback is all there is', () => {
     mount();
     typeChannel('twitch', 'shroud');
     expect(liveFrame()).toBeNull();
-    expect(samples()).not.toBeNull();
+    expect(loadingFallback()).not.toBeNull();
   });
 
   it('announces that the live count is loading', () => {
@@ -149,8 +174,18 @@ describe('the surface is never blank', () => {
     expect(loadingText()).toBe('');
   });
 
-  it('still marks the numbers as preview data while the live count loads', () => {
+  it('labels the loading window as loading, not as preview data', () => {
     configuredAndLoaded();
+    const output = within(panel('.panel-counter-output'));
+    expect(output.getByText('Loading live data')).toBeTruthy();
+    /* The old wording. It described sample counts, and there are none here — the
+       badge saying "Preview data" over a real channel's pills was half of what
+       made the state misleading. */
+    expect(output.queryByText('Preview data')).toBeNull();
+  });
+
+  it('still marks the numbers as preview data before any channel is entered', () => {
+    mount();
     expect(
       within(panel('.panel-counter-output')).getByText('Preview data'),
     ).toBeTruthy();
@@ -167,17 +202,17 @@ describe('what does not count as readiness', () => {
     expect(liveFrame()).not.toBeNull();
   });
 
-  it('keeps the samples up once the frame has merely mounted', () => {
+  it('keeps the loading fallback up once the frame has merely mounted', () => {
     mount();
     typeChannel('twitch', 'shroud');
     settle();
     expect(liveFrame()).not.toBeNull();
-    expect(samples()).not.toBeNull();
+    expect(loadingFallback()).not.toBeNull();
   });
 
-  it('keeps the samples up after the frame fires load', () => {
+  it('keeps the loading fallback up after the frame fires load', () => {
     configuredAndLoaded();
-    expect(samples()).not.toBeNull();
+    expect(loadingFallback()).not.toBeNull();
   });
 
   it('keeps the live layer hidden after load alone', () => {
@@ -187,47 +222,35 @@ describe('what does not count as readiness', () => {
     );
   });
 
-  it('ignores a ready message from another origin', () => {
-    configuredAndLoaded();
-    postToParent({ origin: 'https://evil.example' });
-    expect(samples()).not.toBeNull();
-  });
+  /* Every untrusted message, with the same expectation: the frame stays hidden
+     and the loading fallback stays up. Rejection has to leave the preview in the
+     loading state specifically — falling back to the *samples* on a bad message
+     would put an unconfigured platform's invented count back on screen, which is
+     exactly the outcome the origin and pollKey checks exist to prevent. */
+  const untrusted: Array<[string, Parameters<typeof postToParent>[0]]> = [
+    ['from another origin', { origin: 'https://evil.example' }],
+    ['from a window that is not the live frame', { source: window }],
+    ['with no source at all', { source: null }],
+    ['that is an unrelated message from the frame', { data: { type: 'something-else', pollKey: '' } }],
+    ['that is a bare string', { data: 'ready' }],
+    ['carrying no pollKey', { data: { type: COUNTER_READY_MESSAGE } }],
+    [
+      'for a different channel',
+      { data: { type: COUNTER_READY_MESSAGE, pollKey: 'twitch:someoneelse' } },
+    ],
+  ];
 
-  it('ignores a ready message from a window that is not the live frame', () => {
-    configuredAndLoaded();
-    postToParent({ source: window });
-    expect(samples()).not.toBeNull();
-  });
-
-  it('ignores a ready message with no source at all', () => {
-    configuredAndLoaded();
-    postToParent({ source: null });
-    expect(samples()).not.toBeNull();
-  });
-
-  it('ignores unrelated messages from the frame', () => {
-    configuredAndLoaded();
-    postToParent({ data: { type: 'something-else', pollKey: '' } });
-    expect(samples()).not.toBeNull();
-  });
-
-  it('ignores a bare string message', () => {
-    configuredAndLoaded();
-    postToParent({ data: 'ready' });
-    expect(samples()).not.toBeNull();
-  });
-
-  it('ignores a ready message carrying no pollKey', () => {
-    configuredAndLoaded();
-    postToParent({ data: { type: COUNTER_READY_MESSAGE } });
-    expect(samples()).not.toBeNull();
-  });
-
-  it('ignores a ready message for a different channel', () => {
-    configuredAndLoaded();
-    postToParent({ data: { type: COUNTER_READY_MESSAGE, pollKey: 'twitch:someoneelse' } });
-    expect(samples()).not.toBeNull();
-  });
+  for (const [label, overrides] of untrusted) {
+    it(`ignores a ready message ${label}`, () => {
+      const frame = configuredAndLoaded();
+      postToParent(overrides);
+      expect(loadingFallback()).not.toBeNull();
+      expect(samples()).toBeNull();
+      expect(frame.closest('.preview-swap-live')?.getAttribute('data-live-ready')).toBe(
+        'false',
+      );
+    });
+  }
 });
 
 describe('the readiness message itself', () => {
@@ -239,9 +262,10 @@ describe('the readiness message itself', () => {
     );
   });
 
-  it('removes the sample preview', () => {
+  it('removes the loading fallback, leaving the real result alone on the surface', () => {
     configuredAndLoaded();
     postToParent();
+    expect(loadingFallback()).toBeNull();
     expect(samples()).toBeNull();
   });
 
@@ -251,12 +275,12 @@ describe('the readiness message itself', () => {
     expect(loadingText()).toBe('');
   });
 
-  it('drops the preview-data marker, because the numbers are now real', () => {
+  it('drops both markers, because the numbers are now real', () => {
     configuredAndLoaded();
     postToParent();
-    expect(
-      within(panel('.panel-counter-output')).queryByText('Preview data'),
-    ).toBeNull();
+    const output = within(panel('.panel-counter-output'));
+    expect(output.queryByText('Preview data')).toBeNull();
+    expect(output.queryByText('Loading live data')).toBeNull();
   });
 
   it('leaves the frame mounted at the same URL it was already loading', () => {
@@ -268,13 +292,16 @@ describe('the readiness message itself', () => {
 });
 
 describe('changing the configuration', () => {
-  it('restores the samples when the channel changes', () => {
+  it('returns to the loading fallback when the channel changes, not to the samples', () => {
     configuredAndLoaded();
     postToParent();
-    expect(samples()).toBeNull();
+    expect(loadingFallback()).toBeNull();
 
     typeChannel('twitch', 'lirik');
-    expect(samples()).not.toBeNull();
+    expect(loadingFallback()).not.toBeNull();
+    /* A channel is still configured, so samples would be as wrong here as they
+       were for the first one. */
+    expect(samples()).toBeNull();
   });
 
   it('announces loading again for the new channel', () => {
@@ -293,7 +320,7 @@ describe('changing the configuration', () => {
     settle();
     act(() => void fireEvent.load(liveFrame()!));
     postToParent({ data: { type: COUNTER_READY_MESSAGE, pollKey: stale } });
-    expect(samples()).not.toBeNull();
+    expect(loadingFallback()).not.toBeNull();
   });
 
   it('reveals the new channel once its own poll commits', () => {
@@ -303,7 +330,7 @@ describe('changing the configuration', () => {
     settle();
     act(() => void fireEvent.load(liveFrame()!));
     postToParent();
-    expect(samples()).toBeNull();
+    expect(anyFallback()).toBeNull();
   });
 
   it('hides the live layer again while the new channel loads', () => {
@@ -330,6 +357,10 @@ describe('clearing the channel', () => {
     postToParent();
     typeChannel('twitch', '');
     expect(samples()).not.toBeNull();
+    expect(loadingFallback()).toBeNull();
+    expect(
+      within(panel('.panel-counter-output')).getByText('Preview data'),
+    ).toBeTruthy();
   });
 
   it('stops announcing a load that is no longer happening', () => {

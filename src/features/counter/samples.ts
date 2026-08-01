@@ -50,6 +50,45 @@ export const COUNTER_COUNT_MAX = 9_999_999;
  * renderer is told "present, but not countable" — the state that draws the em
  * dash. Passing no counts at all yields the built-in set.
  */
+/**
+ * Statuses for a configured channel whose first poll has not committed yet.
+ *
+ * The problem this solves is not a blank preview — it is a *dishonest* one. While
+ * a real channel's first request was in flight the generator kept showing the
+ * sample set, so a Twitch-only counter displayed a TikTok pill with a four-digit
+ * count beside the words "Loading live viewer count". Nothing on screen belonged
+ * to the channel that had been typed.
+ *
+ * So the loading state is built from the configured platforms and nothing else,
+ * and every one of them carries no measured number. No count is invented, no
+ * unconfigured platform can appear, and the fallback stays non-blank. It is
+ * deliberately expressed as statuses rather than as a new rendering path: the
+ * same `ViewerCounterDisplay` draws it, so combined and separate modes, icons and
+ * alignment are whatever the real overlay would do with the same configuration.
+ *
+ * WHY `live-unknown` AND NOT `unavailable`. The em dash is what both states
+ * print, and `unavailable` is the closer name — but it is not the state that
+ * *shows* anything. `visiblePlatforms` counts only `live` and `live-unknown`, so
+ * a set of `unavailable` statuses draws a combined pill with an em dash and no
+ * icons at all, and in separate mode draws nothing whatsoever: a blank frame,
+ * which is the original bug back again. `live-unknown` is the one state that
+ * yields the required icon-plus-em-dash in both modes through a renderer nobody
+ * had to touch. Read as "this platform is being counted, and there is no number
+ * yet", which is exactly the loading window.
+ *
+ * Order follows `PLATFORM_ORDER` rather than the caller's array, so the pills sit
+ * where the live result will sit and the reveal is not a reshuffle.
+ */
+export function loadingCounterStatuses(
+  configured: readonly ViewerPlatform[],
+): PlatformStatuses {
+  const statuses: PlatformStatuses = {};
+  for (const platform of PLATFORM_ORDER) {
+    if (configured.includes(platform)) statuses[platform] = { state: 'live-unknown' };
+  }
+  return statuses;
+}
+
 export function sampleCounterStatuses(
   counts: Partial<Record<ViewerPlatform, number>> = SAMPLE_COUNTER_COUNTS,
 ): PlatformStatuses {

@@ -111,6 +111,16 @@ function parseBadges(rawTag: string, badgeMap: Record<string, string>): UnifiedB
   ];
 }
 
+/** Accept only the plain string map promised by /api/twitch/badges. */
+function parseBadgeMap(value: unknown): Record<string, string> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return null;
+  const entries = Object.entries(value);
+  if (!entries.every(([key, url]) => key.length > 0 && typeof url === 'string')) return null;
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
 /** "prefix: text" with emote offsets shifted (unified-chat-lite prefix_text) */
 function prefixText(prefix: string, text: string, emotes: UnifiedEmote[]): { text: string; emotes: UnifiedEmote[] } {
   if (!text) return { text: prefix, emotes: [] };
@@ -138,8 +148,11 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   let badgeMap: Record<string, string> = {};
 
   fetch(`/api/twitch/badges?channel=${encodeURIComponent(channel)}`)
-    .then(r => r.ok ? r.json() : {})
-    .then(m => { badgeMap = m; })
+    .then(r => r.ok ? r.json() : null)
+    .then(value => {
+      const parsed = parseBadgeMap(value);
+      if (parsed) badgeMap = parsed;
+    })
     .catch(() => { /* fall back to bare types */ });
 
   function buildMessage(p: IrcLine, kind: 'chat' | 'system', text: string, emotes: UnifiedEmote[], category?: UnifiedMessage['category']): UnifiedMessage {

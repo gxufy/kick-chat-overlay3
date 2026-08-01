@@ -248,23 +248,45 @@ describe('the Live preview feed switch, from the generator', () => {
 
   it('does not double its rate after being cycled off and on', () => {
     /* A duplicated timer chain is the failure mode of an enable path whose cleanup
-       does not run, and it shows up as a feed going at twice the cadence. Measured
-       as a rate over a fixed window rather than by counting timers: the generator
-       owns a URL debounce as well, so a raw timer count is not the feed's alone.
+       does not run, and it shows up as a feed going at twice the cadence.
 
-       The bound is the arithmetic: a window of eight maximum-length intervals can
-       hold at most eight messages from one chain, and it holds well over eight from
-       two — the minimum delay is a third of the maximum, so a doubled chain would
-       deliver in the twenties. Twelve leaves room for the draw landing short
-       without leaving room for a second chain. */
-    render(<ClassicGenerator />);
-    act(() => void fireEvent.click(feedSwitch()));
-    act(() => void fireEvent.click(feedSwitch()));
-    act(() => void fireEvent.click(feedSwitch()));
-    wait(CHAT_INTERVAL_MAX_MS * 8);
-    const generated = bodies().length - 6;
-    expect(generated).toBeGreaterThan(0);
-    expect(generated).toBeLessThanOrEqual(12);
+       THE DELAY IS PINNED, because a bound over an unseeded band cannot express
+       this. The generator's simulator draws from Math.random, and the draw is per
+       tick: over a window of eight maximum-length intervals one honest chain can
+       deliver anywhere from eight messages (every draw maximal) to twenty-three
+       (every draw minimal, 28000/1200). So no count in that range distinguishes one
+       chain from two, and an earlier revision of this test asserting `<= 12` was
+       failing CI on nothing worse than a run of short draws.
+
+       Pinning the source to a near-maximum value makes every delay exactly
+       CHAT_INTERVAL_MAX_MS — intBetween is min + floor(r * (max - min + 1)), so
+       0.999999 maps to the documented maximum itself, not one below it. The window
+       then holds exactly eight ticks, and a second chain would put roughly sixteen
+       messages in it. Exact, not bounded: one number, both directions. */
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.999999);
+    try {
+      render(<ClassicGenerator />);
+      act(() => void fireEvent.click(feedSwitch()));
+      act(() => void fireEvent.click(feedSwitch()));
+      act(() => void fireEvent.click(feedSwitch()));
+      /* Left on, so what follows measures a live chain rather than a dead one. */
+      expect(feedSwitch().disabled).toBe(false);
+      expect(feedSwitch().checked).toBe(true);
+
+      wait(CHAT_INTERVAL_MAX_MS * 8);
+      const generated = bodies().length - 6;
+      expect(generated).toBeGreaterThan(0);
+      expect(generated).toBe(8);
+
+      /* And cleanup really does end it: off, then a long idle window adds nothing.
+         A surviving chain would keep appending here even with the switch off. */
+      act(() => void fireEvent.click(feedSwitch()));
+      const settled = bodies().length;
+      wait(CHAT_INTERVAL_MAX_MS * 8);
+      expect(bodies()).toHaveLength(settled);
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it('pauses and resumes without losing what is on screen', () => {

@@ -26,6 +26,12 @@ import CounterPage from '@/pages/counter';
    below advance past it rather than landing on it. */
 const COUNTER_POLL_INTERVAL_MS = 10_000;
 
+/* The page's per-cycle deadline, restated for the same reason as the interval.
+   The timeout tests below straddle it deliberately — just under, then just over —
+   rather than landing on it, so they assert that a bound exists at roughly this
+   value without depending on which side of the boundary a timer fires. */
+const REQUEST_TIMEOUT_MS = 8_000;
+
 /** What the display renders when it has presence but no measurement. */
 const UNAVAILABLE = '—';
 
@@ -100,7 +106,24 @@ beforeEach(() => {
       requests.push(url);
       signals.push(init?.signal);
       if (init?.signal?.aborted) throw new Error('aborted');
-      if (gate) await gate;
+      if (gate) {
+        /* A held request has to stay abortable, not merely start abortable.
+           `fetch` rejects the moment its signal aborts, whatever the network is
+           doing; a stub that checked the signal once and then awaited the gate
+           would stay pending through an abort and report the poll loop as hung
+           when it was not. Racing the abort event is what makes a held request
+           behave like a real slow one. */
+        const signal = init?.signal;
+        await Promise.race([
+          gate,
+          new Promise<never>((_, reject) => {
+            if (!signal) return;
+            signal.addEventListener('abort', () => reject(new Error('aborted')), {
+              once: true,
+            });
+          }),
+        ]);
+      }
       const entry = handlers.find((h) => h.match(url));
       const body = entry?.handler() ?? null;
       if (body === null) throw new Error('network');
@@ -367,8 +390,16 @@ describe('the poll loop', () => {
   });
 
   it('waits for the outstanding request to settle before timing the next one', async () => {
-    /* The interval is measured from settle, not from send. With a request held
-       open, no amount of elapsed time may produce a second one. */
+    /* The interval is measured from settle, not from send: while a request is
+       outstanding, elapsed time alone produces no second request.
+       "Outstanding" is now bounded. A held request used to block the loop for as
+       long as the tab was open, and this assertion was written against that — it
+       advanced thirty seconds and required the count to stay at one. The cycle
+       deadline ends that, so the window checked here is one shorter than a
+       deadline. What it still pins down is the part that matters and that the
+       timeout does not change: the interval never starts while a request is in
+       flight, so two polls cannot overlap. The deadline's own consequences are
+       asserted in "the request timeout" below. */
     query = { kick: 'somechannel' };
     kickLive(1);
     const held = deferred();
@@ -378,7 +409,9 @@ describe('the poll loop', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(requests.length).toBe(1);
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(COUNTER_POLL_INTERVAL_MS * 3); });
+    /* Past the interval several times over, still inside the first deadline. */
+    expect(REQUEST_TIMEOUT_MS).toBeGreaterThan(COUNTER_POLL_INTERVAL_MS / 2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 100); });
     expect(requests.length).toBe(1);
 
     gate = null;
@@ -661,5 +694,157 @@ describe('readiness postMessage emission', () => {
     rerender(<CounterPage />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+  });
+
+  /* The hang. A provider that accepts a connection and then says nothing left
+     `Promise.all` pending forever, and the commit, the first render and this
+     message all sit after that await — so the overlay stayed empty and an
+     embedding generator stayed in its loading state for as long as the tab was
+     open. The page declared an 8-second request timeout for exactly this and
+     never applied it. */
+  it('emits readiness even when a provider never responds', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1234);
+
+    render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 100); });
+    expect(fakeParent.postMessage).not.toHaveBeenCalled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(fakeParent.postMessage).toHaveBeenCalledOnce();
+
+    gate = null;
+    held.release();
+  });
+});
+
+describe('the request timeout', () => {
+  it('aborts a request that outlives the timeout', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 100); });
+    expect(signals.some((s) => s?.aborted)).toBe(false);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(signals.some((s) => s?.aborted)).toBe(true);
+
+    gate = null;
+    held.release();
+  });
+
+  it('commits an unavailable value rather than waiting forever', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    const { container } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 10); });
+    expect(text(container)).toBe(UNAVAILABLE);
+
+    gate = null;
+    held.release();
+  });
+
+  it('does not time out a request that answers promptly', async () => {
+    query = { kick: 'somechannel' };
+    kickLive(4321);
+    const { container } = await mount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(text(container)).toBe('4,321');
+
+    /* Well past the deadline, with nothing outstanding: the settled cycle's
+       timer must not fire and turn a good value into a dash. */
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 100); });
+    expect(text(container)).toBe('4,321');
+  });
+
+  it('keeps the ten-second cadence measured from the timed-out settlement', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 10); });
+    const afterFirst = requests.length;
+
+    /* Not sooner. The interval is measured from settlement, and timing out is a
+       settlement — so the next request is one interval after the deadline, not
+       one interval after the request began. */
+    await act(async () => { await vi.advanceTimersByTimeAsync(COUNTER_POLL_INTERVAL_MS - 100); });
+    expect(requests.length).toBe(afterFirst);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(requests.length).toBeGreaterThan(afterFirst);
+
+    gate = null;
+    held.release();
+  });
+
+  it('never runs two polls at once while a request is held open', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    render(<CounterPage />);
+    /* Three deadlines' worth. Each cycle must wait for the previous one to time
+       out and then for the interval, so the count rises slowly and in step
+       rather than one request per deadline arriving on top of the last. */
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 10); });
+    expect(requests.length).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(COUNTER_POLL_INTERVAL_MS + 10); });
+    expect(requests.length).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 10); });
+    expect(requests.length).toBe(2);
+
+    gate = null;
+    held.release();
+  });
+
+  it('abandons a held request immediately on a channel change, without waiting out the timeout', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    const { rerender } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(signals[0]?.aborted).toBe(false);
+
+    query = { kick: 'anotherchannel' };
+    rerender(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    /* Long before the deadline. */
+    expect(signals[0]?.aborted).toBe(true);
+
+    gate = null;
+    held.release();
+  });
+
+  it('leaves no timer behind on unmount', async () => {
+    query = { kick: 'somechannel' };
+    const held = deferred();
+    gate = held.promise;
+    kickLive(1);
+
+    const { unmount } = render(<CounterPage />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    unmount();
+
+    /* Both the deadline and the interval are cleared, so nothing is left to run.
+       A leaked deadline would still be counted here even though its abort would
+       be harmless — the timer itself is the leak. */
+    expect(vi.getTimerCount()).toBe(0);
+
+    gate = null;
+    held.release();
   });
 });

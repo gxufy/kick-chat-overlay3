@@ -37,7 +37,12 @@ const COUNTER_POLL_INTERVAL_MS = 10_000;
 /** How long a previously good value survives consecutive failures. */
 const STALE_WINDOW_MS = 60_000;
 
-/** Client-side timeout for one platform request. */
+/**
+ * How long one poll cycle may spend waiting on providers before committing
+ * whatever it has. Bounded so the first cycle always reaches a value, and so
+ * `COUNTER_POLL_INTERVAL_MS` is measured from a settlement that actually
+ * happens.
+ */
 const REQUEST_TIMEOUT_MS = 8_000;
 
 /** A good status plus when it was measured, for staleness bounding. */
@@ -92,6 +97,9 @@ export default function Counter() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    /* The current cycle's deadline. Held out here so cleanup can clear it: a
+       pending abort timer after unmount is a leak whether or not it fires. */
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
     /* Whether this effect run has already announced itself. The readiness
        signal describes the first commit for this pollKey, so later polls in the
@@ -132,8 +140,35 @@ export default function Counter() {
 
     /** One poll cycle. Never throws; partial success is preserved. */
     async function poll(): Promise<void> {
+      /* One controller serves both reasons a request should stop: the effect
+       * tearing down, and this cycle running out of time. Aborting it is what
+       * makes REQUEST_TIMEOUT_MS real — without it a provider that accepts a
+       * connection and then says nothing leaves `Promise.all` below pending
+       * forever, and since the commit, `setStarted` and the readiness message
+       * all sit after that await, the overlay never shows a value and an
+       * embedding generator never leaves its loading state. Waiting on a socket
+       * with no timeout was the whole defect; the constant was declared for this
+       * and never wired in.
+       *
+       * A deadline rather than a race, so timing out also *cancels* the request:
+       * a race would commit on time but leave the socket open, and the reply
+       * could still land and resolve into a later cycle's `fresh`.
+       *
+       * No composition helper is needed. AbortSignal.any and AbortSignal.timeout
+       * are too new to assume across the browsers OBS ships, and two callers
+       * calling `.abort()` on one controller is what they would compose down to
+       * anyway — abort is idempotent, and the first reason wins. */
       controller = new AbortController();
       const signal = controller.signal;
+      const cycle = controller;
+      deadline = setTimeout(() => {
+        /* Whatever has already resolved stays in `fresh`; the rest arrive as
+           rejections and are swallowed by the per-job catches, so this degrades
+           only the platforms that were actually slow. `commit` then applies the
+           existing stale-window policy to those, exactly as it does for a
+           refusal or a network error — timing out is not a new outcome. */
+        cycle.abort();
+      }, REQUEST_TIMEOUT_MS);
       const fresh: Partial<Record<ViewerPlatform, PlatformCountStatus>> = {};
 
       const jobs: Promise<void>[] = [];
@@ -209,6 +244,13 @@ export default function Counter() {
 
       await Promise.all(jobs);
 
+      /* Settled, so the deadline has no one left to interrupt. Cleared here as
+         well as in cleanup: the next cycle overwrites the variable, and a timer
+         still armed against this cycle's controller would abort a controller
+         nothing is listening to while keeping the tab's timer alive. */
+      clearTimeout(deadline);
+      deadline = undefined;
+
       if (cancelled) return;
       commit(fresh);
       setStarted(true);
@@ -255,6 +297,12 @@ export default function Counter() {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      /* The in-flight cycle's deadline. Cleared rather than left to fire: the
+         abort below already stops the request, so the timer has nothing to do,
+         and on a channel change it would otherwise outlive its own effect run.
+         Unmount and channel change therefore abort immediately — neither waits
+         out the remaining seconds of a timeout. */
+      if (deadline) clearTimeout(deadline);
       // Aborting after `cancelled` is set means the rejection handlers above
       // are no-ops, and no state update can follow.
       if (controller) controller.abort();

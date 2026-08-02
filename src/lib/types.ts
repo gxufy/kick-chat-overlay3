@@ -25,6 +25,8 @@ export interface UnifiedEmote {
 export interface UnifiedBadge {
   /** platform badge type, lowercase: broadcaster/moderator/subscriber/... */
   type: string;
+  /** Exact provider version. Twitch versions are opaque strings, not numbers. */
+  version?: string;
   /** kick: sub months / gift count; used to pick badge art */
   count?: number;
   /** pre-resolved image URL (youtube member badges, kick badges_v2) */
@@ -33,6 +35,8 @@ export interface UnifiedBadge {
 
 export interface UnifiedMessage {
   platform: Platform;
+  /** Preview-only visual source mark. Production connectors leave this absent. */
+  displayPlatform?: Platform;
   id: string;
   /** platform sender id — keys 7TV entitlements for kick */
   senderId: string;

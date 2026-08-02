@@ -1,4 +1,8 @@
-/* The generator's built-in chat preview: the production overlay over fixtures.
+/* Preview rendering workflow adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 to retain MultiChat's one production rendering path.
+ *
+ * The generator's built-in chat preview: the production overlay over fixtures.
  *
  * This is NOT a second chat renderer, and deliberately so. It mounts
  * `components/ChatOverlay` — the same component pages/multichat.tsx mounts — and
@@ -175,27 +179,9 @@ export default function ClassicChatPreview({
         testId="chat-preview-frame"
       >
         <ChatOverlay
-          /* Remount when a setting that changes conversion output changes.
-
-             ChatOverlay is an append-only feed: it tracks the ids it has already
-             shown and never re-renders one, which is right live, where a message
-             is converted once on arrival and re-rendering it would restart its
-             slide-in. But these four settings are applied during conversion, so
-             flipping one produces new ParsedMessage values for ids the overlay
-             has already seen — and it correctly ignores them. Without a remount
-             the paint, its shadows, third-party emotes and coloured mentions all
-             appear frozen in the preview while working in OBS.
-
-             A remount is also what OBS actually does: these settings live in the
-             URL, so changing one there means reloading the browser source. Keyed
-             on these four alone — every other setting is applied by the renderer
-             at paint and already updates in place. */
-          key={[
-            config.sevenTVEmotesEnabled,
-            config.sevenTVCosmeticsEnabled,
-            config.paintShadows,
-            config.mentionColor,
-          ].join('|')}
+          /* ChatOverlay keeps batch identity by message id but resolves each row
+             from the newest ParsedMessage, so conversion-time setting and resource
+             changes repaint in place without replaying entrance animations. */
           config={config}
           messages={parsed}
           fadingIds={EMPTY_FADING}
@@ -208,6 +194,7 @@ export default function ClassicChatPreview({
              would silently turn an explicit 'icon' selection into the legacy
              single-platform fallback of showing no marker at all. */
           sourceTagExplicit
+          sourceTagOverride="icon"
         />
       </IsolatedPreviewFrame>
     </div>

@@ -38,6 +38,7 @@ import {
 
 /** Human labels for the font values, matching the generator's own <select>. */
 const FONT_LABEL: Record<string, string> = {
+  geist: 'Geist',
   baloo: 'Baloo Tammudu',
   segoe: 'Segoe UI (Chatterino)',
   roboto: 'Roboto',

@@ -43,7 +43,10 @@ import {
   RELOAD_STAMP_KEY,
   createMultichatCommandRunner,
 } from '../lib/multichatCommandRuntime';
-import ChatOverlay, { type PinnedState } from '../components/overlay/ChatOverlay';
+import ChatOverlay, {
+  type PinnedState,
+  type StartupLoaderPhase,
+} from '../components/overlay/ChatOverlay';
 import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
 
@@ -71,6 +74,11 @@ const TWITCH_PIN_INTERVAL_MS = 5_000;
  * blips and a redeploy never clear anything.
  */
 const TWITCH_PIN_STALE_AFTER_MS = 60_000;
+
+/** Startup presentation timing for a configured production Chat overlay. */
+export const STARTUP_LOADER_MIN_MS = 700;
+export const STARTUP_LOADER_MAX_MS = 8_000;
+export const STARTUP_LOADER_FADE_MS = 250;
 
 /** True when *value* looks like a Twitch connection id. */
 function isTwitchConnectionId(value: string): boolean {
@@ -168,7 +176,7 @@ function MultichatOverlay() {
   const [config, setConfig] = useState<OverlayConfig | null>(null);
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());
-  const [showLoader, setShowLoader] = useState(false);
+  const [loaderPhase, setLoaderPhase] = useState<StartupLoaderPhase>('hidden');
   const [pinnedMessage, setPinnedMessage] = useState<PinnedState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,7 +208,7 @@ function MultichatOverlay() {
 
   // Mutable state that doesn't trigger rerenders
   const stateRef = useRef<{
-    emotes: SevenTVEmote[];
+    emotes: { kick: SevenTVEmote[]; twitch: SevenTVEmote[] };
     badges: SevenTVBadge[];
     paints: SevenTVPaint[];
     entitlements: Entitlements;
@@ -208,7 +216,7 @@ function MultichatOverlay() {
     channel: KickChannel | null;
     config: OverlayConfig | null;
   }>({
-    emotes: [],
+    emotes: { kick: [], twitch: [] },
     badges: [],
     paints: [],
     entitlements: {},
@@ -230,7 +238,35 @@ function MultichatOverlay() {
 
     setConfig(cfg);
     stateRef.current.config = cfg;
-    setShowLoader(true);
+    setLoaderPhase('visible');
+
+    const loaderStartedAt = Date.now();
+    let loaderDismissRequested = false;
+    let loaderMinimumTimer: ReturnType<typeof setTimeout> | null = null;
+    let loaderFadeTimer: ReturnType<typeof setTimeout> | null = null;
+    let loaderMaximumTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function beginLoaderFade() {
+      if (loaderDismissRequested) return;
+      loaderDismissRequested = true;
+      setLoaderPhase('fading');
+      loaderFadeTimer = setTimeout(() => setLoaderPhase('hidden'), STARTUP_LOADER_FADE_MS);
+    }
+
+    function dismissLoaderWhenEligible() {
+      if (loaderDismissRequested || loaderMinimumTimer) return;
+      const remaining = STARTUP_LOADER_MIN_MS - (Date.now() - loaderStartedAt);
+      if (remaining <= 0) {
+        beginLoaderFade();
+        return;
+      }
+      loaderMinimumTimer = setTimeout(() => {
+        loaderMinimumTimer = null;
+        beginLoaderFade();
+      }, remaining);
+    }
+
+    loaderMaximumTimer = setTimeout(beginLoaderFade, STARTUP_LOADER_MAX_MS);
 
     const s = stateRef.current;
     const connectors: Connector[] = [];
@@ -242,7 +278,13 @@ function MultichatOverlay() {
        rebuild that sender's buffered messages so paints apply
        retroactively, not just to their next message. */
     const cosmeticsFetcher = createCosmeticsFetcher(
-      { paints: s.paints, badges: s.badges, entitlements: s.entitlements },
+      {
+        get paints() { return s.paints; },
+        set paints(value) { s.paints = value; },
+        get badges() { return s.badges; },
+        set badges(value) { s.badges = value; },
+        entitlements: s.entitlements,
+      },
       (keys) => {
         const keySet = new Set(keys);
         let touched = false;
@@ -275,7 +317,7 @@ function MultichatOverlay() {
     function settle(platform: string) {
       settled.add(platform);
       if (settled.size >= platformCount) {
-        setShowLoader(false);
+        dismissLoaderWhenEligible();
         // chatis-style connect greeting — once, when everything's up
         if (!greeted) {
           greeted = true;
@@ -328,6 +370,7 @@ function MultichatOverlay() {
       s.messages.push(buildParsed(um));
       if (s.messages.length > 100) s.messages.shift();
       dirty = true;
+      dismissLoaderWhenEligible();
     }
 
     function removeMessages(platform: string, opts: { id?: string; username?: string; senderId?: string }) {
@@ -378,9 +421,10 @@ function MultichatOverlay() {
           s.channel = channel;
           if (!cfg.sevenTVEmotesEnabled) return;
           const globalEmotes = await getSevenTVGlobalEmotes();
-          s.emotes.push(...globalEmotes);
           const { emotes: channelEmotes, setId, stvUserId } = await getSevenTVChannelEmotes(channel.user_id.toString());
-          s.emotes.push(...channelEmotes);
+          const kickEmotes = new Map(globalEmotes.map((emote) => [emote.name, emote]));
+          for (const emote of channelEmotes) kickEmotes.set(emote.name, emote);
+          s.emotes.kick = [...kickEmotes.values()];
           if (cfg.sevenTVCosmeticsEnabled) {
             const sseUrl = `https://events.7tv.io/v3@entitlement.*<ctx=channel;platform=KICK;id=${channel.user.id}>,cosmetic.*<ctx=channel;platform=KICK;id=${channel.user.id}>${setId ? `,emote_set.*<object_id=${setId}>` : ''}`;
             open7TVEvents(sseUrl, 'kick', stvUserId, channel.user.id.toString());
@@ -397,6 +441,25 @@ function MultichatOverlay() {
         onMessage: addMessage,
         onDelete: o => removeMessages('twitch', o),
         onPin: handlePin, // never fires — Twitch pins need OAuth
+        onBadgeMap: (badgeMap) => {
+          let touched = false;
+          s.messages = s.messages.map((message) => {
+            if (message.platform !== 'twitch' || !message.raw) return message;
+            const raw = message.raw as UnifiedMessage;
+            const badges = raw.badges.map((badge) => {
+              const version = badge.version ?? (badge.count ? String(badge.count) : '1');
+              const url = badgeMap[`${badge.type}/${version}`] ?? badgeMap[`${badge.type}/1`];
+              return url ? { ...badge, url } : badge;
+            });
+            touched = true;
+            return {
+              ...buildParsed({ ...raw, badges }),
+              id: message.id,
+              timestamp: message.timestamp,
+            };
+          });
+          if (touched) dirty = true;
+        },
         onStatus: (status, detail) => {
           if (status !== 'connecting') settle('twitch');
           if (status === 'error' && platformCount === 1) setError(detail ?? 'Twitch connection error');
@@ -404,11 +467,9 @@ function MultichatOverlay() {
         onRoomId: async roomId => {
           twitchRoomId = roomId;
           if (!cfg.sevenTVEmotesEnabled) return;
-          // Full chatis emote stack: FFZ → BTTV → 7TV (later wins).
-          // Kick channel emotes may already be loaded — don't clobber them.
-          const emotes = await loadTwitchEmotes(roomId);
-          const have = new Set(s.emotes.map(e => e.name));
-          s.emotes.push(...emotes.filter(e => !have.has(e.name)));
+          // FFZ → BTTV → 7TV (later wins), scoped to Twitch so a same-name
+          // Kick emote can never alter Twitch rendering.
+          s.emotes.twitch = await loadTwitchEmotes(roomId);
           // 7TV cosmetics for Twitch chatters (chatis genSubs :481):
           // entitlements/cosmetics for the channel ctx + live emote set
           if (cfg.sevenTVCosmeticsEnabled) {
@@ -554,21 +615,29 @@ function MultichatOverlay() {
         // by-id cache first — otherwise a set fetched under the TTL would be
         // served from memory and the command would be a silent no-op.
         clearSevenTVEmoteSetCache();
-        const fresh: SevenTVEmote[] = await getSevenTVGlobalEmotes();
+        const global = await getSevenTVGlobalEmotes();
+        const kick = new Map(global.map((emote) => [emote.name, emote]));
         const ch = s.channel;
         if (ch) {
-          const { emotes: ce } = await getSevenTVChannelEmotes(ch.user_id.toString());
-          fresh.push(...ce);
+          const { emotes: channelEmotes } = await getSevenTVChannelEmotes(ch.user_id.toString());
+          for (const emote of channelEmotes) kick.set(emote.name, emote);
         }
-        // Twitch FFZ/BTTV/7TV stack too (roomId captured on connect)
-        if (twitchRoomId) {
-          const te = await loadTwitchEmotes(twitchRoomId);
-          const have = new Set(fresh.map(e => e.name));
-          fresh.push(...te.filter(e => !have.has(e.name)));
-        }
-        s.emotes = fresh;
+        const twitch = twitchRoomId ? await loadTwitchEmotes(twitchRoomId) : [];
+        // Replace both complete catalogs atomically after every provider settles.
+        s.emotes = { kick: [...kick.values()], twitch };
+        s.messages = s.messages.map((message) => ({
+          ...buildParsed(message.raw as UnifiedMessage),
+          id: message.id,
+          timestamp: message.timestamp,
+        }));
+        dirty = true;
       },
-      findEmoteUrl: (name) => (name ? s.emotes.find(e => e.name === name)?.image ?? null : null),
+      findEmoteUrl: (name) => {
+        if (!name) return null;
+        return s.emotes.kick.find((emote) => emote.name === name)?.image
+          ?? s.emotes.twitch.find((emote) => emote.name === name)?.image
+          ?? null;
+      },
       speak(t) {
         stopSpeaking();
         fetch(`/api/tts?voice=Brian&text=${encodeURIComponent(t)}`)
@@ -667,13 +736,13 @@ function MultichatOverlay() {
         const body = data.body;
         for (const p of body.pulled ?? []) {
           const name = p.old_value?.name;
-          if (name) s.emotes = s.emotes.filter(e => e.name !== name);
+          if (name) s.emotes[platform] = s.emotes[platform].filter(e => e.name !== name);
         }
         for (const p of body.pushed ?? []) {
           const v = p.value;
           if (!v?.id) continue;
-          s.emotes = s.emotes.filter(e => e.name !== v.name);
-          s.emotes.push({
+          s.emotes[platform] = s.emotes[platform].filter(e => e.name !== v.name);
+          s.emotes[platform].push({
             name: v.name,
             image: `https://cdn.7tv.app/emote/${v.id}/4x.webp`,
             height: 28, width: 28,
@@ -684,7 +753,7 @@ function MultichatOverlay() {
         for (const p of body.updated ?? []) {
           const oldName = p.old_value?.name, v = p.value;
           if (!oldName || !v) continue;
-          const em = s.emotes.find(e => e.name === oldName);
+          const em = s.emotes[platform].find(e => e.name === oldName);
           if (em) em.name = v.name;
         }
       }
@@ -737,9 +806,6 @@ function MultichatOverlay() {
 
     connectors.forEach(c => c.start());
 
-    // Loader safety: never spin forever if a platform stays silent
-    const loaderTimeout = setTimeout(() => setShowLoader(false), 15000);
-
     let fadeInterval: ReturnType<typeof setInterval> | null = null;
     if (cfg.fade !== false) {
       const fadeMs = (cfg.fade as number) * 1000;
@@ -762,7 +828,9 @@ function MultichatOverlay() {
     }
 
     return () => {
-      clearTimeout(loaderTimeout);
+      if (loaderMinimumTimer) clearTimeout(loaderMinimumTimer);
+      if (loaderFadeTimer) clearTimeout(loaderFadeTimer);
+      if (loaderMaximumTimer) clearTimeout(loaderMaximumTimer);
       clearInterval(flushInterval);
       if (fadeInterval) clearInterval(fadeInterval);
       connectors.forEach(c => c.stop());
@@ -866,7 +934,7 @@ function MultichatOverlay() {
         messages={messages}
         fadingIds={fadingIds}
         pinnedMessage={pinnedMessage}
-        showLoader={showLoader}
+        showLoader={loaderPhase}
         /* The parser defaults sourceTag to 'icon', so only the raw query can say
            whether the user actually asked for a mode. */
         sourceTagExplicit={router.query.sourceTag !== undefined}

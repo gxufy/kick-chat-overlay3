@@ -424,18 +424,14 @@ describe('7TV paints render through the production paint builder', () => {
 describe('the chat settings remain the authority over what draws', () => {
   afterEach(cleanup);
 
-  it('honours sourceTag over generated messages exactly as over fixtures', () => {
+  it('keeps Preview Data platform marks as icons without changing the serialized setting', () => {
     const generated = generateUntil(() => true, 4, allSourcesEnabled());
-    for (const mode of ['icon', 'dot', 'label'] as const) {
+    for (const mode of ['icon', 'dot', 'label', 'none'] as const) {
       mountPreview(generated, { sourceTag: mode });
-      expect(
-        preview().querySelectorAll(`[data-source-tag="${mode}"]`).length,
-        mode,
-      ).toBeGreaterThan(0);
+      expect(preview().querySelectorAll('[data-source-tag="icon"]').length, mode).toBeGreaterThan(0);
+      expect(preview().querySelectorAll('[data-source-tag="dot"], [data-source-tag="label"]')).toHaveLength(0);
       cleanup();
     }
-    mountPreview(generated, { sourceTag: 'none' });
-    expect(preview().querySelectorAll('[data-source-tag]')).toHaveLength(0);
   });
 
   it('swaps third-party emotes in generated text only while emotes are on', () => {
@@ -488,7 +484,16 @@ describe('the chat settings remain the authority over what draws', () => {
 /* Wired into the generator, and serialized nowhere                   */
 /* ------------------------------------------------------------------ */
 
-describe('the picker inside the generator', () => {
+describe('the final generator removes manual badge source selection', () => {
+  it('shows no badge source picker or bulk source actions', () => {
+    render(<ClassicGenerator />);
+    expect(screen.queryByText('Preview badges & cosmetics')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enable all' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Randomize badges' })).toBeNull();
+  });
+});
+
+describe.skip('retired picker inside the generator', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     window.sessionStorage.clear();

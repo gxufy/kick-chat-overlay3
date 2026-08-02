@@ -30,7 +30,8 @@ const OVERLAY_SOURCE = readFileSync(
 
 /** Font keys that deliberately need no Google stylesheet, and why. */
 const EXEMPT: Readonly<Record<string, string>> = {
-  default: 'resolves to inherit',
+  default: 'resolves to self-hosted Geist',
+  geist: 'self-hosted local face',
   segoe: 'system face',
   impact: 'system face',
   alsina: 'self-hosted @font-face in ChatOverlay',

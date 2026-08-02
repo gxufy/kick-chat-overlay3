@@ -55,6 +55,9 @@ import {
  */
 export function buildPreviewCosmetics(
   loaded: readonly PreviewBadgeAsset[],
+  resources?: {
+    readonly kickChannel: MessageCosmetics['channel'];
+  },
 ): MessageCosmetics {
   /* Every badge a slot might name must be findable by id in `cosmetics.badges`, so
      the sample badge and every loaded asset go in. Loaded assets carry extra catalog
@@ -83,5 +86,6 @@ export function buildPreviewCosmetics(
     ...SAMPLE_COSMETICS,
     badges,
     entitlements,
+    channel: resources?.kickChannel ?? SAMPLE_COSMETICS.channel,
   };
 }

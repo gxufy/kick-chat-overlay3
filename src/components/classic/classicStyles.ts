@@ -103,42 +103,70 @@ header.header-strip::after { content: ''; position: absolute; bottom: 0; left: 1
 .card.hero { border-top: 2px solid var(--accent); padding: 16px 18px 12px; }
 .section-title { font-size: 0.8rem; color: var(--accent); font-weight: 700; margin: 0 0 9px; text-transform: uppercase; letter-spacing: .12em; display: flex; align-items: center; gap: 8px; }
 .section-title::before { content: ''; width: 4px; height: 14px; border-radius: 2px; background: var(--accent); }
+.settings-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:9px; }
+.settings-panel-head .section-title { margin:0; }
+.settings-reset-btn { white-space:normal; text-align:center; max-width:100%; }
 .card-note { color: var(--dim); font-size: 0.76rem; margin: 6px 0 0; line-height: 1.45; }
 
-/* ── The two-tool layout ──
-   One grid holding both tools and the two full-width sections. DOM order is the
-   stacked order — chat output, chat settings, counter output, counter settings,
-   commands, setup — so the phone layout is this tree unchanged, with no media
-   query needed for it and no control duplicated per breakpoint.
+/* Two-tool layout. The DOM order is also the narrow-screen order, while named
+   areas align each output above its own settings on desktop. */
+.tool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "chat-output"
+    "chat-settings"
+    "counter-output"
+    "counter-settings"
+    "commands"
+    "obs";
+  gap: 0;
+}
+.panel-chat-output { grid-area: chat-output; min-width: 0; }
+.panel-chat-settings { grid-area: chat-settings; min-width: 0; }
+.panel-counter-output { grid-area: counter-output; min-width: 0; }
+.panel-counter-settings { grid-area: counter-settings; min-width: 0; }
+.panel-commands { grid-area: commands; min-width: 0; }
+.panel-obs { grid-area: obs; min-width: 0; }
 
-   The desktop arrangement is named areas over that same tree: the two outputs
-   share row 1 so the previews stay aligned beside each other, and each settings
-   card sits directly beneath its own output in row 2. Rows 3 and 4 span both
-   columns. Because this is placement only, reading and tab order stay per tool
-   (output then its settings) at every width. */
-.tool-grid { display: flex; flex-direction: column; }
 @media (min-width: 1000px) {
   .tool-grid {
-    display: grid;
-    /* An even split: the outputs must align beside each other, so neither tool
-       can claim a wider track than the other. Both minmax(0,…) so a long
-       unbroken URL cannot push a column past its track. */
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
-      "chat-output   counter-output"
+      "chat-output counter-output"
       "chat-settings counter-settings"
-      "commands      commands"
-      "obs           obs";
-    gap: 0 16px;
-    align-items: start;
+      "commands commands"
+      "obs obs";
+    column-gap: 18px;
   }
-  .panel-chat-output { grid-area: chat-output; }
-  .panel-counter-output { grid-area: counter-output; }
-  .panel-chat-settings { grid-area: chat-settings; }
-  .panel-counter-settings { grid-area: counter-settings; }
-  .panel-commands { grid-area: commands; }
-  .panel-obs { grid-area: obs; }
 }
+
+/* Compact Preview Data / Live Overlay switch within the Chat output card. */
+.preview-content-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.preview-content-title { color: var(--accent); font-size: .8rem; font-weight: 700; letter-spacing: .12em; margin: 0 0 3px; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.preview-content-title::before { content: ''; width: 4px; height: 14px; border-radius: 2px; background: var(--accent); }
+.preview-content-sub { color: var(--dim); font-size: .75rem; line-height: 1.4; margin: 0; }
+.preview-content-head .preview-badge { flex: 0 0 auto; }
+.preview-mode-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.preview-mode-tab {
+  appearance: none; border: 1px solid var(--line); border-radius: 7px; background: transparent;
+  color: var(--muted); cursor: pointer; font: 700 .72rem/1.2 inherit; padding: 5px 10px;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.preview-mode-tab:hover { color: var(--text); background: rgba(255,255,255,.04); }
+.preview-mode-tab.active { color: #fff; border-color: rgba(74,132,250,.5); background: var(--accent); }
+.preview-mode-tab:disabled { opacity: .4; cursor: not-allowed; }
+.preview-mode-label { color: var(--dim); font-size: .68rem; font-weight: 700; letter-spacing: .04em; margin: 0 0 7px; text-transform: uppercase; }
+.preview-data-controls { min-width: 0; }
+.preview-primary-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.preview-primary-actions .preview-badge-refresh { flex: 1 1 260px; margin: 0; }
+.preview-data-controls-compact { display: grid; gap: 7px; }
+.preview-roster-actions { justify-content: flex-start; }
+.preview-roster-actions .classic-conn-btn { min-height: 34px; }
+.preview-load-more { border-color: rgba(145,70,255,.78); background: linear-gradient(135deg, rgba(145,70,255,.24), rgba(83,45,150,.18)); color: #d8c0ff; font-weight: 800; letter-spacing: .04em; }
+.preview-load-more:hover { border-color: #b98cff; color: #fff; }
+.preview-roster-status { flex: 1 1 180px; margin: 0; color: var(--dim); font-size: .7rem; line-height: 1.35; }
+.preview-data-controls-compact .preview-background { margin-top: 0; }
 
 /* Platform inputs — compact row, one per platform */
 .platform-inputs { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -314,7 +342,7 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-label button:hover { border-color: var(--accent); color: var(--accent); }
 .preview-surface { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: inset 0 2px 12px rgba(0,0,0,.3); min-height: 90px; }
 .preview-surface.checkered { background: repeating-conic-gradient(#1a1a20 0% 25%, #131318 0% 50%) 0 0 / 16px 16px; }
-.preview-surface.dark { background: #141414; }
+.preview-surface.dark { background: #191919; }
 .preview-surface.light { background: #f4f4f5; }
 .preview-empty { display: flex; align-items: center; justify-content: center; padding: 20px 16px; color: var(--dim); font-size: 0.77rem; text-align: center; line-height: 1.45; }
 /* "Preview data" marker, shown while a preview is showing fixtures rather than a
@@ -380,6 +408,28 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .preview-bg-custom { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .preview-bg-custom label { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
 .preview-bg-custom input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+
+/* Preview Identity. A compact request/status surface below the production
+   preview. Provider art never appears here; loaded resources are shown only in
+   chat rows above. */
+.preview-identity { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: rgba(145,70,255,.035); }
+.preview-identity-title { margin: 0 0 7px; color: #b98cff; font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.preview-identity-form { display: flex; flex-direction: column; gap: 4px; }
+.preview-identity-form > label { color: var(--dim); font-size: .7rem; }
+.preview-identity-input-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.preview-identity-input-row input { flex: 1 1 180px; min-width: 0; }
+.preview-identity-input-row button:disabled, .preview-identity-retry:disabled { opacity: .45; cursor: not-allowed; }
+.preview-identity-status { color: var(--dim); font-size: .7rem; line-height: 1.4; margin-top: 6px; }
+.preview-identity-status strong { color: var(--text); font-size: .76rem; }
+.preview-identity-providers { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.preview-identity-provider { border: 1px solid var(--line); border-radius: 999px; color: var(--dim); font-size: .63rem; font-weight: 700; padding: 3px 7px; }
+.preview-identity-provider[data-status="loaded"] { border-color: rgba(47,191,113,.55); color: var(--ok); background: rgba(47,191,113,.08); }
+.preview-identity-provider[data-status="failed"] { border-color: rgba(238,119,119,.55); color: var(--err); background: rgba(238,119,119,.07); }
+.preview-identity-provider[data-status="unavailable"] { color: var(--muted); }
+.preview-identity-retry { margin-top: 7px; }
+.preview-identity-details { margin-top: 7px; color: var(--dim); font-size: .68rem; line-height: 1.4; }
+.preview-identity-details summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.preview-identity-details ul { margin: 5px 0 0; padding-left: 18px; }
 
 /* Preview badge refresh. What replaced the browsable gallery: one button that
    asks the loader for the full 7TV set, and a one-line status beside it. It
@@ -466,8 +516,6 @@ footer a { color: var(--accent); }
 /* Tablet and narrow desktop: one column, so two unusably narrow panels never
    happen. The control table stacks at the same breakpoint the original used. */
 @media (max-width: 999px) {
-  /* One track, and the dividers off with it — the column rules above are inside
-     min-width queries, so this only has to undo the padding. */
   .form_col { padding-right: 0; }
 }
 @media (max-width: 720px) {
@@ -479,6 +527,11 @@ footer a { color: var(--accent); }
   .card { padding: 14px 13px; border-radius: 12px; }
   .card.hero { padding: 15px 13px 12px; }
   .platform-input { min-width: 100%; }
+  .tool-grid, .panel-chat-output, .panel-counter-output { min-width: 0; max-width: 100%; }
+  .preview-mode-tabs, .preview-primary-actions,
+  .preview-feed-row, .preview-feed-segs, .preview-compose-row, .url-box { flex-wrap: wrap; }
+  .preview-mode-tab { flex: 1 1 130px; }
+  .preview-primary-actions > button { flex: 1 1 130px; }
   /* Touch targets: the chips, pills, and small buttons are the only controls that
      fall under a comfortable tap size at these sizes. Density is a desktop goal,
      and a 24px-tall pill on a phone is not a usable one. */

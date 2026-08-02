@@ -918,106 +918,64 @@ function bare(options: ChatSimulatorOptions = {}) {
   };
 }
 
-describe('the feed on arrival, with nobody having asked for it', () => {
-  it('has the switch off', () => {
-    expect(bare().state.enabled).toBe(false);
-  });
-
-  it('is not running, without being paused either', () => {
-    /* Off is not the same state as paused: paused implies something to resume, and
-       the controls render the two differently. */
+describe('the moving feed on arrival', () => {
+  it('is enabled, running, and not paused by default', () => {
     const view = bare();
-    expect(view.state.running).toBe(false);
+    expect(view.state.enabled).toBe(true);
+    expect(view.state.running).toBe(true);
     expect(view.state.paused).toBe(false);
   });
 
-  it('schedules no timer at all', () => {
-    /* The load-bearing assertion. There is nothing to cancel because nothing was
-       ever armed — which is why the curated showcase cannot be pushed off the top
-       of a bottom-anchored, top-clipping list by a message nobody requested. */
-    bare();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('offers no pin banner over the showcase', () => {
-    /* The banner is opaque, top-anchored and about three rows of the six tall. */
-    expect(bare().state.pinVisible).toBe(false);
-  });
-
-  it('generates nothing after two minutes of wall clock', () => {
+  it('arms exactly one timer while leaving the pin hidden on first paint', () => {
     const view = bare();
-    act(() => void vi.advanceTimersByTime(120_000));
+    expect(vi.getTimerCount()).toBe(1);
+    expect(view.state.pinVisible).toBe(false);
+  });
+
+  it('delivers on the ordinary cadence and keeps a bounded rotating history', () => {
+    const view = bare({ random: seededRandom(2) });
+    act(() => void vi.advanceTimersByTime(CHAT_INTERVAL_MIN_MS - 1));
     expect(view.state.messages).toHaveLength(0);
-  });
-
-  it('generates nothing after ten minutes of wall clock', () => {
-    /* "Indefinitely" cannot be tested, so this tests two orders of magnitude past
-       the nine seconds the previous revision managed. */
-    const view = bare();
+    act(() => void vi.advanceTimersToNextTimer());
+    expect(view.state.messages).toHaveLength(1);
     act(() => void vi.advanceTimersByTime(600_000));
-    expect(view.state.messages).toHaveLength(0);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(view.state.messages).toHaveLength(CHAT_HISTORY_MAX);
   });
 
-  it('generates nothing when every timer that exists is run to completion', () => {
-    /* Stronger than any duration: if some timer were pending at any delay, this
-       would fire it. Nothing is pending, so this is a no-op. */
-    const view = bare();
-    act(() => void vi.runOnlyPendingTimers());
-    expect(view.state.messages).toHaveLength(0);
-  });
-
-  it('stays still under Strict Mode, where a stray timer would survive a remount', () => {
+  it('keeps one scheduler under Strict Mode', () => {
     function Probe() {
       useChatPreviewSimulator({});
       return null;
     }
-    render(
-      <StrictMode>
-        <Probe />
-      </StrictMode>,
-    );
-    expect(vi.getTimerCount()).toBe(0);
+    render(<StrictMode><Probe /></StrictMode>);
+    expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('holds the same state across a visibility round trip', () => {
-    /* Backgrounding and returning is the obvious way a "resume" path could arm a
-       feed that was never started. */
-    const view = bare();
+  it('pauses while hidden and resumes when visible', () => {
+    const view = bare({ random: seededRandom(2) });
     setVisibility('hidden');
+    expect(view.state.running).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
     setVisibility('visible');
-    expect(view.state.enabled).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    act(() => void vi.advanceTimersByTime(120_000));
-    expect(view.state.messages).toHaveLength(0);
+    expect(view.state.enabled).toBe(true);
+    expect(view.state.running).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('stays off through a reset', () => {
-    /* Reset restores content. It is not a start button, and someone pressing it on
-       a still preview is asking for the showcase back, not for movement. */
-    const view = bare();
+  it('reset and source or speed changes leave the default feed enabled', () => {
+    const view = bare({ random: seededRandom(2) });
     act(() => void view.state.reset());
-    expect(view.state.enabled).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    act(() => void vi.advanceTimersByTime(120_000));
-    expect(view.state.messages).toHaveLength(0);
-  });
-
-  it('stays off through a source change', () => {
-    const view = bare();
     act(() => void view.state.toggleSource('twitchBadges'));
-    act(() => void view.state.randomizeSources());
-    expect(view.state.enabled).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
+    act(() => void view.state.setSpeed('fast'));
+    expect(view.state.enabled).toBe(true);
+    expect(view.state.speed).toBe('fast');
+    expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('stays off through a speed change', () => {
-    /* Choosing a cadence is not choosing to start — the control is visible while
-       the feed is off, and picking from it should not begin generating. */
-    const view = bare();
-    act(() => void view.state.setSpeed('fast'));
-    expect(view.state.speed).toBe('fast');
+  it('still supports an explicit stationary opt-out', () => {
+    const view = bare({ enabled: false });
     expect(view.state.enabled).toBe(false);
+    expect(view.state.running).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     act(() => void vi.advanceTimersByTime(120_000));
     expect(view.state.messages).toHaveLength(0);
@@ -1029,8 +987,8 @@ describe('the feed on arrival, with nobody having asked for it', () => {
 /* ------------------------------------------------------------------ */
 
 describe('the switch', () => {
-  it('arms exactly one timer when it is turned on', () => {
-    const view = bare({ random: seededRandom(2) });
+  it('arms exactly one timer when an explicitly disabled feed is turned on', () => {
+    const view = bare({ random: seededRandom(2), enabled: false });
     expect(vi.getTimerCount()).toBe(0);
     act(() => void view.state.setEnabled(true));
     expect(vi.getTimerCount()).toBe(1);

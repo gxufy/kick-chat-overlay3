@@ -1,4 +1,7 @@
-/* 7TV cosmetics via GQL — UChat's approach (ref-uchat cosmetics.ts).
+/* 7TV cosmetics via GQL — adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 with validation, cancellation, and live store access.
+ *
  *
  * The EventAPI only reliably streams cosmetics for users who become
  * present AFTER we connect; presence bootstraps are flaky. UChat instead
@@ -35,6 +38,7 @@ export function createCosmeticsFetcher(
   const queue: Array<{ platform: 'kick' | 'twitch'; senderId: string }> = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  let activeController: AbortController | null = null;
 
   async function flush() {
     timer = null;
@@ -46,60 +50,84 @@ export function createCosmeticsFetcher(
     const parts = batch.map((b, i) =>
       `u${i}: userByConnection(platform: ${b.platform.toUpperCase()}, id: ${JSON.stringify(b.senderId)}) { style { paint { ${PAINT_FIELDS} } badge { id tooltip host { url } } } }`
     );
-    let data: any;
+    let data: unknown;
+    activeController = new AbortController();
     try {
-      const r = await fetch('https://7tv.io/v3/gql', {
+      const response = await fetch('https://7tv.io/v3/gql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: `query { ${parts.join(' ')} }` }),
+        signal: activeController.signal,
       });
-      if (!r.ok) throw new Error(`${r.status}`);
-      data = (await r.json())?.data;
+      if (!response.ok) throw new Error('request failed');
+      const body: unknown = await response.json();
+      data = typeof body === 'object' && body !== null && !Array.isArray(body)
+        ? (body as Record<string, unknown>).data
+        : null;
     } catch {
-      // allow retry on next sighting
+      for (const b of batch) seen.delete(`${b.platform}:${b.senderId}`);
+      return;
+    } finally {
+      activeController = null;
+    }
+    if (stopped || typeof data !== 'object' || data === null || Array.isArray(data)) {
       for (const b of batch) seen.delete(`${b.platform}:${b.senderId}`);
       return;
     }
-    if (!data) return;
+    const result = data as Record<string, unknown>;
 
     const applied: string[] = [];
     batch.forEach((b, i) => {
-      const style = data[`u${i}`]?.style;
-      if (!style) return;
+      const user = result[`u${i}`];
+      const style = typeof user === 'object' && user !== null && !Array.isArray(user)
+        ? (user as Record<string, unknown>).style
+        : null;
+      if (typeof style !== 'object' || style === null || Array.isArray(style)) {
+        seen.delete(`${b.platform}:${b.senderId}`);
+        return;
+      }
+      const value = style as Record<string, unknown>;
       const key = `${b.platform}:${b.senderId}`;
       const ent: { badge?: string; paint?: string } = { ...stores.entitlements[key] };
 
-      const paint = style.paint;
-      if (paint?.id) {
-        if (!stores.paints.some(p => p.id === paint.id)) {
-          stores.paints.push({
-            id: paint.id,
-            func: paint.function,
-            angle: paint.angle,
-            color: paint.color,
-            repeat: !!paint.repeat,
-            shadows: paint.shadows ?? [],
-            stops: paint.stops ?? [],
-            image_url: paint.image_url,
-            shape: paint.shape,
-          });
+      const paint = value.paint;
+      if (typeof paint === 'object' && paint !== null && !Array.isArray(paint)) {
+        const p = paint as Record<string, unknown>;
+        const validFunctions = new Set(['LINEAR_GRADIENT', 'RADIAL_GRADIENT', 'URL']);
+        if (typeof p.id === 'string' && p.id && typeof p.function === 'string' && validFunctions.has(p.function)) {
+          const mapped: SevenTVPaint = {
+            id: p.id,
+            func: p.function,
+            angle: typeof p.angle === 'number' ? p.angle : 0,
+            color: typeof p.color === 'number' ? p.color : 0,
+            repeat: p.repeat === true,
+            shadows: Array.isArray(p.shadows) ? p.shadows : [],
+            stops: Array.isArray(p.stops) ? p.stops : [],
+            image_url: typeof p.image_url === 'string' ? p.image_url : undefined,
+            shape: typeof p.shape === 'string' ? p.shape : undefined,
+          };
+          stores.paints = [...stores.paints.filter((existing) => existing.id !== mapped.id), mapped];
+          ent.paint = mapped.id;
         }
-        ent.paint = paint.id;
       }
-      const badge = style.badge;
-      if (badge?.id) {
-        if (!stores.badges.some(x => x.id === badge.id)) {
-          const host = badge.host?.url;
-          stores.badges.push({
-            id: badge.id,
-            image: host ? `https:${host}/3x` : `https://cdn.7tv.app/badge/${badge.id}/3x`,
-          });
+      const badge = value.badge;
+      if (typeof badge === 'object' && badge !== null && !Array.isArray(badge)) {
+        const bValue = badge as Record<string, unknown>;
+        const hostValue = bValue.host;
+        const host = typeof hostValue === 'object' && hostValue !== null && !Array.isArray(hostValue)
+          ? (hostValue as Record<string, unknown>).url
+          : null;
+        if (typeof bValue.id === 'string' && bValue.id && typeof host === 'string' && host.startsWith('//')) {
+          const mapped: SevenTVBadge = { id: bValue.id, image: `https:${host}/3x` };
+          stores.badges = [...stores.badges.filter((existing) => existing.id !== mapped.id), mapped];
+          ent.badge = mapped.id;
         }
-        ent.badge = badge.id;
       }
       if (ent.paint || ent.badge) {
         stores.entitlements[key] = ent;
         applied.push(key);
+      } else {
+        seen.delete(key);
       }
     });
     if (applied.length) onApplied(applied);
@@ -120,7 +148,11 @@ export function createCosmeticsFetcher(
     },
     stop() {
       stopped = true;
+      queue.length = 0;
       if (timer) clearTimeout(timer);
+      timer = null;
+      activeController?.abort();
+      activeController = null;
     },
   };
 }

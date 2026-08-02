@@ -1,22 +1,29 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+
+/* Batch update behavior adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 so production and preview repaint same-ID resources. */
 import Head from 'next/head';
 import type { MultichatConfig } from '../../lib/multichatConfig';
 import type { ParsedMessage } from '../../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../../lib/render';
 import type { Platform } from '../../lib/types';
-import { overlayFontCss } from '../../lib/overlayFonts';
+import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
 
 export interface PinnedState {
   msg: ParsedMessage;
   pinnedBy?: string;
 }
 
+export type StartupLoaderPhase = 'hidden' | 'visible' | 'fading';
+
 interface Props {
   config: MultichatConfig;
   messages: ParsedMessage[];
   fadingIds: Set<string>;
   pinnedMessage: PinnedState | null;
-  showLoader: boolean;
+  /** Boolean remains accepted for renderer fixtures; production passes a phase. */
+  showLoader: boolean | StartupLoaderPhase;
   /**
    * Whether `sourceTag=` was actually present in the URL.
    *
@@ -27,6 +34,8 @@ interface Props {
    * always honoured. Defaults to false so existing callers are unaffected.
    */
   sourceTagExplicit?: boolean;
+  /** Preview-only override; production callers leave this absent. */
+  sourceTagOverride?: SourceTagMode;
 }
 
 /**
@@ -38,7 +47,8 @@ interface Props {
  * and the picker would go on previewing the old one.
  */
 export const FONT_FAMILIES: Record<string, string> = {
-  default:     'inherit',
+  default:     "'Open Sans', Arial, system-ui, sans-serif",
+  geist:       "Geist, system-ui, sans-serif",
   baloo:       "'Baloo Tammudu 2', cursive",
   segoe:       "'Segoe UI', sans-serif",
   roboto:      "'Roboto', sans-serif",
@@ -49,7 +59,7 @@ export const FONT_FAMILIES: Record<string, string> = {
   comfortaa:   "'Comfortaa', cursive",
   dancing:     "'Dancing Script', cursive",
   indieflower: "'Indie Flower', cursive",
-  opensans:    "'Open Sans', sans-serif",
+  opensans:    "'Open Sans', Arial, system-ui, sans-serif",
   alsina:      "'Alsina', cursive",
 };
 
@@ -171,7 +181,7 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
 
-export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false }: Props) {
+export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
      read below, so no intersection or cast is needed. */
   const cfg = config;
@@ -180,10 +190,15 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const sz         = SIZE[szKey];
   const filterVal  = getShadowFilter(cfg.textShadow);
   const strokeVal  = getStroke(cfg.stroke ?? 'none');
-  const fontFamily = FONT_FAMILIES[cfg.font ?? 'default'] ?? 'inherit';
+  const fontFamily = FONT_FAMILIES[cfg.font ?? 'opensans'] ?? FONT_FAMILIES.opensans;
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
   const fontCss    = overlayFontCss(cfg.font);
+  const loaderPhase: StartupLoaderPhase = showLoader === true
+    ? 'visible'
+    : showLoader === false
+      ? 'hidden'
+      : showLoader;
   const emoteScale = cfg.emoteScale ?? 1;
   const emoteMaxH  = `${parseFloat(sz.emoteMaxH) * emoteScale}px`;
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
@@ -196,44 +211,56 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
      platforms were configured, so dot, label, and icon were all unreachable from
      a one-platform URL and every value rendered identically. */
   const multiPlatform = [cfg.kick || cfg.channel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length > 1;
-  const tagMode: SourceTagMode = sourceTagExplicit
+  const tagMode: SourceTagMode = sourceTagOverride ?? (sourceTagExplicit
     ? cfg.sourceTag
-    : (multiPlatform ? 'icon' : 'none');
+    : (multiPlatform ? 'icon' : 'none'));
 
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most
      every 200ms, so each prop change here IS one chatis batch: turn it
      straight into a slide/fade group. A second interval here would
      double-buffer (up to 400ms lag) and desync animation starts. */
-  const seqRef      = useRef(0);
-  const [batches, setBatches] = useState<{ id:number; msgs:ParsedMessage[] }[]>([]);
-  const seenIdsRef  = useRef<Set<string>>(new Set());
+  const seqRef = useRef(0);
+  /* Batches retain only membership. Their current ParsedMessage values come from
+     `messagesById`, so late badge/paint/emote data repaints an existing row without
+     creating another batch or replaying its entrance animation. */
+  const [batches, setBatches] = useState<{ id: number; messageIds: string[] }[]>([]);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const messagesById = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  );
 
   useEffect(() => {
-    const newMsgs = messages.filter(m => !seenIdsRef.current.has(m.id));
-    newMsgs.forEach(m => seenIdsRef.current.add(m.id));
-    // Prune seenIds so it doesn't grow unboundedly
+    const newMessageIds = messages
+      .filter((message) => !seenIdsRef.current.has(message.id))
+      .map((message) => message.id);
+    newMessageIds.forEach((id) => seenIdsRef.current.add(id));
     if (seenIdsRef.current.size > 500) {
-      const keep = messages.map(m => m.id);
-      seenIdsRef.current = new Set(keep);
+      seenIdsRef.current = new Set(messages.map((message) => message.id));
     }
-    if (!newMsgs.length) return;
+    if (!newMessageIds.length) return;
     const id = ++seqRef.current;
-    setBatches(prev => {
-      const next = [...prev, { id, msgs: newMsgs }];
-      let total = next.reduce((s,b)=>s+b.msgs.length, 0);
-      while (total > 100 && next.length) { total -= next[0].msgs.length; next.shift(); }
+    setBatches((previous) => {
+      const next = [...previous, { id, messageIds: newMessageIds }];
+      let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
+      while (total > 100 && next.length) {
+        total -= next[0].messageIds.length;
+        next.shift();
+      }
       return next;
     });
   }, [messages]);
 
-  /* Sync deletions */
+  /* Sync deletions while preserving batch identity for every surviving row. */
   useEffect(() => {
-    const ids = new Set(messages.map(m => m.id));
-    setBatches(prev => {
-      const next = prev.map(b=>({...b, msgs:b.msgs.filter(m=>ids.has(m.id))})).filter(b=>b.msgs.length);
-      return next.length===prev.length ? prev : next;
-    });
+    const ids = new Set(messages.map((message) => message.id));
+    setBatches((previous) => previous
+      .map((batch) => ({
+        ...batch,
+        messageIds: batch.messageIds.filter((id) => ids.has(id)),
+      }))
+      .filter((batch) => batch.messageIds.length));
   }, [messages]);
 
   const renderMsg = (msg: ParsedMessage) => (
@@ -270,7 +297,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             <style dangerouslySetInnerHTML={{ __html: fontCss }} />
           </>
         )}
-        <style>{`
+        <style>{`${LOCAL_OVERLAY_FONT_CSS}
           /* Exact chatis body reset from style.css
              Also reset #__next (Next.js wrapper) so it doesn't
              offset position:absolute children of body */
@@ -399,20 +426,63 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             to   { transform: rotate(360deg); }
           }
 
+          .ck-startup-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 250ms ease;
+          }
+          .ck-startup-loader[data-phase='fading'] { opacity: 0; }
+          .ck-startup-card {
+            display: grid;
+            grid-template-columns: minmax(64px, 104px) minmax(0, auto);
+            align-items: center;
+            gap: clamp(12px, 3vw, 24px);
+            max-width: min(560px, 100%);
+            padding: clamp(12px, 3vw, 20px) clamp(16px, 4vw, 26px);
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 18px;
+            background: rgba(12,12,16,.64);
+            color: #fff;
+            box-shadow: 0 12px 36px rgba(0,0,0,.34);
+            backdrop-filter: blur(8px);
+          }
+          .ck-startup-logo { display:block; width:100%; height:auto; max-height:104px; object-fit:contain; }
+          .ck-startup-copy { min-width:0; font-family:'Open Sans',Arial,system-ui,sans-serif; }
+          .ck-startup-title { margin:0; font-size:clamp(20px,4.2vw,32px); line-height:1.1; font-weight:800; letter-spacing:-.025em; }
+          .ck-startup-byline { margin:4px 0 10px; color:#a9c4ff; font-size:clamp(12px,2vw,15px); font-weight:700; }
+          .ck-startup-status { display:flex; align-items:center; gap:9px; margin:0; color:rgba(255,255,255,.82); font-size:clamp(12px,2vw,15px); font-weight:700; }
+          .ck-startup-spinner { width:16px; height:16px; flex:0 0 auto; border:2px solid rgba(255,255,255,.25); border-top-color:#6d9dff; border-radius:50%; animation:ckSpin .8s linear infinite; }
+          @media (max-width: 460px) {
+            .ck-startup-card { grid-template-columns:72px minmax(0,1fr); gap:12px; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .ck-startup-loader { transition: none; }
+            .ck-startup-spinner { animation: none; border-top-color:#6d9dff; }
+          }
+
         `}</style>
       </Head>
 
-{showLoader && (
-        <div style={{
-          position: 'absolute',
-          left: 'calc(50% - 288px)',
-          bottom: 0,
-          zIndex: 100,
-          width: 576,
-          height: 576,
-        }}>
-          {/* animated WebP: alpha works everywhere incl. iOS (VP9-alpha webm doesn't) */}
-          <img src="/tpl.webp" alt="" width={576} height={576} style={{ display: 'block', objectFit: 'contain' }} />
+      {loaderPhase !== 'hidden' && (
+        <div className="ck-startup-loader" data-phase={loaderPhase} data-testid="chat-startup-loader">
+          <div className="ck-startup-card">
+            <img className="ck-startup-logo" src="/tpl.webp" alt="" width={104} height={104} />
+            <div className="ck-startup-copy">
+              <p className="ck-startup-title">Multi-Chat Overlay</p>
+              <p className="ck-startup-byline">made by @Gxufy</p>
+              <p className="ck-startup-status">
+                <span className="ck-startup-spinner" aria-hidden="true" />
+                Loading...
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -449,8 +519,11 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
                 ...(filterVal ? { filter:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
-        {batches.map(({ id, msgs }) => {
-          const content = msgs.map(renderMsg);
+        {batches.map(({ id, messageIds }) => {
+          const content = messageIds
+            .map((messageId) => messagesById.get(messageId))
+            .filter((message): message is ParsedMessage => Boolean(message))
+            .map(renderMsg);
           if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
           if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
@@ -577,7 +650,8 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
         WebkitTextStroke:'0px', textShadow:'none' }
     : { color:msg.identity.color, };
 
-  const tag = msg.platform ? sourceTag(msg.platform, tagMode) : null;
+  const visualPlatform = msg.displayPlatform ?? msg.platform;
+  const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;
 
   // StreamNook: avatars only for yt/tiktok, 1.5em circle, leads the line
   const avatar = showAvatar && msg.avatar && (msg.platform === 'youtube' || msg.platform === 'tiktok') ? (

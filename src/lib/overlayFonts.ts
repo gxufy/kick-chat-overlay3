@@ -52,6 +52,16 @@ export const UI_FONT_SPECS: Readonly<Record<string, string>> = {
   robotomono: 'Roboto+Mono:ital,wght@0,100..700;1,100..700',
 };
 
+/** Self-hosted faces shared by the generator and direct overlay routes. */
+export const LOCAL_OVERLAY_FONT_CSS = `
+@font-face {
+  font-family: Geist;
+  src: url('/fonts/Geist-wght.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}`;
+
 /** Build a Google Fonts CSS2 URL for one or more `family=` specs. */
 export function googleFontsUrl(specs: readonly string[]): string {
   const families = specs.map((spec) => `family=${spec}`).join('&');

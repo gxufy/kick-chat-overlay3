@@ -396,23 +396,11 @@ describe('no preview content reaches the generator document', () => {
     }
   });
 
-  it('keeps composed custom messages inside the chat frame too', () => {
+  it('keeps curated roster messages inside the chat frame', () => {
     render(<ClassicGenerator />);
-    fireEvent.change(document.getElementById('compose-username') as HTMLInputElement, {
-      target: { value: 'containmentcheck' },
-    });
-    fireEvent.change(document.getElementById('compose-text') as HTMLTextAreaElement, {
-      target: { value: 'a composed line that must stay in the frame' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add preview message' }));
     const inside = frameDoc(CHAT_TITLE).body.textContent ?? '';
-    expect(inside).toContain('a composed line that must stay in the frame');
-    /* The composer's own textarea still holds nothing, and the generator body
-       must not have grown a copy of the line outside the frame. The textarea is
-       cleared on submit, so a match outside the frame would be rendered chat. */
-    expect(document.body.textContent ?? '').not.toContain(
-      'a composed line that must stay in the frame',
-    );
+    expect(inside).toContain('feelssunnyman');
+    expect(document.body.textContent ?? '').not.toContain('feelssunnyman');
   });
 
   it('leaves no positioned overlay layer in the generator document', () => {
@@ -555,7 +543,8 @@ describe('the frames are inert', () => {
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
-    expect(seen).toEqual([]);
+    expect(seen.every((entry) => entry.startsWith('fetch:/api/twitch/preview-identity?login='))).toBe(true);
+    expect(seen).toHaveLength(3);
     vi.useRealTimers();
   });
 

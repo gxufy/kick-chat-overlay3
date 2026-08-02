@@ -1,93 +1,116 @@
-/* Twitch third-party emotes — exact ChatIS-v2 pipeline (script.js loadEmotes).
+/* Twitch third-party resources.
  *
- * Load order FFZ → BTTV → 7TV, later wins on name collision (Map.set).
- * Twitch native emotes from the IRC tag always take precedence at render
- * time because they arrive as char-offset emotes, not word-swaps.
- * Reuses the SevenTVEmote shape so render7TVSegment handles all three.
+ * Global/channel precedence and zero-width behavior adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's validated, platform-scoped catalogs.
  */
 import { getSevenTVGlobalEmotes, getSevenTVChannelEmotes, type SevenTVEmote } from './kick';
 
-/* BTTV zero-width allowlist — hardcoded ids from chatis script.js:1156 */
 const BTTV_ZERO_WIDTH = new Set([
-  '5e76d338d6581c3724c0f0b2', // cvMask
-  '5e76d399d6581c3724c0f0b8', // cvHazmat
-  '567b5b520e984428652809b6', // SoSnowy
-  '567b5c080e984428652809ba', // IceCold
-  '567b5dc00e984428652809bd', // CandyCane
-  '567b5d270e984428652809bb', // ReinDeer
-  '58487cc6f52be01a7ee5f205', // TopHat
-  '5849c9c8f52be01a7ee5f43a', // SantaHat
+  '5e76d338d6581c3724c0f0b2', '5e76d399d6581c3724c0f0b8',
+  '567b5b520e984428652809b6', '567b5c080e984428652809ba',
+  '567b5dc00e984428652809bd', '567b5d270e984428652809bb',
+  '58487cc6f52be01a7ee5f205', '5849c9c8f52be01a7ee5f43a',
 ]);
 
-async function fetchJson(url: string): Promise<any | null> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function positiveNumber(value: unknown, fallback = 28): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function httpsUrl(value: unknown): value is string {
+  if (!nonEmpty(value)) return false;
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}
+
+async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown | null> {
   try {
-    const r = await fetch(url);
-    return r.ok ? await r.json() : null;
-  } catch {
+    const response = await fetch(url, { signal });
+    return response.ok ? await response.json() : null;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
     return null;
   }
 }
 
-/* FFZ via BTTV's cache (chatis script.js:1122) — images['4x'] preferred,
-   upscale:true when only smaller sizes exist */
-function ffzToEmote(e: any): SevenTVEmote {
-  const img = e.images?.['4x'] || e.images?.['2x'] || e.images?.['1x'];
+function ffzToEmote(value: unknown): SevenTVEmote | null {
+  if (!isPlainObject(value) || !nonEmpty(value.code) || !isPlainObject(value.images)) return null;
+  const image = value.images['4x'] ?? value.images['2x'] ?? value.images['1x'];
+  if (!httpsUrl(image)) return null;
   return {
-    name: e.code,
-    image: img,
-    height: e.height ?? 28,
-    width: e.width ?? 28,
+    name: value.code,
+    image,
+    height: positiveNumber(value.height),
+    width: positiveNumber(value.width),
     zeroWidth: false,
-    upscale: !e.images?.['4x'],
+    upscale: !httpsUrl(value.images['4x']),
   };
 }
 
-function bttvToEmote(e: any): SevenTVEmote {
+function bttvToEmote(value: unknown): SevenTVEmote | null {
+  if (!isPlainObject(value) || !nonEmpty(value.id) || !nonEmpty(value.code)) return null;
   return {
-    name: e.code,
-    image: `https://cdn.betterttv.net/emote/${e.id}/3x`,
-    height: e.height ?? 28,
-    width: e.width ?? 28,
-    zeroWidth: BTTV_ZERO_WIDTH.has(e.id),
+    name: value.code,
+    image: `https://cdn.betterttv.net/emote/${encodeURIComponent(value.id)}/3x`,
+    height: positiveNumber(value.height),
+    width: positiveNumber(value.width),
+    zeroWidth: BTTV_ZERO_WIDTH.has(value.id),
     upscale: false,
   };
 }
 
-/** FFZ → BTTV → 7TV for a Twitch channel; later wins on collision. */
-export async function loadTwitchEmotes(channelId: string): Promise<SevenTVEmote[]> {
-  const map = new Map<string, SevenTVEmote>();
+function array(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
 
+/** FFZ global/channel → BTTV global/channel → 7TV global/channel; later wins. */
+export async function loadTwitchEmotes(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<SevenTVEmote[]> {
+  if (!/^\d+$/.test(channelId)) return [];
   const [ffzGlobal, ffzChannel, bttvGlobal, bttvChannel, stvGlobal, stvChannel] = await Promise.all([
-    fetchJson('https://api.betterttv.net/3/cached/frankerfacez/emotes/global'),
-    fetchJson(`https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${channelId}`),
-    fetchJson('https://api.betterttv.net/3/cached/emotes/global'),
-    fetchJson(`https://api.betterttv.net/3/cached/users/twitch/${channelId}`),
+    fetchJson('https://api.betterttv.net/3/cached/frankerfacez/emotes/global', signal),
+    fetchJson(`https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${channelId}`, signal),
+    fetchJson('https://api.betterttv.net/3/cached/emotes/global', signal),
+    fetchJson(`https://api.betterttv.net/3/cached/users/twitch/${channelId}`, signal),
     getSevenTVGlobalEmotes(),
     getSevenTVChannelEmotes(channelId, 'twitch'),
   ]);
 
-  for (const e of ffzGlobal ?? []) map.set(e.code, ffzToEmote(e));
-  for (const e of ffzChannel ?? []) map.set(e.code, ffzToEmote(e));
-  for (const e of bttvGlobal ?? []) map.set(e.code, bttvToEmote(e));
-  // channel BTTV: channelEmotes + sharedEmotes (chatis script.js:1176)
-  for (const e of [...(bttvChannel?.channelEmotes ?? []), ...(bttvChannel?.sharedEmotes ?? [])]) {
-    map.set(e.code, bttvToEmote(e));
-  }
-  for (const e of stvGlobal) map.set(e.name, e);
-  for (const e of stvChannel.emotes) map.set(e.name, e);
-
+  const map = new Map<string, SevenTVEmote>();
+  const addFFZ = (value: unknown) => { const emote = ffzToEmote(value); if (emote) map.set(emote.name, emote); };
+  const addBTTV = (value: unknown) => { const emote = bttvToEmote(value); if (emote) map.set(emote.name, emote); };
+  array(ffzGlobal).forEach(addFFZ);
+  array(ffzChannel).forEach(addFFZ);
+  array(bttvGlobal).forEach(addBTTV);
+  const channel = isPlainObject(bttvChannel) ? bttvChannel : {};
+  [...array(channel.channelEmotes), ...array(channel.sharedEmotes)].forEach(addBTTV);
+  for (const emote of stvGlobal) map.set(emote.name, emote);
+  for (const emote of stvChannel.emotes) map.set(emote.name, emote);
   return [...map.values()];
 }
 
-/* FFZ custom room badges (chatis script.js:1416): channels can override
-   the stock mod/vip badge art. Returns overrides for the badge map. */
-export async function loadFFZRoomBadges(channelId: string): Promise<Record<string, string>> {
-  const res = await fetchJson(`https://api.frankerfacez.com/v1/_room/id/${channelId}`);
+/** Validated FFZ custom moderator/VIP room badge replacements. */
+export async function loadFFZRoomBadges(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<Record<string, string>> {
+  if (!/^\d+$/.test(channelId)) return {};
+  const response = await fetchJson(`https://api.frankerfacez.com/v1/_room/id/${channelId}`, signal);
+  if (!isPlainObject(response) || !isPlainObject(response.room)) return {};
   const out: Record<string, string> = {};
-  if (res?.room?.moderator_badge) {
+  if (response.room.moderator_badge) {
     out['moderator/1'] = `https://cdn.frankerfacez.com/room-badge/mod/id/${channelId}/4/rounded`;
   }
-  if (res?.room?.vip_badge) {
+  if (response.room.vip_badge) {
     out['vip/1'] = `https://cdn.frankerfacez.com/room-badge/vip/id/${channelId}/4`;
   }
   return out;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTwitchConnector } from '@/lib/connectors/twitch';
+import { createTwitchConnector, parseBadgeMap } from '@/lib/connectors/twitch';
 import type { UnifiedMessage } from '@/lib/types';
 
 class FakeSocket {
@@ -67,10 +67,57 @@ describe('Twitch badge response validation', () => {
     expect(message.badges).toEqual([
       {
         type: 'moderator',
+        version: '1',
         count: 1,
         url: 'https://cdn.example/moderator.png',
       },
     ]);
+  });
+
+  it('accepts the preview envelope without weakening map validation', () => {
+    expect(parseBadgeMap({
+      badges: { 'moderator/1': 'https://cdn.example/mod.png' },
+      roomId: '42',
+    })).toEqual({ 'moderator/1': 'https://cdn.example/mod.png' });
+  });
+
+  it('rejects unsafe URLs and malformed set/version keys', () => {
+    expect(parseBadgeMap({ 'moderator/1': 'http://cdn.example/mod.png' })).toBeNull();
+    expect(parseBadgeMap({ moderator: 'https://cdn.example/mod.png' })).toBeNull();
+    expect(parseBadgeMap({ 'moderator/1/extra': 'https://cdn.example/mod.png' })).toBeNull();
+  });
+
+  it('preserves opaque Twitch badge versions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ 'subscriber/12-month': 'https://cdn.example/sub.png' }),
+      }) as Response),
+    );
+    const messages: UnifiedMessage[] = [];
+    let loadedBadgeMap: Readonly<Record<string, string>> | null = null;
+    const loadedConnector = createTwitchConnector({
+      channel: 'streamer',
+      onMessage: (message) => messages.push(message),
+      onDelete: () => {},
+      onPin: () => {},
+      onStatus: () => {},
+      onBadgeMap: (badgeMap) => { loadedBadgeMap = badgeMap; },
+    });
+    loadedConnector.start();
+    await vi.waitFor(() => expect(loadedBadgeMap).toMatchObject({
+      'subscriber/12-month': 'https://cdn.example/sub.png',
+    }));
+    FakeSocket.last!.onmessage?.({
+      data: '@badges=subscriber/12-month;display-name=Sub;id=t2;user-id=10 ' +
+        ':sub!sub@sub.tmi.twitch.tv PRIVMSG #streamer :hello\r\n',
+    });
+    expect(messages[0].badges[0]).toMatchObject({
+      type: 'subscriber', version: '12-month', count: undefined,
+      url: 'https://cdn.example/sub.png',
+    });
+    loadedConnector.stop();
   });
 
   it.each([
@@ -85,7 +132,7 @@ describe('Twitch badge response validation', () => {
 
     expect(message.text).toBe('hello');
     expect(message.badges).toEqual([
-      { type: 'moderator', count: 1, url: undefined },
+      { type: 'moderator', version: '1', count: 1, url: undefined },
     ]);
   });
 });

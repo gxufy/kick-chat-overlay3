@@ -301,7 +301,7 @@ describe('the whole preview surface scales, not just the text', () => {
 /* Wired into the generator                                           */
 /* ------------------------------------------------------------------ */
 
-describe('the scale control in the generator', () => {
+describe('the fixed generator preview scale', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     window.sessionStorage.clear();
@@ -313,123 +313,28 @@ describe('the scale control in the generator', () => {
     window.sessionStorage.clear();
   });
 
-  const settle = () => act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
-
-  const chatUrl = () =>
-    within(document.querySelector<HTMLElement>('.panel-chat-output')!)
-      .getByLabelText('Generated MultiChat overlay URL').textContent ?? '';
-
-  const radio = (scale: number) =>
-    document.getElementById(`preview-scale-${scale}`) as HTMLInputElement;
-
-  it('starts at 75 percent, with the frame already scaled', () => {
+  it('renders Preview Data at 63 percent with no visible scale control', () => {
     render(<ClassicGenerator />);
-    expect(radio(PREVIEW_SCALE_DEFAULT).checked).toBe(true);
-    expect(transformFactor()).toBeCloseTo(0.75, 4);
-  });
-
-  it('offers one radio per step, in one named group', () => {
-    render(<ClassicGenerator />);
-    for (const scale of PREVIEW_SCALES) {
-      const input = radio(scale);
-      expect(input, String(scale)).toBeTruthy();
-      expect(input.type).toBe('radio');
-      expect(input.name).toBe('preview-scale');
-      expect(document.querySelector(`label[for="preview-scale-${scale}"]`)).toBeTruthy();
-    }
-  });
-
-  it('rescales the frame when a step is chosen', () => {
-    render(<ClassicGenerator />);
-    act(() => void fireEvent.click(radio(65)));
-    expect(transformFactor()).toBeCloseTo(0.65, 4);
-    act(() => void fireEvent.click(radio(100)));
-    expect(frameEl().style.transform).toBe('');
-  });
-
-  it('changes neither the generated URL nor the draft at any step', () => {
-    render(<ClassicGenerator />);
-    settle();
-    const before = chatUrl();
-    expect(before.length).toBeGreaterThan(0);
-    const draftBefore = window.sessionStorage.getItem(workspaceDraftKey('multichat')) ?? '';
-    for (const scale of PREVIEW_SCALES) {
-      act(() => void fireEvent.click(radio(scale)));
-      settle();
-      expect(chatUrl(), String(scale)).toBe(before);
-    }
-    expect(window.sessionStorage.getItem(workspaceDraftKey('multichat')) ?? '').toBe(
-      draftBefore,
-    );
-    /* And no zoom vocabulary reached the query under any name. */
-    expect(before).not.toMatch(/scale|zoom|preview/i);
-  });
-
-  it('leaves textSize alone — the real setting keeps its own value', () => {
-    /* The failure this prevents: implementing the zoom by driving `textSize`,
-       which would look right in the preview and change what OBS draws. */
-    render(<ClassicGenerator />);
-    settle();
-    const sizeBefore = (document.getElementById('set-textSize') as HTMLSelectElement | null)
-      ?.value;
-    act(() => void fireEvent.click(radio(65)));
-    settle();
-    const sizeAfter = (document.getElementById('set-textSize') as HTMLSelectElement | null)
-      ?.value;
-    expect(sizeAfter).toBe(sizeBefore);
-  });
-
-  it('resets to 75 percent, and says so on the button', () => {
-    render(<ClassicGenerator />);
-    act(() => void fireEvent.click(radio(100)));
-    expect(radio(100).checked).toBe(true);
-    const reset = screen.getByRole('button', {
-      name: `Reset scale to ${PREVIEW_SCALE_DEFAULT}%`,
-    }) as HTMLButtonElement;
-    expect(reset.disabled).toBe(false);
-    act(() => void fireEvent.click(reset));
-    expect(radio(PREVIEW_SCALE_DEFAULT).checked).toBe(true);
-    expect(transformFactor()).toBeCloseTo(0.75, 4);
-    /* Nothing left to do once it is back at the default. */
-    expect(
-      (screen.getByRole('button', {
-        name: `Reset scale to ${PREVIEW_SCALE_DEFAULT}%`,
-      }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-  });
-
-  it('names the control as a preview zoom and says the overlay is unaffected', () => {
-    render(<ClassicGenerator />);
-    const fieldset = document.querySelector<HTMLFieldSetElement>('.preview-scale')!;
-    expect(fieldset.querySelector('legend')!.textContent).toBe('Preview scale');
-    const help = document.getElementById('preview-scale-help')!;
-    expect(fieldset.getAttribute('aria-describedby')).toBe('preview-scale-help');
-    expect(help.textContent ?? '').toMatch(/preview only/i);
-    expect(help.textContent ?? '').toMatch(/url/i);
-  });
-
-  it('scales the composed messages by the same frame as the simulated ones', () => {
-    /* One frame, one transform: custom and generated messages cannot end up at
-       different sizes because there is only one surface. */
-    render(<ClassicGenerator />);
-    act(() => void fireEvent.click(radio(65)));
-    const frames = Array.from(
-      document.querySelectorAll<HTMLIFrameElement>(`iframe[title="${CHAT_TITLE}"]`),
-    );
-    expect(frames).toHaveLength(1);
-    expect(transformFactor()).toBeCloseTo(0.65, 4);
-  });
-
-  it('is absent once a channel is configured, where the real overlay renders', () => {
-    /* With a channel the panel is the live overlay in its own navigating frame,
-       and a zoom that silently did nothing there would be worse than no control. */
-    render(<ClassicGenerator />);
-    act(() =>
-      void fireEvent.change(document.getElementById('channel-kick')!, {
-        target: { value: 'somechannel' },
-      }),
-    );
-    settle();
+    expect(transformFactor()).toBeCloseTo(0.63, 4);
     expect(document.querySelector('.preview-scale')).toBeNull();
+    expect(screen.queryByText('Preview scale')).toBeNull();
+  });
+
+  it('keeps the fixed scale out of generated URLs and drafts', () => {
+    render(<ClassicGenerator />);
+    const chatUrl = within(document.querySelector<HTMLElement>('.panel-chat-output')!)
+      .getByLabelText('Generated MultiChat overlay URL').textContent ?? '';
+    expect(chatUrl).not.toMatch(/scale|zoom|preview/i);
+    expect(window.sessionStorage.getItem(workspaceDraftKey('multichat')) ?? '').not.toMatch(/0\.63|63/);
+  });
+
+  it('keeps Preview Data scaled after channel entry and leaves Live Overlay exact-URL', () => {
+    render(<ClassicGenerator />);
+    act(() => void fireEvent.change(document.getElementById('channel-kick')!, { target: { value: 'somechannel' } }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview Data' }));
+    expect(transformFactor()).toBeCloseTo(0.63, 4);
+    fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
+    act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
+    expect(document.querySelector('iframe[title="Live chat overlay preview"]')).not.toBeNull();
   });
 });

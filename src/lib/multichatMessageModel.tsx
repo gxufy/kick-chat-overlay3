@@ -41,7 +41,11 @@ import {
   type MentionContext,
 } from './render';
 import { handleAssetError } from './render/imageFallback';
-import type { UnifiedMessage } from './types';
+import type { Platform, UnifiedMessage } from './types';
+
+/* Adapted from UChat's platform-specific emote parser at
+ * Fiszh/UChat@ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's UnifiedMessage production path. */
 
 /**
  * The cosmetic data a conversion reads from.
@@ -50,9 +54,13 @@ import type { UnifiedMessage } from './types';
  * preview fills it from fixtures. Both shapes are the same, so neither needs a
  * special case in the conversion itself.
  */
+export type ThirdPartyEmoteCatalog = Partial<
+  Record<Extract<Platform, 'kick' | 'twitch'>, SevenTVEmote[]>
+>;
+
 export type MessageCosmetics = {
-  /** Third-party emotes available for word-swapping (kick and twitch only). */
-  emotes: SevenTVEmote[];
+  /** Third-party emotes scoped by platform; providers never cross chat services. */
+  emotes: ThirdPartyEmoteCatalog;
   badges: SevenTVBadge[];
   paints: SevenTVPaint[];
   /** Keyed `${platform}:${senderId}`, as the cosmetics fetcher keys them. */
@@ -137,7 +145,7 @@ export function buildMessageFilter(
 
 /** Empty cosmetics, for a caller with no 7TV data at all. */
 export const NO_COSMETICS: MessageCosmetics = {
-  emotes: [],
+  emotes: {},
   badges: [],
   paints: [],
   entitlements: {},
@@ -236,6 +244,7 @@ export function buildParsedMessage(
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,
+    ...(um.displayPlatform ? { displayPlatform: um.displayPlatform } : {}),
     senderId: um.senderId,
     kind: um.kind,
     category: um.category,
@@ -256,7 +265,7 @@ export function buildParsedMessage(
     message: renderMessageText(
       um,
       (um.platform === 'kick' || um.platform === 'twitch') && cfg.sevenTVEmotesEnabled
-        ? cosmetics.emotes
+        ? cosmetics.emotes[um.platform] ?? []
         : [],
       mentions,
     ),

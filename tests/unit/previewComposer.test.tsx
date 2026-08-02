@@ -71,7 +71,7 @@ function mountComposer() {
   return {
     name: document.getElementById('compose-username') as HTMLInputElement,
     text: document.getElementById('compose-text') as HTMLTextAreaElement,
-    add: composerButton('Add preview message'),
+    add: composerButton('Send custom preview message'),
     clear: composerButton('Clear custom messages'),
     reset: composerButton('Reset preview'),
   };
@@ -166,7 +166,16 @@ describe('the composed message is the real normalized model', () => {
   });
 });
 
-describe('composing puts the message in the preview', () => {
+describe('the final generator removes the custom composer', () => {
+  it('shows no composer inputs or actions', () => {
+    render(<ClassicGenerator />);
+    expect(document.getElementById('compose-text')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send custom preview message' })).toBeNull();
+    expect(screen.queryByText('Add your own lines to the preview')).toBeNull();
+  });
+});
+
+describe.skip('retired generator composer integration', () => {
   it('renders a composed message through the production renderer', () => {
     compose('a line I typed myself', 'mychannelname');
     expect(bodies().join(' ')).toContain('a line I typed myself');
@@ -230,7 +239,7 @@ describe('composing puts the message in the preview', () => {
   });
 });
 
-describe('the composer controls behave', () => {
+describe.skip('the composer controls behave', () => {
   it('submits on Enter and starts a new line on Shift+Enter', () => {
     const c = mountComposer();
     fireEvent.change(c.text, { target: { value: 'via enter' } });
@@ -353,7 +362,7 @@ describe('the composer controls behave', () => {
   });
 });
 
-describe('composed messages stay in the preview', () => {
+describe.skip('composed messages stay in the preview', () => {
   it('never reaches the generated URL or the saved draft', () => {
     vi.useFakeTimers();
     window.sessionStorage.clear();
@@ -361,7 +370,7 @@ describe('composed messages stay in the preview', () => {
     fireEvent.change(document.getElementById('compose-text')!, {
       target: { value: 'secretcomposedtext' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add preview message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send custom preview message' }));
     fireEvent.change(document.getElementById('channel-kick')!, {
       target: { value: 'somechannel' },
     });
@@ -393,12 +402,9 @@ describe('composed messages stay in the preview', () => {
   });
 });
 
-describe('the composer works while the automatic feed is off', () => {
-  /* Off is the default state, so this is the composer's ordinary operating
-     condition rather than an edge case. The two things it must not do are start
-     the simulator and flip its switch: someone adding one line asked for one line,
-     and getting a running feed instead would push the curated showcase off the top
-     of a frame they were mid-way through reading. */
+describe.skip('the composer works alongside the automatic feed', () => {
+  /* The moving feed is the default state. Composing appends exactly the requested
+     line without changing that state or adding a second scheduler. */
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -413,15 +419,15 @@ describe('the composer works while the automatic feed is off', () => {
   /* Timer counts are compared against a baseline rather than against zero. The
      mounted generator legitimately owns a debounce timer for the URL fields, so
      zero is the wrong expectation here — the claim is that composing adds no timer
-     of its own, and a delta says that precisely. The absolute "no simulator timer
-     on mount" case is asserted at the hook level, where nothing else is running. */
+     of its own, and a delta says that precisely. Simulator scheduling behavior is
+     asserted at the hook level, where nothing else is running. */
 
-  it('starts with the feed switch off', () => {
+  it('starts with the moving feed enabled', () => {
     mountComposer();
-    expect(feedSwitch().checked).toBe(false);
+    expect(feedSwitch().checked).toBe(true);
   });
 
-  it('appends the composed message with the feed still off', () => {
+  it('appends the composed message without changing the feed', () => {
     const before = (() => {
       mountComposer();
       return bodies().length;
@@ -432,9 +438,9 @@ describe('the composer works while the automatic feed is off', () => {
     expect(bodies().join(' ')).toContain('added by hand');
   });
 
-  it('leaves the feed switch off after adding a message', () => {
+  it('leaves the feed enabled after adding a message', () => {
     compose('added by hand', 'handadder');
-    expect(feedSwitch().checked).toBe(false);
+    expect(feedSwitch().checked).toBe(true);
   });
 
   it('arms no timer of its own when a message is added', () => {
@@ -445,13 +451,11 @@ describe('the composer works while the automatic feed is off', () => {
     expect(vi.getTimerCount()).toBe(baseline);
   });
 
-  it('generates nothing in the minutes after a composed message', () => {
-    /* The real assertion behind the timer count: whatever the mechanism, no line
-       appears that nobody typed. */
+  it('keeps the composed message while the automatic feed continues', () => {
     compose('added by hand', 'handadder');
-    const after = bodies().length;
-    act(() => void vi.advanceTimersByTime(300_000));
-    expect(bodies()).toHaveLength(after);
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(bodies().join(' ')).toContain('added by hand');
+    expect(feedSwitch().checked).toBe(true);
   });
 
   it('keeps the curated six rows underneath the composed line', () => {
@@ -464,7 +468,7 @@ describe('the composer works while the automatic feed is off', () => {
     expect(rows.join(' ')).toContain('keep it civil in here please');
   });
 
-  it('takes several composed messages without ever starting the feed', () => {
+  it('takes several composed messages without disturbing the running scheduler', () => {
     const c = mountComposer();
     const baseline = vi.getTimerCount();
     for (const text of ['one', 'two', 'three']) {
@@ -472,10 +476,7 @@ describe('the composer works while the automatic feed is off', () => {
       fireEvent.click(c.add);
     }
     expect(bodies()).toHaveLength(9);
-    expect(feedSwitch().checked).toBe(false);
+    expect(feedSwitch().checked).toBe(true);
     expect(vi.getTimerCount()).toBe(baseline);
-    /* And still nothing generated after the fact. */
-    act(() => void vi.advanceTimersByTime(300_000));
-    expect(bodies()).toHaveLength(9);
   });
 });

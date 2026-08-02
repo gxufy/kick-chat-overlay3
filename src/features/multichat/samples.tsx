@@ -258,7 +258,10 @@ export const SAMPLE_KICK_CHANNEL: KickChannel = {
 
 /** Everything the conversion reads, assembled once. */
 export const SAMPLE_COSMETICS: MessageCosmetics = {
-  emotes: [...SAMPLE_SEVENTV_EMOTES],
+  emotes: {
+    kick: [...SAMPLE_SEVENTV_EMOTES],
+    twitch: [...SAMPLE_SEVENTV_EMOTES],
+  },
   badges: [SAMPLE_SEVENTV_BADGE],
   paints: [SAMPLE_SEVENTV_PAINT],
   entitlements: SAMPLE_ENTITLEMENTS,

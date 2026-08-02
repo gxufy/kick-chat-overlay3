@@ -1,45 +1,117 @@
 /* GET /api/twitch/badges?channel=<login>
  *
- * Full Twitch badge art via anonymous GQL (web client-id, no OAuth):
- * global sets + the channel's broadcastBadges (subscriber tiers, bits).
- * Returns { "<setID>/<version>": imageURL } — the exact art for every
- * badge the IRC `badges` tag can reference, replacing the hardcoded
- * 10-UUID map (which missed sub tiers, bits, and event badges).
+ * Full Twitch badge art via anonymous GQL (web client-id, no OAuth): global
+ * sets plus an optional channel's broadcast badges. Channel versions replace
+ * matching global versions. The production response is an exact
+ * "set/version" → HTTPS image map; preview=1 additionally returns the validated
+ * room id required for the public FFZ room-badge lookup.
+ *
+ * Badge loading behavior adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's public GQL and validated API boundary.
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const GQL_URL = 'https://gql.twitch.tv/gql';
-const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'; // Twitch's own web client (anonymous)
+const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+const GENERIC_ERROR = { error: 'Unable to load Twitch badges.' };
+
+type BadgeNode = { setID: string; version: string; imageURL: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function httpsImage(value: unknown): value is string {
+  if (!nonEmptyString(value)) return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function badgeNodes(value: unknown): BadgeNode[] | null {
+  if (!Array.isArray(value)) return null;
+  const nodes: BadgeNode[] = [];
+  for (const item of value) {
+    if (!isPlainObject(item)) continue;
+    if (!nonEmptyString(item.setID) || !nonEmptyString(item.version) || !httpsImage(item.imageURL)) continue;
+    if (item.setID.includes('/') || item.version.includes('/')) continue;
+    nodes.push({ setID: item.setID, version: item.version, imageURL: item.imageURL });
+  }
+  return nodes;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const channel = (req.query.channel as string || '').trim().toLowerCase();
-  if (!/^[a-z0-9_]{1,25}$/.test(channel)) {
-    return res.status(400).json({ error: 'invalid channel' });
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ error: 'Method not allowed.' });
   }
 
-  const r = await fetch(GQL_URL, {
-    method: 'POST',
-    headers: { 'Client-ID': GQL_CLIENT_ID, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query: `query($login: String!) {
-        badges { setID version imageURL(size: DOUBLE) }
-        user(login: $login) { broadcastBadges { setID version imageURL(size: DOUBLE) } }
-      }`,
-      variables: { login: channel },
-    }),
-  });
-  if (!r.ok) return res.status(502).json({ error: `gql: ${r.status}` });
-  const data = await r.json();
-
-  const map: Record<string, string> = {};
-  // globals first so channel badges (sub tiers, bits) override them
-  for (const b of data?.data?.badges ?? []) {
-    if (b?.setID && b?.imageURL) map[`${b.setID}/${b.version}`] = b.imageURL;
-  }
-  for (const b of data?.data?.user?.broadcastBadges ?? []) {
-    if (b?.setID && b?.imageURL) map[`${b.setID}/${b.version}`] = b.imageURL;
+  const rawChannel = Array.isArray(req.query.channel) ? req.query.channel[0] : req.query.channel;
+  const channel = (rawChannel ?? '').trim().toLowerCase();
+  if (channel && !/^[a-z0-9_]{1,25}$/.test(channel)) {
+    return res.status(400).json({ error: 'Invalid channel.' });
   }
 
-  res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.status(200).json(map);
+  try {
+    const response = await fetch(GQL_URL, {
+      method: 'POST',
+      headers: { 'Client-ID': GQL_CLIENT_ID, 'Content-Type': 'application/json' },
+      body: JSON.stringify(channel
+        ? {
+            query: `query($login: String!) {
+              badges { setID version imageURL(size: DOUBLE) }
+              user(login: $login) {
+                id
+                broadcastBadges { setID version imageURL(size: DOUBLE) }
+              }
+            }`,
+            variables: { login: channel },
+          }
+        : {
+            query: `query {
+              badges { setID version imageURL(size: DOUBLE) }
+            }`,
+          }),
+    });
+    if (!response.ok) return res.status(502).json(GENERIC_ERROR);
+
+    const body: unknown = await response.json();
+    if (!isPlainObject(body) || !isPlainObject(body.data)) {
+      return res.status(502).json(GENERIC_ERROR);
+    }
+    const global = badgeNodes(body.data.badges);
+    const user = body.data.user;
+    const channelNodes = !channel || user === null
+      ? []
+      : isPlainObject(user)
+        ? badgeNodes(user.broadcastBadges)
+        : null;
+    if (global === null || channelNodes === null) {
+      return res.status(502).json(GENERIC_ERROR);
+    }
+
+    const map: Record<string, string> = {};
+    for (const badge of global) map[`${badge.setID}/${badge.version}`] = badge.imageURL;
+    for (const badge of channelNodes) map[`${badge.setID}/${badge.version}`] = badge.imageURL;
+
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const preview = req.query.preview === '1';
+    return res.status(200).json(preview
+      ? {
+          badges: map,
+          roomId: channel && isPlainObject(user) && nonEmptyString(user.id) ? user.id : null,
+        }
+      : map);
+  } catch {
+    return res.status(502).json(GENERIC_ERROR);
+  }
 }

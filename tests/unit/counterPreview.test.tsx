@@ -158,7 +158,7 @@ describe('the built-in counter preview is populated immediately', () => {
   it('labels the samples for both sighted and assistive users', () => {
     render(<ClassicGenerator />);
     const panel = document.querySelector('.panel-counter-output') as HTMLElement;
-    expect(within(panel).getByText('Preview data')).toBeTruthy();
+    expect(within(panel).getByText('Preview Data')).toBeTruthy();
     /* The visible badge and the accessible name say the same thing, so the
        samples cannot read as somebody's real audience either way. */
     expect(
@@ -192,7 +192,7 @@ describe('the counter preview opens no connections', () => {
     expect(seen).toEqual([]);
   });
 
-  it('does not fetch anything from the whole generator without a channel', () => {
+  it('fetches only curated chat identities from the whole generator without a channel', () => {
     vi.useFakeTimers();
     render(<ClassicGenerator />);
     /* Past the preview debounce: a poll scheduled behind a timer would be
@@ -200,7 +200,8 @@ describe('the counter preview opens no connections', () => {
     act(() => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 4);
     });
-    expect(seen).toEqual([]);
+    expect(seen.every((url) => url.startsWith('/api/twitch/preview-identity?login='))).toBe(true);
+    expect(seen.every((url) => !url.includes('/api/viewers'))).toBe(true);
     /* Iframes now exist by design — they are what contain each overlay's styles
        and positioning, and without a channel the generator holds both fixture
        frames. What must remain true is that neither ever *navigates*: loading the

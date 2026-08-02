@@ -1,4 +1,8 @@
-/* The generator's live preview feed: fake chat, generated deterministically.
+/* Preview feed workflow adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's deterministic UnifiedMessage fixtures.
+ *
+ * The generator's live preview feed: fake chat, generated deterministically.
  *
  * This exists so the built-in preview shows chat *moving* rather than a frozen
  * dozen fixtures. Everything here is generator-only. No socket is opened, no

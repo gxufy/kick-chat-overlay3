@@ -101,7 +101,7 @@ describe('with no channel configured', () => {
   it('marks the samples as preview data', () => {
     mount();
     const panel = document.querySelector('.panel-counter-output')!;
-    expect(panel.textContent).toContain('Preview data');
+    expect(panel.textContent).toContain('Preview Data');
   });
 });
 

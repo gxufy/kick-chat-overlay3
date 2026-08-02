@@ -1,4 +1,6 @@
-/* The preview-only background control.
+/* The preview-only background workflow is adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's isolated production preview frame.
  *
  * WHAT IT IS. Four backdrops for the preview surface — Transparent, Dark, Light
  * and a Custom colour — so someone can judge how the overlay reads against

@@ -1,4 +1,7 @@
-/* The compact preview-badge control: one action, one status line.
+/* Preview-badge workflow adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 to load through MultiChat's production badge pipeline.
+ *
  *
  * What replaced the gallery. The browsable grid of badge art is gone — a stream's
  * badges belong beside the usernames in the preview, not in a reference catalog
@@ -25,26 +28,34 @@ function buttonLabel(status: BadgeLibraryStatus): string {
     case 'loading':
       return 'Loading badges…';
     case 'error':
-      return 'Retry preview badges';
+    case 'partial':
+      return 'Retry Load Badges';
     case 'success':
+      return 'Reload Badges';
     case 'idle':
     default:
-      return 'Refresh preview badges';
+      return 'Load Badges';
   }
 }
 
 /** The one-line status sentence. */
-function statusMessage(status: BadgeLibraryStatus, count: number): string {
+function statusMessage(
+  status: BadgeLibraryStatus,
+  count: number,
+  failedProviders: readonly string[],
+): string {
   switch (status) {
     case 'loading':
-      return 'Loading preview badges…';
+      return 'Loading Twitch, Kick, 7TV, and FFZ preview badges…';
     case 'success':
       return `Preview badges loaded — ${count} available.`;
+    case 'partial':
+      return `Loaded ${count} preview badges. Retry ${failedProviders.join(', ')}.`;
     case 'error':
       return 'Could not refresh badges. The ones already shown are unchanged.';
     case 'idle':
     default:
-      return `${count} preview badges ready.`;
+      return `${count} local preview badges ready.`;
   }
 }
 
@@ -54,7 +65,7 @@ export default function ClassicPreviewBadgeRefresh({
   /** The library hook's state. Owned by the generator, passed straight down. */
   library: PreviewBadgeLibraryState;
 }) {
-  const { count, status, load } = library;
+  const { count, status, failedProviders, load } = library;
   const busy = status === 'loading';
 
   return (
@@ -76,7 +87,7 @@ export default function ClassicPreviewBadgeRefresh({
         aria-live="polite"
         data-status={status}
       >
-        {statusMessage(status, count)}
+        {statusMessage(status, count, failedProviders)}
       </span>
     </div>
   );

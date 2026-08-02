@@ -82,7 +82,7 @@ export const MULTICHAT_SOURCE_TAGS = ['none', 'dot', 'label', 'icon'] as const;
  */
 export const MULTICHAT_SOURCE_TAG_ORDER = ['icon', 'dot', 'label', 'none'] as const;
 
-/** `font=` values, in generator display order. Legacy aliases 1–12. */
+/** `font=` values, in generator display order. Legacy aliases 1–12 stay pinned. */
 export const MULTICHAT_FONTS = [
   'baloo',
   'segoe',
@@ -96,6 +96,7 @@ export const MULTICHAT_FONTS = [
   'indieflower',
   'opensans',
   'alsina',
+  'geist',
 ] as const;
 
 export type MultichatTextShadow = (typeof MULTICHAT_TEXT_SHADOWS)[number];
@@ -168,7 +169,7 @@ export const MultichatQuerySchema = z.object({
   /* Note the asymmetry, preserved: an unrecognized font passes through as-is,
      where every other enum falls back to its default. */
   font: z.string().optional().transform(v =>
-    numericAliases(MULTICHAT_FONTS)[v ?? ''] ?? v ?? 'opensans'),
+    (numericAliases(MULTICHAT_FONTS.slice(0, 12))[v ?? ''] ?? v?.trim()) || 'opensans'),
   stroke: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_STROKES, 'none')),
   emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),

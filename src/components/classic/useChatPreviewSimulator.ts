@@ -16,20 +16,16 @@
  * restarted on every keystroke would reset its own cadence and never reach the
  * slow end of its interval band.
  *
- * THE FEED IS OFF UNTIL ASKED. This is the load-bearing default, not a
- * conservative one. The preview's fixtures are a curated showcase — badge
- * combinations, a 7TV paint, one emote per provider — and ChatOverlay's list is
- * `bottom: 0; overflow: hidden`, so every appended message pushes one of those
- * rows past the top clipping edge. A feed that started by itself therefore
- * dismantled the demonstration it was meant to animate, and it did so whatever
- * delay the first tick waited: an earlier revision held that tick for nine seconds
- * and the showcase was simply gone at ten. So nothing is scheduled on mount. The
- * curated set stays exactly as it painted, for as long as the tab is open, until
- * the Live preview feed switch is turned on — which is also how the reference
- * implementation this preview was measured against behaves.
+ * THE FEED MOVES ON ARRIVAL. Preview Data is meant to demonstrate the overlay's
+ * live behavior without pretending to be channel chat, so the default arms the
+ * normal cadence immediately. The maintained fixtures still paint on the first
+ * render; generated messages then enter, push older rows through the clipped
+ * production viewport, and rotate through the provider showcase while someone
+ * watches. Pause remains available for inspecting one frame, and callers can
+ * explicitly pass `enabled: false` when a stationary preview is required.
  *
- * The pin follows the same rule: `pinVisible` starts false, so the opaque
- * top-anchored banner does not occupy the default viewport either.
+ * `pinVisible` still starts false, so the opaque top-anchored banner does not cover
+ * the first paint. Its existing countdown introduces it only after movement begins.
  *
  * ONE SCHEDULER. React Strict Mode double-invokes effects in development. The
  * chain here is a single `setTimeout` re-armed from its own callback, and the
@@ -57,15 +53,19 @@ import {
 import type { UnifiedMessage } from '@/lib/types';
 
 /** What the generator hands the hook. All optional — the page passes nothing. */
+export type PreviewIdentityTemplate = Omit<UnifiedMessage, 'id' | 'timestamp'> & {
+  readonly templateId: string;
+};
+
 export type ChatSimulatorOptions = {
   /** Randomness. Defaults to `Math.random`; tests pass a seeded source. */
   random?: RandomSource;
-  /**
-   * Start running. Defaults to false: the generator wants the curated showcase
-   * standing still until someone asks for movement. A test that is about the
-   * running feed passes true and arms it from mount.
-   */
+  /** Start running. Defaults to true; pass false for a stationary first paint. */
   enabled?: boolean;
+  /** Initial cadence. Defaults to normal for existing callers. */
+  initialSpeed?: PreviewSpeed;
+  /** Loaded identity demonstrations. When present, these replace generic draws. */
+  identityTemplates?: readonly PreviewIdentityTemplate[];
 };
 
 export type ChatSimulatorState = {
@@ -81,6 +81,7 @@ export type ChatSimulatorState = {
   readonly running: boolean;
   setEnabled: (next: boolean) => void;
   togglePaused: () => void;
+  resume: () => void;
   setSpeed: (next: PreviewSpeed) => void;
   /** Drop every generated message and re-arm from the fixtures. */
   reset: () => void;
@@ -99,10 +100,13 @@ function documentHidden(): boolean {
 export function useChatPreviewSimulator(
   options: ChatSimulatorOptions = {},
 ): ChatSimulatorState {
-  /* False, so `running` is false, so the scheduling effect returns before it can
-     arm anything. That is the whole mechanism keeping the default showcase still —
-     there is no timer to cancel because none was ever created. */
-  const { enabled: initialEnabled = false } = options;
+  /* Preview Data moves without requiring discovery of a hidden switch. Callers
+     that need a stationary render can still opt out explicitly. */
+  const {
+    enabled: initialEnabled = true,
+    initialSpeed = 'normal',
+    identityTemplates = [],
+  } = options;
   /* `Math.random` is read here rather than defaulted in the signature so the
      identity stays stable across renders — a new function each render would be a
      new effect dependency if it were ever used as one. */
@@ -114,7 +118,7 @@ export function useChatPreviewSimulator(
   const [messages, setMessages] = useState<readonly UnifiedMessage[]>([]);
   const [enabled, setEnabled] = useState(initialEnabled);
   const [paused, setPaused] = useState(false);
-  const [speed, setSpeed] = useState<PreviewSpeed>('normal');
+  const [speed, setSpeed] = useState<PreviewSpeed>(initialSpeed);
   const [sources, setSources] = useState<PreviewSourceState>(() => allSourcesEnabled());
   /* False on arrival. The pin banner is opaque, top-anchored and roughly three
      rows tall, so offering it by default would cover half of a showcase whose
@@ -131,6 +135,12 @@ export function useChatPreviewSimulator(
   /* Everything the tick reads without wanting to restart the timer. */
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
+  const identityTemplatesRef = useRef(identityTemplates);
+  identityTemplatesRef.current = identityTemplates;
+  const identityKey = identityTemplates
+    .map((template) => `${template.senderId ?? ''}:${template.username}:${template.templateId}`)
+    .join('|');
+  const previousIdentityKeyRef = useRef(identityKey);
   const sequenceRef = useRef(0);
   /* The line just emitted, so the next draw can avoid repeating its identity.
      Held in a ref rather than read from `messages` so the tick stays off the
@@ -155,6 +165,17 @@ export function useChatPreviewSimulator(
   const running = enabled && !paused && !hidden;
 
   useEffect(() => {
+    if (previousIdentityKeyRef.current === identityKey) return;
+    previousIdentityKeyRef.current = identityKey;
+    setMessages([]);
+    sequenceRef.current = 0;
+    previousRef.current = null;
+    pinCountdownRef.current = null;
+    setPinVisible(false);
+    setRestarts((current) => current + 1);
+  }, [identityKey]);
+
+  useEffect(() => {
     if (!running) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -163,12 +184,22 @@ export function useChatPreviewSimulator(
       /* A callback already queued when cleanup ran must not append or re-arm. */
       if (cancelled) return;
       sequenceRef.current += 1;
-      const next = generateMessage(
-        sequenceRef.current,
-        sourcesRef.current,
-        random,
-        previousRef.current,
-      );
+      const templates = identityTemplatesRef.current;
+      const template = templates.length
+        ? templates[(sequenceRef.current - 1) % templates.length]
+        : null;
+      const next: UnifiedMessage = template
+        ? {
+            ...template,
+            id: `identity-sim-${sequenceRef.current}`,
+            timestamp: sequenceRef.current * 1000,
+          }
+        : generateMessage(
+            sequenceRef.current,
+            sourcesRef.current,
+            random,
+            previousRef.current,
+          );
       previousRef.current = next;
       setMessages((current) => appendBounded(current, next, CHAT_HISTORY_MAX));
 
@@ -230,6 +261,11 @@ export function useChatPreviewSimulator(
   const randomizeSources = useCallback(() => setSources(randomSources(random)), [random]);
   const resetSources = useCallback(() => setSources(allSourcesEnabled()), []);
   const togglePaused = useCallback(() => setPaused((current) => !current), []);
+  const resume = useCallback(() => {
+    setEnabled(true);
+    setPaused(false);
+    setSpeed(initialSpeed);
+  }, [initialSpeed]);
 
   return {
     messages,
@@ -241,6 +277,7 @@ export function useChatPreviewSimulator(
     running,
     setEnabled,
     togglePaused,
+    resume,
     setSpeed,
     reset,
     toggleSource,

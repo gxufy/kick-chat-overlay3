@@ -1,4 +1,8 @@
-/* The custom preview message control, inside the Chat overlay card.
+/* Preview composer workflow adapted from Fiszh/UChat at
+ * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
+ * Modified 2026-08-01 for MultiChat's UnifiedMessage production renderer.
+ *
+ * The custom preview message control, inside the Chat overlay card.
  *
  * This is a preview control, not a demo mode: it changes what the preview above
  * it shows and nothing else. It sends no message to any provider, it does not
@@ -15,7 +19,7 @@
  * so a composed line travels the identical conversion path as a fixture and as a
  * live message. See that module for why it is plain data rather than nodes.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PREVIEW_NAME_MAX,
   PREVIEW_TEXT_MAX,
@@ -35,18 +39,18 @@ const PLATFORMS: readonly { value: Platform; label: string }[] = [
 
 export default function ClassicPreviewComposer({
   onAdd,
-  onReset,
   onClear,
   customCount,
+  resetRevision = 0,
 }: {
   /** Appends a composed message to the preview list. */
   onAdd: (message: UnifiedMessage) => void;
-  /** Back to the built-in sample set, discarding composed messages. */
-  onReset: () => void;
   /** Removes composed messages, keeping the samples. */
   onClear: () => void;
   /** How many composed messages are currently in the preview. */
   customCount: number;
+  /** Incremented by the workspace Reset action to clear this local draft. */
+  resetRevision?: number;
 }) {
   const [platform, setPlatform] = useState<Platform>('kick');
   const [username, setUsername] = useState('');
@@ -58,6 +62,14 @@ export default function ClassicPreviewComposer({
   /* What was last done, announced rather than only drawn: adding a message
      changes the preview above, which a screen reader user cannot see happen. */
   const [announcement, setAnnouncement] = useState('');
+
+  useEffect(() => {
+    if (resetRevision === 0) return;
+    setPlatform('kick');
+    setUsername('');
+    setText('');
+    setAnnouncement('Preview reset to the built-in samples.');
+  }, [resetRevision]);
 
   const draft = { platform, username, text };
   const canAdd = canComposePreviewMessage(draft);
@@ -146,7 +158,7 @@ export default function ClassicPreviewComposer({
           onClick={add}
           disabled={!canAdd}
         >
-          Add preview message
+          Send custom preview message
         </button>
         <button
           type="button"
@@ -158,19 +170,6 @@ export default function ClassicPreviewComposer({
           disabled={customCount === 0}
         >
           Clear custom messages
-        </button>
-        <button
-          type="button"
-          className="classic-conn-btn"
-          onClick={() => {
-            onReset();
-            setText('');
-            setUsername('');
-            setPlatform('kick');
-            setAnnouncement('Preview reset to the built-in samples.');
-          }}
-        >
-          Reset preview
         </button>
         {/* Live region: states the count, so the effect of Add and Clear is
             available without seeing the preview repaint. */}

@@ -183,134 +183,48 @@ describe('the original Classic identity', () => {
   });
 });
 
-describe('layout order', () => {
-  /** Index of a selector among all cards and panels, in DOM order. */
-  const order = (selector: string) => {
-    const all = Array.from(document.querySelectorAll('section'));
-    const target = document.querySelector(selector);
-    expect(target, `${selector} is missing`).not.toBeNull();
-    return all.indexOf(target as HTMLElement);
-  };
-
-  it('puts the chat panel before the Counter panel', () => {
+describe('the original two-card tool layout', () => {
+  it('keeps one grid with each output immediately before its settings in DOM order', () => {
     mount();
-    expect(order('.panel-chat-output')).toBeLessThan(order('.panel-counter-output'));
-  });
-
-  it('keeps each tool together: its own output immediately before its own settings', () => {
-    /* The stacked reading order, and the reason it needs no reordering on a
-       phone: each tool is a unit, so the counter's controls follow the counter's
-       preview rather than 24 chat settings. */
-    mount();
-    expect(order('.panel-chat-output')).toBeLessThan(order('.panel-chat-settings'));
-    expect(order('.panel-chat-settings')).toBeLessThan(order('.panel-counter-output'));
-    expect(order('.panel-counter-output')).toBeLessThan(order('.panel-counter-settings'));
-  });
-
-  it('follows the required order end to end', () => {
-    mount();
-    const sections = Array.from(document.querySelectorAll('section')).map(
-      (section) => section.getAttribute('aria-labelledby'),
-    );
-    expect(sections).toEqual([
-      'channels-heading',
-      'chat-output-heading',
-      'chat-settings-heading',
-      'counter-output-heading',
-      'counter-settings-heading',
-      'commands-heading',
-      'obs-heading',
+    const grid = document.querySelector('.tool-grid')!;
+    expect(document.querySelectorAll('.tool-grid')).toHaveLength(1);
+    expect(Array.from(grid.children).map((child) => child.className)).toEqual([
+      'card panel-chat-output',
+      'card panel-chat-settings',
+      'card panel-counter-output',
+      'card panel-counter-settings',
+      'card panel-commands',
+      'card panel-obs',
     ]);
   });
 
-  it('places Commands beneath both tools and OBS setup beneath Commands', () => {
+  it('renders both independent output cards together without workspace tabs', () => {
     mount();
-    const commands = order('[aria-labelledby="commands-heading"]');
-    expect(commands).toBeGreaterThan(order('.panel-chat-settings'));
-    expect(commands).toBeGreaterThan(order('.panel-counter-settings'));
-    expect(order('[aria-labelledby="obs-heading"]')).toBeGreaterThan(commands);
+    expect(document.querySelectorAll('.panel-chat-output')).toHaveLength(1);
+    expect(document.querySelectorAll('.panel-counter-output')).toHaveLength(1);
+    expect(document.querySelector('.preview-workspace')).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Preview Workspace' })).toBeNull();
   });
 
-  it('holds all six panels in one grid, in the stacked order', () => {
-    /* The structural half of the layout: jsdom computes no layout, so what is
-       assertable in the tree is that all six panels are children of the single
-       grid, once each, in the order a phone should read them. Which cell each
-       lands in on a desktop is the stylesheet's job, asserted below. */
-    mount();
-    const grids = document.querySelectorAll('.tool-grid');
-    expect(grids).toHaveLength(1);
-
-    const shape = Array.from(grids[0].children).map((child) =>
-      Array.from(child.classList).find((c) => c.startsWith('panel-')),
-    );
-    expect(shape).toEqual([
-      'panel-chat-output',
-      'panel-chat-settings',
-      'panel-counter-output',
-      'panel-counter-settings',
-      'panel-commands',
-      'panel-obs',
-    ]);
-  });
-
-  it('places the panels into the locked grid areas at the desktop breakpoint', () => {
-    /* The locked arrangement, read off the stylesheet:
-         "chat-output   counter-output"
-         "chat-settings counter-settings"
-         "commands      commands"
-         "obs           obs"
-       so the two outputs are aligned beside each other, each settings card is
-       directly beneath its own output, and the last two sections span the page. */
-    const areas = CLASSIC_GENERATOR_CSS.match(/grid-template-areas:([\s\S]*?);/);
-    expect(areas, 'the grid declares no template areas').not.toBeNull();
-    const rows = areas![1]
-      .match(/"[^"]+"/g)!
-      .map((row) => row.replace(/"/g, '').trim().split(/\s+/));
-
-    expect(rows).toEqual([
-      ['chat-output', 'counter-output'],
-      ['chat-settings', 'counter-settings'],
-      ['commands', 'commands'],
-      ['obs', 'obs'],
-    ]);
-
-    // Each panel class is bound to the area of the same name.
-    for (const area of [
-      'chat-output',
-      'counter-output',
-      'chat-settings',
-      'counter-settings',
-      'commands',
-      'obs',
-    ]) {
-      expect(
-        CLASSIC_GENERATOR_CSS,
-        `.panel-${area} is not bound to its grid area`,
-      ).toContain(`.panel-${area} { grid-area: ${area}; }`);
-    }
-  });
-
-  it('gives the grid two equal columns so the outputs align', () => {
-    const desktop = CLASSIC_GENERATOR_CSS.match(
-      /@media \(min-width: 1000px\) \{\s*\.tool-grid \{([\s\S]*?)\n  \}/,
-    );
-    expect(desktop, 'the .tool-grid desktop block is missing').not.toBeNull();
-    const columns = desktop![1].match(/grid-template-columns: ([^;]+);/);
-    expect(columns, 'the grid declares no columns').not.toBeNull();
-    /* Two tracks, both minmax(0, 1fr): equal so the two outputs align beside
-       each other, and minmax(0,…) so a long URL cannot push one past its
-       share. */
-    expect(columns![1].match(/minmax\(0, 1fr\)/g)).toHaveLength(2);
-  });
-
-  it('needs no media query for the stacked order', () => {
-    /* The mobile order is the DOM order, so the base rule is a plain column and
-       the grid exists only above the breakpoint. If the stack were built by
-       reordering, this would be where it broke silently. */
+  it('aligns the two outputs over their settings in equal desktop columns', () => {
     expect(CLASSIC_GENERATOR_CSS).toContain(
-      '.tool-grid { display: flex; flex-direction: column; }',
+      'grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)',
     );
-    expect(CLASSIC_GENERATOR_CSS).not.toMatch(/\.panel-[a-z-]+ \{[^}]*order:/);
+    expect(CLASSIC_GENERATOR_CSS).toContain('"chat-output counter-output"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"chat-settings counter-settings"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"commands commands"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"obs obs"');
+    expect(CLASSIC_GENERATOR_CSS).not.toContain('position: sticky');
+  });
+
+  it('uses the same DOM sequence as the single-column responsive layout', () => {
+    expect(CLASSIC_GENERATOR_CSS).toContain('"chat-output"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"chat-settings"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"counter-output"');
+    expect(CLASSIC_GENERATOR_CSS).toContain('"counter-settings"');
+    expect(CLASSIC_GENERATOR_CSS).not.toMatch(
+      /\.panel-(?:chat|counter|commands|obs)[^{]*\{[^}]*\border\s*:/,
+    );
   });
 });
 
@@ -367,6 +281,43 @@ describe('every catalog setting is reachable', () => {
           : document.querySelector(`label[for="${control.id}"]`)?.textContent;
       expect(named).toBe(setting.label);
     }
+  });
+});
+
+describe('catalog-backed settings resets', () => {
+  it('restores Chat defaults without changing channels or Counter settings', () => {
+    mount();
+    typeChannel('kick', 'gxufy');
+    fireEvent.change(document.getElementById('mc-font')!, { target: { value: 'geist' } });
+    fireEvent.click(document.getElementById('vc-combined')!);
+    const changedCounterUrl = counterUrl();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset Chat Settings to Default' }));
+
+    expect((document.getElementById('mc-font') as HTMLSelectElement).value).toBe('opensans');
+    expect(chatUrl()).toContain('kick=gxufy');
+    expect(chatUrl()).toContain('font=opensans');
+    expect(counterUrl()).toBe(changedCounterUrl);
+    expect(panel('.panel-chat-settings').textContent).toContain(
+      'Chat settings restored to defaults.',
+    );
+  });
+
+  it('restores Counter defaults without changing channels or Chat settings', () => {
+    mount();
+    typeChannel('twitch', 'gxufy');
+    fireEvent.change(document.getElementById('mc-font')!, { target: { value: 'geist' } });
+    const changedChatUrl = chatUrl();
+    fireEvent.click(document.getElementById('vc-combined')!);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset Viewer Settings to Default' }));
+
+    expect((document.getElementById('vc-combined') as HTMLInputElement).checked).toBe(
+      counterTool.defaults.combined,
+    );
+    expect(counterUrl()).toContain('twitch=gxufy');
+    expect(chatUrl()).toBe(changedChatUrl);
+    expect(document.body.textContent).toContain('Viewer settings restored to defaults.');
   });
 });
 
@@ -598,16 +549,10 @@ describe('density', () => {
     expect(gutter).toBeLessThanOrEqual(48);
   });
 
-  it('splits the two tool columns evenly rather than favouring one', () => {
-    /* The chat column cannot claim a wider track than the counter column: the two
-       output cards share a grid row and have to line up, which an uneven split
-       would break. Read as a ratio so a future change to the unit still fails. */
-    const [left, right] = CLASSIC_GENERATOR_CSS.match(
-      /grid-template-columns: minmax\(0, ([\d.]+)fr\) minmax\(0, ([\d.]+)fr\);\s*\n\s*grid-template-areas/,
-    )!
-      .slice(1)
-      .map(Number);
-    expect(left / right).toBe(1);
+  it('gives Chat and Viewer Counter equal desktop output columns', () => {
+    expect(CLASSIC_GENERATOR_CSS).toContain(
+      'grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)',
+    );
   });
 
   it('puts both output actions in one group beside the field', () => {
@@ -799,9 +744,10 @@ describe('the two authoritative URLs', () => {
     expect(screen.queryAllByText(/Enter a channel above/)).toHaveLength(0);
   });
 
-  it('previews both overlays at exactly their generated URLs', () => {
+  it('automatically switches on the empty-to-configured transition and uses the exact generated URL', () => {
     mount();
     typeChannel('kick', 'somechannel');
+    expect(screen.getByRole('tab', { name: 'Live Overlay' }).getAttribute('aria-selected')).toBe('true');
     settle();
     expect(
       document
@@ -815,9 +761,24 @@ describe('the two authoritative URLs', () => {
     ).toBe(counterUrl());
   });
 
+  it('respects manual Preview Data until every channel clears, then permits a new auto-switch', () => {
+    mount();
+    typeChannel('kick', 'somechannel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview Data' }));
+    typeChannel('twitch', 'anotherchannel');
+    expect(screen.getByRole('tab', { name: 'Preview Data' }).getAttribute('aria-selected')).toBe('true');
+    typeChannel('kick', '');
+    expect(screen.getByRole('tab', { name: 'Preview Data' }).getAttribute('aria-selected')).toBe('true');
+    typeChannel('twitch', '');
+    expect(document.querySelector('iframe[title="Live chat overlay preview"]')).toBeNull();
+    typeChannel('youtube', '@freshchannel');
+    expect(screen.getByRole('tab', { name: 'Live Overlay' }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('sizes each preview to its own OBS height', () => {
     mount();
     typeChannel('kick', 'somechannel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
     settle();
     const height = (title: string) =>
       (document.querySelector(`iframe[title="${title}"]`) as HTMLElement).style.height;
@@ -870,7 +831,7 @@ describe('Copy and Open hand over the displayed URL', () => {
     typeChannel('kick', 'somechannel');
     fireEvent.click(within(panel('.panel-counter-output')).getByRole('button', { name: 'Copy' }));
     expect(writeText).toHaveBeenCalledWith(counterUrl());
-    // The chat panel's button is untouched.
+    // The adjacent Chat card's button is untouched.
     expect(
       within(panel('.panel-chat-output')).getByRole('button', { name: 'Copy' }),
     ).toBeDefined();
@@ -1325,7 +1286,7 @@ describe('the Demo interface is gone', () => {
     }
   });
 
-  it('renders previews only as real overlay iframes', () => {
+  it('renders configured previews through real overlay iframes when selected', () => {
     /* The claim is that nothing here is a mock-up: what a preview shows a
        configured channel is the overlay itself, at its own URL, not a picture of
        one. Two frames, both loading from this origin — one per tool, with no
@@ -1334,6 +1295,7 @@ describe('the Demo interface is gone', () => {
        what this asserts is gone. */
     mount();
     typeChannel('kick', 'somechannel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
     settle();
     const frames = Array.from(document.querySelectorAll('iframe'));
     expect(frames).toHaveLength(2);
@@ -1352,7 +1314,7 @@ describe('the Demo interface is gone', () => {
     mount();
     const chat = panel('.panel-chat-output');
     expect(within(chat).getByTestId('chat-fixture-preview')).toBeTruthy();
-    expect(within(chat).getByText('Preview data')).toBeTruthy();
+    expect(within(chat).getAllByText('Preview Data').length).toBeGreaterThan(0);
     /* No mode switch came back with it: nothing toggles between live and sample
        content, because a configured channel decides that on its own. */
     expect(chat.textContent ?? '').not.toMatch(/\bdemo\b/i);
@@ -1366,7 +1328,7 @@ describe('the Demo interface is gone', () => {
     mount();
     const counter = panel('.panel-counter-output');
     expect(within(counter).getByTestId('counter-fixture-preview')).toBeTruthy();
-    expect(within(counter).getByText('Preview data')).toBeTruthy();
+    expect(within(counter).getByText('Preview Data')).toBeTruthy();
     /* No mode switch here either: a configured channel decides live vs sample. */
     expect(counter.textContent ?? '').not.toMatch(/\bdemo\b/i);
   });

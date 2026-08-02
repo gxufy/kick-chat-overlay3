@@ -828,7 +828,10 @@ describe('the rotation inside the generator', () => {
     return row ? row.children.length : 0;
   };
 
-  const mountGenerator = () => render(<ClassicGenerator />);
+  const mountGenerator = () => {
+    const view = render(<ClassicGenerator />);
+    return view;
+  };
 
   /**
    * Fire exactly one combination change, through the button rather than the clock.
@@ -936,16 +939,17 @@ describe('the rotation inside the generator', () => {
   });
 
   it('opens no request and no socket across a full rotation', () => {
-    const fetchSpy = vi.fn(() => Promise.reject(new Error('no network in this test')));
+    const fetchSpy = vi.fn((_input: RequestInfo | URL) => Promise.reject(new Error('no network in this test')));
     vi.stubGlobal('fetch', fetchSpy);
     const socket = vi.fn();
     vi.stubGlobal('WebSocket', socket);
     vi.stubGlobal('EventSource', socket);
     mountGenerator();
     for (let i = 0; i < COUNTER_STATE_COUNT; i += 1) step();
-    /* The rotation replaces what /api/viewers would have provided. If it ever
-       starts asking the server for a number, the whole reason it exists is gone. */
-    expect(fetchSpy).not.toHaveBeenCalled();
+    /* The rotation never asks /api/viewers; the only allowed requests belong to
+       the separate curated Chat Preview identity roster. */
+    expect(fetchSpy.mock.calls.every(([url]) => String(url).startsWith('/api/twitch/preview-identity?login='))).toBe(true);
+    expect(fetchSpy.mock.calls.every(([url]) => !String(url).includes('/api/viewers'))).toBe(true);
     expect(socket).not.toHaveBeenCalled();
     /* And the frame still never navigates — loading the real /counter document is
        what would reintroduce the overlay's own polling. */

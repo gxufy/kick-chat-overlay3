@@ -51,6 +51,8 @@ export interface Entitlements {
 export interface ParsedMessage {
   id: string;
   platform?: 'kick' | 'twitch' | 'youtube' | 'tiktok';
+  /** Preview-only visual source mark; identity and cosmetics still use platform. */
+  displayPlatform?: 'kick' | 'twitch' | 'youtube' | 'tiktok';
   /** platform sender id — enables ban-by-author deletion (yt) */
   senderId?: string;
   /** event card category for kind === 'system' */
@@ -76,14 +78,65 @@ export interface ParsedMessage {
   message: React.ReactNode[];
 }
 
-export async function getKickChannel(channel: string): Promise<KickChannel | null> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function positiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function safeImageUrl(value: unknown): value is string {
+  if (!nonEmptyString(value)) return false;
   try {
-    const res = await fetch(`https://kick.com/api/v2/channels/${channel}`, {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Validate the subset of Kick's channel response consumed by chat resources. */
+export function parseKickChannel(value: unknown): KickChannel | null {
+  if (!isPlainObject(value) || !positiveInteger(value.id) || !positiveInteger(value.user_id)) return null;
+  if (!nonEmptyString(value.slug) || !isPlainObject(value.chatroom) || !positiveInteger(value.chatroom.id)) return null;
+  if (!isPlainObject(value.user) || !positiveInteger(value.user.id) || !nonEmptyString(value.user.username)) return null;
+  if (!Array.isArray(value.subscriber_badges)) return null;
+
+  const subscriberBadges: KickChannel['subscriber_badges'] = [];
+  for (const raw of value.subscriber_badges) {
+    if (!isPlainObject(raw) || !positiveInteger(raw.id) || !positiveInteger(raw.months)) continue;
+    if (!isPlainObject(raw.badge_image) || !safeImageUrl(raw.badge_image.src)) continue;
+    subscriberBadges.push({
+      id: raw.id,
+      months: raw.months,
+      badge_image: { src: raw.badge_image.src },
+    });
+  }
+
+  return {
+    id: value.id,
+    user_id: value.user_id,
+    slug: value.slug,
+    chatroom: { id: value.chatroom.id },
+    subscriber_badges: subscriberBadges,
+    user: { id: value.user.id, username: value.user.username },
+  };
+}
+
+export async function getKickChannel(channel: string, signal?: AbortSignal): Promise<KickChannel | null> {
+  try {
+    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(channel)}`, {
       headers: { 'Accept': 'application/json' },
+      signal,
     });
     if (!res.ok) return null;
-    return await res.json();
-  } catch {
+    return parseKickChannel(await res.json());
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
     return null;
   }
 }

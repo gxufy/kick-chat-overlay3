@@ -54,12 +54,19 @@ function fontSheets(container: HTMLElement): string[] {
 }
 
 describe('web font is emitted by the overlay', () => {
-  it('loads the default font, which previously loaded nothing', () => {
-    // opensans is MULTICHAT_GENERATOR_DEFAULTS.font, so this was the common case.
-    const { container } = mount('opensans');
-    const sheets = fontSheets(container);
-    expect(sheets).toHaveLength(1);
-    expect(sheets[0]).toContain('Open+Sans');
+  it('loads Open Sans for the no-explicit-selection default', () => {
+    const { container } = mount();
+    expect(fontSheets(container)[0]).toContain('Open+Sans');
+    expect(container.querySelector('#chat_container')?.getAttribute('style')).toContain(
+      'font-family: "Open Sans", Arial, system-ui, sans-serif',
+    );
+  });
+
+  it('keeps explicit Geist self-hosted and selectable', () => {
+    const { container } = mount('geist');
+    expect(fontSheets(container)).toEqual([]);
+    expect(container.innerHTML).toContain('/fonts/Geist-wght.woff2');
+    expect(container.innerHTML).toContain('font-display: swap');
   });
 
   it('loads the face named by an explicit font parameter', () => {
@@ -102,8 +109,8 @@ describe('no request for faces that need none', () => {
   });
 
   it('adds no stylesheet for an unrecognized value', () => {
-    // An omitted font= parses to 'opensans' via the schema default, so the
-    // genuinely fontless case is an unknown value, which the parser passes
+    // An omitted font= parses to 'geist' via the schema default, so the
+    // genuinely unsupported case is an unknown value, which the parser passes
     // through verbatim rather than falling back.
     const { container } = mount('not-a-real-font');
     expect(fontSheets(container)).toEqual([]);

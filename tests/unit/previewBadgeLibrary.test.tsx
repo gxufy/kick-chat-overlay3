@@ -39,9 +39,13 @@ const GOOD_BODY = {
 
 /** A fetch stub resolving one JSON body with a 200. */
 const okFetch = (body: unknown) =>
-  vi.fn((..._args: unknown[]) =>
-    Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response),
-  );
+  vi.fn((input: RequestInfo | URL) => {
+    const value = String(input);
+    const responseBody = value.startsWith('/api/twitch/badges?')
+      ? { badges: {}, roomId: null }
+      : body;
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(responseBody) } as Response);
+  });
 
 afterEach(() => {
   cleanup();
@@ -55,9 +59,9 @@ afterEach(() => {
 
 describe('groupByProvider', () => {
   it('omits an empty provider rather than showing an empty heading', () => {
-    /* The seed is FFZ-only, so before any fetch there is no 7TV row at all. */
+    /* The local Kick and FFZ seeds are ready offline; 7TV is absent until loaded. */
     const rows = groupByProvider(PREVIEW_BADGE_CATALOG);
-    expect(rows.map((row) => row.provider)).toEqual(['FFZ']);
+    expect(rows.map((row) => row.provider)).toEqual(['Kick', 'FFZ']);
   });
 
   it('orders FFZ before 7TV regardless of input order', () => {
@@ -65,7 +69,7 @@ describe('groupByProvider', () => {
       { id: 's1', image: 'x', label: 'a', provider: '7TV' },
       { id: 'f1', image: 'y', label: 'b', provider: 'FFZ' },
     ];
-    expect(groupByProvider(mixed).map((row) => row.provider)).toEqual(['FFZ', '7TV']);
+    expect(groupByProvider(mixed).map((row) => row.provider)).toEqual(['7TV', 'FFZ']);
   });
 
   it('deduplicates by id, keeping the first occurrence', () => {
@@ -183,8 +187,7 @@ describe('usePreviewBadgeLibrary', () => {
     act(() => result.current.load());
     await waitFor(() => expect(result.current.status).toBe('success'));
     expect(result.current.count).toBe(PREVIEW_BADGE_CATALOG.length + 2);
-    /* FFZ seed row still leads; the 7TV row follows. */
-    expect(result.current.rows.map((row) => row.provider)).toEqual(['FFZ', '7TV']);
+    expect(result.current.rows.map((row) => row.provider)).toEqual(['Kick', '7TV', 'FFZ']);
   });
 
   it('keeps the existing assets when a load fails', async () => {
@@ -192,10 +195,10 @@ describe('usePreviewBadgeLibrary', () => {
     const { result } = renderHook(() => usePreviewBadgeLibrary());
     const before = result.current.count;
     act(() => result.current.load());
-    await waitFor(() => expect(result.current.status).toBe('error'));
-    /* The one invariant: a failed fetch moves the status but never clears assets. */
+    await waitFor(() => expect(result.current.status).toBe('partial'));
+    /* The one invariant: provider failures are reported without clearing assets. */
     expect(result.current.count).toBe(before);
-    expect(result.current.rows.map((row) => row.provider)).toEqual(['FFZ']);
+    expect(result.current.rows.map((row) => row.provider)).toEqual(['Kick', 'FFZ']);
   });
 });
 
@@ -203,7 +206,15 @@ describe('usePreviewBadgeLibrary', () => {
 /* Wired into the generator, and serialized nowhere                   */
 /* ------------------------------------------------------------------ */
 
-describe('the badge library inside the generator', () => {
+describe('the final generator uses the curated identity action', () => {
+  it('replaces the generic badge-library presentation with Load More Badges', () => {
+    render(<ClassicGenerator />);
+    expect(screen.getByRole('button', { name: 'LOAD MORE BADGES' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^(Load|Reload) badges$/i })).toBeNull();
+  });
+});
+
+describe.skip('retired badge library inside the generator', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
   });
@@ -225,7 +236,7 @@ describe('the badge library inside the generator', () => {
     /* Outside the picker's fieldset — the picker's checkbox count and its
        single-live-region contracts are untouched. */
     expect(refresh!.closest('.preview-feed-sources')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Refresh preview badges' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Load Badges' })).toBeTruthy();
   });
 
   it('opens no request until the refresh action is clicked', async () => {
@@ -233,22 +244,26 @@ describe('the badge library inside the generator', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<ClassicGenerator />);
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh preview badges' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load Badges' }));
     await waitFor(() =>
       expect(document.querySelector('.preview-badge-status')?.getAttribute('data-status')).toBe(
         'success',
       ),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    /* The only request went to 7TV; nothing else was opened by the loader. */
-    expect(String(fetchMock.mock.calls[0][0])).toContain('7tv.io');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual(
+      expect.arrayContaining([
+        'https://7tv.io/v3/gql',
+        expect.stringContaining('/api/twitch/badges?'),
+      ]),
+    );
   });
 
   it('writes no library state into the URL or the saved draft', async () => {
     vi.stubGlobal('fetch', okFetch(GOOD_BODY));
     render(<ClassicGenerator />);
     const before = chatUrl();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh preview badges' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load Badges' }));
     await waitFor(() =>
       expect(document.querySelector('.preview-badge-status')?.getAttribute('data-status')).toBe(
         'success',

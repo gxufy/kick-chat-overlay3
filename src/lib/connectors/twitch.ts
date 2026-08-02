@@ -103,7 +103,12 @@ function parseBadges(rawTag: string, badgeMap: Record<string, string>): UnifiedB
   if (!rawTag) return [];
   const all = rawTag.split(',').filter(Boolean).map(b => {
     const [type, version] = b.split('/');
-    return { type, count: parseInt(version) || undefined, url: badgeMap[b] ?? badgeMap[`${type}/1`] };
+    return {
+      type,
+      version,
+      count: /^\d+$/.test(version) ? parseInt(version, 10) : undefined,
+      url: badgeMap[b] ?? badgeMap[`${type}/1`],
+    };
   });
   return [
     ...all.filter(b => PRIORITY_BADGES.includes(b.type)),
@@ -111,13 +116,30 @@ function parseBadges(rawTag: string, badgeMap: Record<string, string>): UnifiedB
   ];
 }
 
-/** Accept only the plain string map promised by /api/twitch/badges. */
-function parseBadgeMap(value: unknown): Record<string, string> | null {
+/** Accept only the exact safe map promised by /api/twitch/badges. */
+export function parseBadgeMap(value: unknown): Record<string, string> | null {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'badges' in value
+  ) {
+    value = (value as { badges?: unknown }).badges;
+  }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return null;
   const entries = Object.entries(value);
-  if (!entries.every(([key, url]) => key.length > 0 && typeof url === 'string')) return null;
+  for (const [key, url] of entries) {
+    const parts = key.split('/');
+    if (parts.length !== 2 || parts.some((part) => !part)) return null;
+    if (typeof url !== 'string') return null;
+    try {
+      if (new URL(url).protocol !== 'https:') return null;
+    } catch {
+      return null;
+    }
+  }
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
@@ -135,6 +157,8 @@ export interface TwitchConnectorOpts extends ConnectorCallbacks {
   channel: string;
   /** room-id from ROOMSTATE — used for 7TV Twitch channel emotes */
   onRoomId?(roomId: string): void;
+  /** Badge art changed after messages may already have been delivered. */
+  onBadgeMap?(badgeMap: Readonly<Record<string, string>>): void;
 }
 
 export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
@@ -151,7 +175,10 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     .then(r => r.ok ? r.json() : null)
     .then(value => {
       const parsed = parseBadgeMap(value);
-      if (parsed) badgeMap = parsed;
+      if (parsed) {
+        badgeMap = parsed;
+        opts.onBadgeMap?.(badgeMap);
+      }
     })
     .catch(() => { /* fall back to bare types */ });
 
@@ -201,7 +228,10 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
           opts.onRoomId?.(roomId);
           // FFZ custom room badges override stock mod/vip art (chatis :1416)
           loadFFZRoomBadges(roomId)
-            .then(overrides => { Object.assign(badgeMap, overrides); })
+            .then(overrides => {
+              Object.assign(badgeMap, overrides);
+              opts.onBadgeMap?.(badgeMap);
+            })
             .catch(() => { /* keep stock art */ });
         }
         break;

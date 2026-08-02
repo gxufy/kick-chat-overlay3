@@ -194,7 +194,7 @@ describe('the built-in chat preview is populated immediately', () => {
        Scoped to the chat panel: the counter panel carries its own badge with the
        same words, so an unscoped query here matches two elements. */
     const chatPanel = document.querySelector('.panel-chat-output') as HTMLElement;
-    expect(within(chatPanel).getByText('Preview data')).toBeTruthy();
+    expect(within(chatPanel).getAllByText('Preview Data').length).toBeGreaterThan(0);
     /* And the same thing said to assistive tech, on the group itself. */
     expect(
       screen.getByRole('group', { name: /sample chat messages, not a live stream/i }),
@@ -327,9 +327,10 @@ describe('the preview opens no connections', () => {
     await act(async () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 4);
     });
-    expect(seen).toEqual([]);
-    /* And specifically: nothing that would be a pin poll or a viewer poll. */
-    expect(seen.filter((s) => s.includes('/api/'))).toEqual([]);
+    expect(seen.every((entry) => entry.startsWith('fetch:/api/twitch/preview-identity?login='))).toBe(true);
+    expect(seen).toHaveLength(7);
+    /* Specifically: no live overlay socket, pin poll, or viewer poll. */
+    expect(seen.filter((entry) => entry.includes('/api/twitch/pins') || entry.includes('/api/viewers'))).toEqual([]);
     vi.useRealTimers();
   });
 
@@ -425,14 +426,15 @@ describe('render-time settings reach the preview too', () => {
     expect(previewText()).toContain('keep it civil in here please');
   });
 
-  it('sourceTag honours an explicit choice, including its default value', () => {
-    /* The serializer omits sourceTag=icon as the default, so a preview relying on
-       the round trip alone would fall back to showing no marker at all. */
-    mountPreview({ sourceTag: 'label' });
-    expect(previewText()).toContain('Kick');
-    cleanup();
-    mountPreview({ sourceTag: 'none' });
-    expect(previewText()).not.toContain('Kick');
+  it('uses preview-only icon source marks without rewriting sourceTag', () => {
+    /* Preview Data deliberately showcases all four platform logos while retaining
+       the serialized sourceTag setting for the authoritative Live Overlay URL. */
+    for (const sourceTag of ['label', 'none'] as const) {
+      mountPreview({ sourceTag });
+      expect(preview().querySelectorAll('[data-source-tag="icon"]').length).toBeGreaterThan(0);
+      expect(preview().querySelectorAll('[data-source-tag="label"], [data-source-tag="dot"]')).toHaveLength(0);
+      cleanup();
+    }
   });
 
   it('showPinEnabled returns the pinned sample to the list rather than dropping it', () => {
@@ -562,11 +564,11 @@ describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders'
     /* Read straight off the cosmetics the preview is rendered against. */
     const images = [
       SAMPLE_COSMETICS.badges.map((b) => b.image),
-      SAMPLE_COSMETICS.emotes.map((e) => e.image),
+      SAMPLE_COSMETICS.emotes.twitch!.map((e) => e.image),
     ].flat();
     /* Both kinds are actually present, so the loop is not vacuously true. */
     expect(SAMPLE_COSMETICS.badges.length).toBeGreaterThan(0);
-    expect(SAMPLE_COSMETICS.emotes.length).toBeGreaterThan(0);
+    expect(SAMPLE_COSMETICS.emotes.twitch!.length).toBeGreaterThan(0);
     for (const src of images) {
       expect(src, src).not.toMatch(/^https?:/i);
       expect(src, src).not.toMatch(/^\/\//);
@@ -609,7 +611,7 @@ describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders'
        app-served paths are looked for on disk. */
     const sources = [
       ...SAMPLE_COSMETICS.badges.map((b) => b.image),
-      ...SAMPLE_COSMETICS.emotes.map((e) => e.image),
+      ...SAMPLE_COSMETICS.emotes.twitch!.map((e) => e.image),
     ];
     expect(sources.length).toBeGreaterThan(0);
     for (const src of sources) {
@@ -646,7 +648,7 @@ describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders'
        provider art is bigger than the line; the fixtures have to be too. */
     const sources = [
       ...SAMPLE_COSMETICS.badges.map((b) => b.image),
-      ...SAMPLE_COSMETICS.emotes.map((e) => e.image),
+      ...SAMPLE_COSMETICS.emotes.twitch!.map((e) => e.image),
     ].filter((src) => src.includes('image/svg'));
     expect(sources.length).toBeGreaterThan(0);
     for (const src of sources) {
@@ -670,7 +672,7 @@ describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders'
      So the set has to stay uneven, and that is what these two assert. They are
      the guard against a well-meaning tidy-up restoring uniformity. */
   it('keeps a wide emote fixture, so a stretched render is falsifiable', () => {
-    const wide = SAMPLE_COSMETICS.emotes.filter((e) => e.width > e.height);
+    const wide = SAMPLE_COSMETICS.emotes.twitch!.filter((e) => e.width > e.height);
     expect(wide.length).toBeGreaterThan(0);
     for (const e of wide) {
       const markup = decodeURIComponent(e.image.slice(e.image.indexOf(',') + 1));
@@ -686,7 +688,7 @@ describe('BROKEN-ASSET PREVENTION: the base preview owns every image it renders'
     /* 42px is the cap at the default size; see SIZE in ChatOverlay. A fixture
        under it is the provider 1x variant that `height: auto` used to draw
        short, and the only fixture that can prove the height lock works. */
-    const small = SAMPLE_COSMETICS.emotes.filter((e) => e.height < 42);
+    const small = SAMPLE_COSMETICS.emotes.twitch!.filter((e) => e.height < 42);
     expect(small.length).toBeGreaterThan(0);
   });
 });
@@ -923,7 +925,7 @@ describe('the preview covers every provider emote path', () => {
     expect(alts).toContain('PepeLaugh'); // FFZ
     /* Declared as emote fixtures rather than as badges — these are emotes, and a
        fixture that called them badges would misdescribe what the providers do. */
-    const names = SAMPLE_COSMETICS.emotes.map((e) => e.name);
+    const names = SAMPLE_COSMETICS.emotes.twitch!.map((e) => e.name);
     expect(names).toContain('catJAM');
     expect(names).toContain('PepeLaugh');
     expect(SAMPLE_COSMETICS.badges.map((b) => b.id)).not.toContain('catJAM');

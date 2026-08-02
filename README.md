@@ -78,18 +78,4 @@ sources**. Add either, both or neither.
 4. Copy the **Viewer Counter URL** into a separate Browser Source sized
    **400 × 80**.
 
-## License and source
-
-multichat-gxufy is licensed under the [GNU Affero General Public License v3 or
-later](LICENSE). The complete corresponding source is available in this
-repository. Network deployments must keep an accessible source link for the
-exact version they run.
-
-Parts of the chat preview and badge workflow are copied or adapted from
-[Fiszh/UChat](https://github.com/Fiszh/UChat) at commit
-`ba8841c1db75af4f135ef1cd19f8745e5e12b4e3`, also under AGPL-3.0-or-later.
-See [NOTICE.md](NOTICE.md) and [the upstream provenance record](docs/UPSTREAM_UCHAT.md).
-
----
-
 Built by [gxufy](https://guns.lol/gxufy).

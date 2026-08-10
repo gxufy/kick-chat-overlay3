@@ -10,6 +10,7 @@
  */
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 import { loadFFZRoomBadges } from '../twitchEmotes';
+import { fetchTwitchProfile } from '../twitchProfileClient';
 
 const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 
@@ -170,6 +171,8 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   // "<setID>/<version>" → imageURL; empty until the fetch resolves
   // (messages arriving before then just render without badge art)
   let badgeMap: Record<string, string> = {};
+  let generation = 0;
+  const sharedMessages = new Map<string, UnifiedMessage>();
 
   fetch(`/api/twitch/badges?channel=${encodeURIComponent(channel)}`)
     .then(r => r.ok ? r.json() : null)
@@ -182,10 +185,27 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     })
     .catch(() => { /* fall back to bare types */ });
 
+  function enrichSharedMessage(message: UnifiedMessage): void {
+    const roomId = message.sourceChannel?.roomId;
+    if (!roomId) return;
+    sharedMessages.set(message.id, message);
+    const ownedGeneration = generation;
+    void fetchTwitchProfile(roomId).then(profile => {
+      if (stopped || generation !== ownedGeneration || !profile) return;
+      const current = sharedMessages.get(message.id);
+      if (!current || current.sourceChannel?.roomId !== roomId) return;
+      const enriched = { ...current, sourceChannel: profile };
+      sharedMessages.set(message.id, enriched);
+      opts.onMessageUpdate?.(enriched);
+    });
+  }
+
   function buildMessage(p: IrcLine, kind: 'chat' | 'system', text: string, emotes: UnifiedEmote[], category?: UnifiedMessage['category']): UnifiedMessage {
     const tags = p.tags;
     const login = (p.prefix ?? '').split('!')[0] || tags['login'] || 'unknown';
-    return {
+    const sourceRoomId = tags['source-room-id'];
+    const localRoomId = tags['room-id'];
+    const message: UnifiedMessage = {
       platform: 'twitch',
       id: tags['id'] || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       senderId: tags['user-id'] ?? '',
@@ -197,7 +217,14 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
       timestamp: parseInt(tags['tmi-sent-ts']) || Date.now(),
       kind,
       category,
+      ...(sourceRoomId && sourceRoomId !== localRoomId ? { sourceChannel: { roomId: sourceRoomId } } : {}),
     };
+    return message;
+  }
+
+  function deliver(message: UnifiedMessage): void {
+    opts.onMessage(message);
+    enrichSharedMessage(message);
   }
 
   /* StreamNook CATEGORY_OF: msg-id → event category */
@@ -244,14 +271,14 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
           // Cheers → system notices, like subs/gifts (unified-chat-lite)
           const author = p.tags['display-name'] || (p.prefix ?? '').split('!')[0];
           const pref = prefixText(`${author} cheered ${bits} bits`, text, emotes);
-          opts.onMessage(buildMessage(p, 'system', pref.text, pref.emotes, 'cheer'));
+          deliver(buildMessage(p, 'system', pref.text, pref.emotes, 'cheer'));
         } else {
           const msg = buildMessage(p, 'chat', text, emotes);
           // channel-point redeems: custom-reward-id / highlighted-message tag
           if (p.tags['custom-reward-id'] || p.tags['msg-id'] === 'highlighted-message') {
             msg.redeem = p.tags['custom-reward-id'] || 'highlighted';
           }
-          opts.onMessage(msg);
+          deliver(msg);
         }
         break;
       }
@@ -264,7 +291,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
         let text: string;
         if (systemMsg && userMsg) ({ text, emotes } = prefixText(systemMsg, userMsg, emotes));
         else text = systemMsg || userMsg;
-        if (text) opts.onMessage(buildMessage(p, 'system', text, emotes, usernoticeCategory(p.tags['msg-id'] ?? '')));
+        if (text) deliver(buildMessage(p, 'system', text, emotes, usernoticeCategory(p.tags['msg-id'] ?? '')));
         break;
       }
       case 'CLEARMSG': {
@@ -312,6 +339,8 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     start() { connect(); },
     stop() {
       stopped = true;
+      generation += 1;
+      sharedMessages.clear();
       ws?.close();
     },
   };

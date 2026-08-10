@@ -4,6 +4,7 @@
    references are dereferenced only inside functions, by which point both
    modules have finished initializing. */
 import { resolveSevenTVEmoteSet } from './sevenTVEmoteSetCache';
+import type { TwitchSourceChannel } from './types';
 
 export interface KickChannel {
   id: number;
@@ -61,6 +62,8 @@ export interface ParsedMessage {
   redeem?: boolean | string;
   /** avatar URL (yt/tiktok) */
   avatar?: string;
+  /** Twitch Shared Chat source streamer, distinct from the author. */
+  sourceChannel?: TwitchSourceChannel;
   /** original UnifiedMessage — kept so late-arriving 7TV cosmetics can rebuild the rendered line */
   raw?: unknown;
   /** system events (gifts, subs, superchats) render without name colon */

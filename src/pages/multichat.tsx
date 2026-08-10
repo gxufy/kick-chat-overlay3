@@ -35,6 +35,8 @@ import { clearSevenTVEmoteSetCache } from '../lib/sevenTVEmoteSetCache';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
+import { startTwitchHypeTrainPoller } from '../lib/twitchHypeTrainPoller';
+import type { TwitchHypeTrainState } from '../lib/twitchHypeTrainClient';
 import {
   resolveMultichatRoute,
   wantsCounterSection,
@@ -178,6 +180,8 @@ function MultichatOverlay() {
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());
   const [loaderPhase, setLoaderPhase] = useState<StartupLoaderPhase>('hidden');
   const [pinnedMessage, setPinnedMessage] = useState<PinnedState | null>(null);
+  const [hypeTrain, setHypeTrain] = useState<TwitchHypeTrainState | null>(null);
+  const [hypeTrainEnding, setHypeTrainEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* ── Twitch pin polling state ──
@@ -439,6 +443,17 @@ function MultichatOverlay() {
       connectors.push(createTwitchConnector({
         channel: cfg.twitch,
         onMessage: addMessage,
+        onMessageUpdate: updated => {
+          let touched = false;
+          s.messages = s.messages.map(message => {
+            if (message.id !== `twitch:${updated.id}` || message.platform !== 'twitch' || !message.raw) return message;
+            const raw = message.raw as UnifiedMessage;
+            if (raw.sourceChannel?.roomId !== updated.sourceChannel?.roomId) return message;
+            touched = true;
+            return { ...buildParsed(updated), id: message.id, timestamp: message.timestamp };
+          });
+          if (touched) dirty = true;
+        },
         onDelete: o => removeMessages('twitch', o),
         onPin: handlePin, // never fires — Twitch pins need OAuth
         onBadgeMap: (badgeMap) => {
@@ -907,6 +922,43 @@ function MultichatOverlay() {
     };
   }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
 
+  useEffect(() => {
+    if (!twitchPinLogin) return;
+    let generation = 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    let active: Extract<TwitchHypeTrainState, { active: true }> | null = null;
+    const stop = startTwitchHypeTrainPoller({
+      login: twitchPinLogin,
+      onState: state => {
+        generation += 1;
+        const ownedGeneration = generation;
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        if (state.active) {
+          active = state;
+          setHypeTrain(state);
+          setHypeTrainEnding(false);
+          return;
+        }
+        if (!active) return;
+        setHypeTrain(active);
+        setHypeTrainEnding(true);
+        hideTimer = setTimeout(() => {
+          if (generation !== ownedGeneration) return;
+          active = null;
+          setHypeTrain(null);
+          setHypeTrainEnding(false);
+        }, 5_000);
+      },
+    });
+    return () => {
+      generation += 1;
+      if (hideTimer) clearTimeout(hideTimer);
+      stop();
+      setHypeTrain(null);
+      setHypeTrainEnding(false);
+    };
+  }, [twitchPinLogin]);
+
   if (!ready) return null;
 
   if (error) {
@@ -934,6 +986,8 @@ function MultichatOverlay() {
         messages={messages}
         fadingIds={fadingIds}
         pinnedMessage={pinnedMessage}
+        hypeTrain={hypeTrain}
+        hypeTrainEnding={hypeTrainEnding}
         showLoader={loaderPhase}
         /* The parser defaults sourceTag to 'icon', so only the raw query can say
            whether the user actually asked for a mode. */

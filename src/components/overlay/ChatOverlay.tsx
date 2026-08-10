@@ -8,6 +8,7 @@ import type { MultichatConfig } from '../../lib/multichatConfig';
 import type { ParsedMessage } from '../../lib/kick';
 import { sourceTag, PROVIDERS, type SourceTagMode } from '../../lib/render';
 import type { Platform } from '../../lib/types';
+import type { TwitchHypeTrainState } from '../../lib/twitchHypeTrainClient';
 import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
 
 export interface PinnedState {
@@ -36,6 +37,8 @@ interface Props {
   sourceTagExplicit?: boolean;
   /** Preview-only override; production callers leave this absent. */
   sourceTagOverride?: SourceTagMode;
+  hypeTrain?: TwitchHypeTrainState | null;
+  hypeTrainEnding?: boolean;
 }
 
 /**
@@ -150,7 +153,7 @@ function SlideGroup({ children, fontSize, lineHeight, fontFamily }: { children: 
   return (
     <>
       {/* $animDiv equivalent — animates height open to push older messages up */}
-      <div style={{
+      <div data-slide-ghost style={{
         height: ghostH,
         overflow: 'hidden',
         transition: 'height 150ms ease-in-out',
@@ -181,7 +184,7 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
 
-export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride }: Props) {
+export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
      read below, so no intersection or cast is needed. */
   const cfg = config;
@@ -217,23 +220,43 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     ? cfg.sourceTag
     : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
-  /* Batching — chatis has ONE 200ms update loop (script.js update()).
-     pages/index.tsx owns that loop now and flushes messages at most
-     every 200ms, so each prop change here IS one chatis batch: turn it
-     straight into a slide/fade group. A second interval here would
-     double-buffer (up to 400ms lag) and desync animation starts. */
-  const seqRef = useRef(0);
-  /* Batches retain only membership. Their current ParsedMessage values come from
-     `messagesById`, so late badge/paint/emote data repaints an existing row without
-     creating another batch or replaying its entrance animation. */
-  const [batches, setBatches] = useState<{ id: number; messageIds: string[] }[]>([]);
+  /* The page keeps the canonical 200ms chatis flush. A flush can contain many
+     YouTube actions, but one aggregate SlideGroup measures them as one tall jump.
+     Presentation membership is therefore per row. Ordinary traffic keeps the
+     150ms launch cadence; a deep queue uses bounded staggered catch-up while every
+     row still runs its own complete 150ms height animation. */
+  const [presentedIds, setPresentedIds] = useState<string[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const pendingSlideIdsRef = useRef<string[]>([]);
+  const slideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveIdsRef = useRef<Set<string>>(new Set());
   const messagesById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
 
+  function slideLaunchDelay(pendingDepth: number): number {
+    if (pendingDepth > 6) return 25;
+    if (pendingDepth > 3) return 60;
+    return 150;
+  }
+
+  function launchNextSlideRow(): void {
+    slideTimerRef.current = null;
+    let id = pendingSlideIdsRef.current.shift();
+    while (id && !liveIdsRef.current.has(id)) id = pendingSlideIdsRef.current.shift();
+    if (!id) return;
+    setPresentedIds((previous) => [...previous, id!].slice(-100));
+    if (pendingSlideIdsRef.current.length) {
+      slideTimerRef.current = setTimeout(
+        launchNextSlideRow,
+        slideLaunchDelay(pendingSlideIdsRef.current.length),
+      );
+    }
+  }
+
   useEffect(() => {
+    liveIdsRef.current = new Set(messages.map((message) => message.id));
     const newMessageIds = messages
       .filter((message) => !seenIdsRef.current.has(message.id))
       .map((message) => message.id);
@@ -242,28 +265,27 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       seenIdsRef.current = new Set(messages.map((message) => message.id));
     }
     if (!newMessageIds.length) return;
-    const id = ++seqRef.current;
-    setBatches((previous) => {
-      const next = [...previous, { id, messageIds: newMessageIds }];
-      let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
-      while (total > 100 && next.length) {
-        total -= next[0].messageIds.length;
-        next.shift();
-      }
-      return next;
-    });
-  }, [messages]);
 
-  /* Sync deletions while preserving batch identity for every surviving row. */
+    if (cfg.animation !== 'slide') {
+      setPresentedIds((previous) => [...previous, ...newMessageIds].slice(-100));
+      return;
+    }
+
+    pendingSlideIdsRef.current.push(...newMessageIds);
+    if (!slideTimerRef.current) launchNextSlideRow();
+  }, [messages, cfg.animation]);
+
+  /* Remove deleted/capped rows from both the visible list and entrance queue. */
   useEffect(() => {
     const ids = new Set(messages.map((message) => message.id));
-    setBatches((previous) => previous
-      .map((batch) => ({
-        ...batch,
-        messageIds: batch.messageIds.filter((id) => ids.has(id)),
-      }))
-      .filter((batch) => batch.messageIds.length));
+    liveIdsRef.current = ids;
+    pendingSlideIdsRef.current = pendingSlideIdsRef.current.filter((id) => ids.has(id));
+    setPresentedIds((previous) => previous.filter((id) => ids.has(id)));
   }, [messages]);
+
+  useEffect(() => () => {
+    if (slideTimerRef.current) clearTimeout(slideTimerRef.current);
+  }, []);
 
   const renderMsg = (msg: ParsedMessage) => (
     <div key={msg.id} style={{
@@ -488,6 +510,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         </div>
       )}
 
+      {hypeTrain?.active && (
+        <HypeTrainBar state={hypeTrain} ending={hypeTrainEnding} fontFamily={fontFamily} />
+      )}
+
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
@@ -521,17 +547,46 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
                 ...(filterVal ? { filter:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
-        {batches.map(({ id, messageIds }) => {
-          const content = messageIds
-            .map((messageId) => messagesById.get(messageId))
-            .filter((message): message is ParsedMessage => Boolean(message))
-            .map(renderMsg);
-          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
-          if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
-          return <div key={id}>{content}</div>;
+        {presentedIds.map((messageId) => {
+          const message = messagesById.get(messageId);
+          if (!message) return null;
+          const content = renderMsg(message);
+          if (cfg.animation==='slide') return <SlideGroup key={messageId} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily}>{content}</SlideGroup>;
+          if (cfg.animation==='fade') return <FadeGroup key={messageId}>{content}</FadeGroup>;
+          return <div key={messageId}>{content}</div>;
         })}
+        {cfg.animation === 'slide' && pendingSlideIdsRef.current.length > 0 && (
+          <div aria-hidden="true" style={{ position:'fixed', top:'-9999px', left:0, visibility:'hidden', pointerEvents:'none' }}>
+            {pendingSlideIdsRef.current
+              .map((messageId) => messagesById.get(messageId))
+              .filter((message): message is ParsedMessage => Boolean(message))
+              .map(renderMsg)}
+          </div>
+        )}
       </div>
     </>
+  );
+}
+
+function HypeTrainBar({ state, ending, fontFamily }: {
+  state: Extract<TwitchHypeTrainState, { active: true }>;
+  ending: boolean;
+  fontFamily: string;
+}) {
+  const percent = Math.max(0, Math.min(100, (state.progression / state.goal) * 100));
+  return (
+    <div data-testid="twitch-hype-train" role="status" aria-label={`Hype Train level ${state.level}, ${Math.round(percent)} percent`}
+      style={{ position:'absolute', left:10, right:10, bottom:10, zIndex:8, padding:'8px 10px', borderRadius:8,
+        background:'rgba(20,12,32,.82)', color:'white', fontFamily, opacity:ending ? 0 : 1,
+        transition:'opacity 400ms ease-in-out', boxShadow:'0 4px 18px rgba(0,0,0,.3)' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, marginBottom:5 }}>
+        <span>🚂 Hype Train · Level {state.level}</span>
+        <span>{state.progression.toLocaleString()} / {state.goal.toLocaleString()} ({Math.round(percent)}%)</span>
+      </div>
+      <div style={{ height:7, overflow:'hidden', borderRadius:99, background:'rgba(255,255,255,.18)' }}>
+        <div data-testid="twitch-hype-train-progress" style={{ height:'100%', width:`${percent}%`, background:'#9147ff', transition:'width 300ms ease' }} />
+      </div>
+    </div>
   );
 }
 
@@ -663,6 +718,17 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
                display:'inline-block' }}
       onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
   ) : null;
+  const sourceChannel = msg.sourceChannel ? (
+    <span data-testid="twitch-shared-source" title={msg.sourceChannel.displayName ? `Shared from ${msg.sourceChannel.displayName}` : 'Twitch Shared Chat'}
+      style={{ display:'inline-flex', alignItems:'center', gap:'0.22em', marginRight:'0.35em', verticalAlign:'middle', fontSize:'0.65em', opacity:0.9 }}>
+      {msg.sourceChannel.profileImageUrl && (
+        <img src={msg.sourceChannel.profileImageUrl} alt="" loading="lazy" referrerPolicy="no-referrer"
+          style={{ width:'1.45em', height:'1.45em', borderRadius:9999, objectFit:'cover' }}
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      )}
+      {msg.sourceChannel.displayName && <span>{msg.sourceChannel.displayName}</span>}
+    </span>
+  ) : null;
 
   const badgesNode = msg.identity.badges.length > 0 && (
     <span className="ck-bw">
@@ -678,6 +744,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
     return (
       <div style={{ lineHeight:sz.lineHeight, wordBreak:'break-word', display:'flex', alignItems:'flex-start', gap:'0.3em' }}>
         {tag && <span style={{ flexShrink:0 }}>{tag}</span>}
+        {sourceChannel}
         <div style={{
           borderLeft:`2px solid ${color}`,
           background:`linear-gradient(90deg, color-mix(in srgb, ${color} 20%, transparent), transparent)`,
@@ -713,6 +780,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
   const line = (
     <div style={{ lineHeight:sz.lineHeight, wordBreak:'break-word' }}>
       {tag}
+      {sourceChannel}
       {avatar}
       {!hideNames && (
         <span style={{ display:'inline' }}>

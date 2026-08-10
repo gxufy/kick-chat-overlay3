@@ -255,6 +255,7 @@ export function buildParsedMessage(
     category: um.category,
     redeem: um.redeem,
     avatar: um.avatar,
+    sourceChannel: um.sourceChannel,
     raw: um,
     timestamp,
     identity: {

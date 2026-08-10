@@ -33,6 +33,13 @@ export interface UnifiedBadge {
   url?: string;
 }
 
+export interface TwitchSourceChannel {
+  /** Canonical source-room-id from Twitch IRC Shared Chat. */
+  roomId: string;
+  displayName?: string;
+  profileImageUrl?: string;
+}
+
 export interface UnifiedMessage {
   platform: Platform;
   /** Preview-only visual source mark. Production connectors leave this absent. */
@@ -55,6 +62,8 @@ export interface UnifiedMessage {
   redeem?: boolean | string;
   /** avatar URL — yt/tiktok only (StreamNook: other platforms don't carry one) */
   avatar?: string;
+  /** Shared Chat source streamer; distinct from the message author. */
+  sourceChannel?: TwitchSourceChannel;
 }
 
 export interface UnifiedPin {
@@ -65,6 +74,8 @@ export interface UnifiedPin {
 
 export interface ConnectorCallbacks {
   onMessage(msg: UnifiedMessage): void;
+  /** Same-ID metadata enrichment; never delays original message delivery. */
+  onMessageUpdate?(msg: UnifiedMessage): void;
   /** id: delete one message; username: delete all from user; senderId: delete by platform user id; none: clear all (for this platform) */
   onDelete(opts: { id?: string; username?: string; senderId?: string }): void;
   onPin(pin: UnifiedPin | null): void;

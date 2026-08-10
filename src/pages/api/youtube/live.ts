@@ -2,10 +2,6 @@
  *
  * Resolves a YouTube channel to its current livestream and bootstraps
  * anonymous InnerTube live chat.
- *
- * YouTube serves different /live HTML to residential browsers and
- * datacenter/server IPs, so live detection must not depend on one
- * canonical-link shape.
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -21,13 +17,16 @@ const OG_WATCH_RE =
   /<meta[^>]+property=["']og:url["'][^>]+content=["']https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})[^"']*["']/i;
 
 const VIDEO_DETAILS_RE =
-  /"videoDetails"\s*:\s*\{\s*"videoId"\s*:\s*"([\w-]{11})"/;
+  /"videoDetails"\s*:\s*\{[\s\S]{0,10000}?"videoId"\s*:\s*"([\w-]{11})"/;
 
-const CURRENT_VIDEO_RE =
-  /"currentVideoEndpoint"\s*:\s*\{\s*"watchEndpoint"\s*:\s*\{\s*"videoId"\s*:\s*"([\w-]{11})"/;
+const VIEW_COUNT_SIGNAL_RE =
+  /"viewCount"\s*:\s*\{"runs":\[\{"text":"[\d,.\s\u00a0]+"/i;
 
-const LIVE_SIGNAL_RE =
-  /"isLiveNow"\s*:\s*true|"isLiveContent"\s*:\s*true|"viewCount"\s*:\s*\{"runs":\[\{"text":"[\d,.\s\u00a0]+"/i;
+const WATCHING_NOW_RE =
+  /[\d,.]+\s+watching now/i;
+
+const LIVE_FLAG_RE =
+  /"isLiveNow"\s*:\s*true|"isLiveContent"\s*:\s*true/i;
 
 const HEADERS = {
   'User-Agent':
@@ -39,13 +38,17 @@ const HEADERS = {
 function videoIdFromUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
+
     if (
       (url.hostname === 'youtube.com' ||
         url.hostname === 'www.youtube.com') &&
       url.pathname === '/watch'
     ) {
       const id = url.searchParams.get('v');
-      if (id && /^[\w-]{11}$/.test(id)) return id;
+
+      if (id && /^[\w-]{11}$/.test(id)) {
+        return id;
+      }
     }
   } catch {
     // Ignore malformed upstream URLs.
@@ -54,28 +57,83 @@ function videoIdFromUrl(raw: string): string | null {
   return null;
 }
 
-function videoIdFromHtml(html: string): string | null {
-  const canonical = html.match(CANONICAL_WATCH_RE)?.[1];
-  if (canonical) return canonical;
-
-  const og = html.match(OG_WATCH_RE)?.[1];
-  if (og) return og;
-
+function videoIdNearestSignal(
+  html: string,
+  signalIndex: number,
+): string | null {
   /*
-   * Server/datacenter IPs can receive YouTube's reduced "bot-lite"
-   * page where canonical and isLiveNow are missing. A live-view-count
-   * or other live marker lets us safely use the page's player video ID.
+   * YouTube's server/datacenter HTML often contains the live viewer-count
+   * renderer but omits canonical URLs. The corresponding videoId appears
+   * near that renderer inside the same initial-data structure.
    */
-  if (!LIVE_SIGNAL_RE.test(html)) return null;
+  const before = html.slice(
+    Math.max(0, signalIndex - 50000),
+    signalIndex,
+  );
+
+  const idRe = /"videoId"\s*:\s*"([\w-]{11})"/g;
+
+  let match: RegExpExecArray | null;
+  let nearest: string | null = null;
+
+  while ((match = idRe.exec(before)) !== null) {
+    nearest = match[1];
+  }
+
+  if (nearest) {
+    return nearest;
+  }
+
+  const after = html.slice(
+    signalIndex,
+    Math.min(html.length, signalIndex + 50000),
+  );
 
   return (
-    html.match(VIDEO_DETAILS_RE)?.[1] ??
-    html.match(CURRENT_VIDEO_RE)?.[1] ??
+    after.match(/"videoId"\s*:\s*"([\w-]{11})"/)?.[1] ??
     null
   );
 }
 
-async function findLiveVideo(name: string): Promise<string | null> {
+function videoIdFromHtml(html: string): string | null {
+  const canonical = html.match(CANONICAL_WATCH_RE)?.[1];
+
+  if (canonical) {
+    return canonical;
+  }
+
+  const og = html.match(OG_WATCH_RE)?.[1];
+
+  if (og) {
+    return og;
+  }
+
+  const details = html.match(VIDEO_DETAILS_RE)?.[1];
+
+  if (details) {
+    return details;
+  }
+
+  /*
+   * Vercel/datacenter IPs may receive YouTube's reduced bot-lite page.
+   * We already know this variant exposes the live viewer-count renderer,
+   * because /api/viewers successfully detects the live stream from it.
+   */
+  const signal =
+    VIEW_COUNT_SIGNAL_RE.exec(html) ??
+    WATCHING_NOW_RE.exec(html) ??
+    LIVE_FLAG_RE.exec(html);
+
+  if (!signal) {
+    return null;
+  }
+
+  return videoIdNearestSignal(html, signal.index);
+}
+
+async function findLiveVideo(
+  name: string,
+): Promise<string | null> {
   const clean = name.replace(/^@/, '');
 
   const urls = [
@@ -90,22 +148,22 @@ async function findLiveVideo(name: string): Promise<string | null> {
         redirect: 'follow',
       });
 
-      if (!response.ok) continue;
+      if (!response.ok) {
+        continue;
+      }
 
-      /*
-       * Best signal: YouTube actually redirected /live to /watch?v=...
-       */
       const redirectedId = videoIdFromUrl(response.url);
-      if (redirectedId) return redirectedId;
+
+      if (redirectedId) {
+        return redirectedId;
+      }
 
       const html = await response.text();
-
-      /*
-       * Fall back to canonical/OG/player data for YouTube's alternate
-       * server-side HTML variants.
-       */
       const htmlId = videoIdFromHtml(html);
-      if (htmlId) return htmlId;
+
+      if (htmlId) {
+        return htmlId;
+      }
     } catch {
       // Try the next channel URL form.
     }
@@ -120,16 +178,24 @@ export default async function handler(
 ) {
   res.setHeader('Cache-Control', 'no-store');
 
-  const channel = (req.query.channel as string || '').trim();
+  const channel =
+    (req.query.channel as string || '').trim();
 
-  if (!channel || !/^@?[A-Za-z0-9._-]{1,50}$/.test(channel)) {
-    return res.status(400).json({ error: 'invalid channel' });
+  if (
+    !channel ||
+    !/^@?[A-Za-z0-9._-]{1,50}$/.test(channel)
+  ) {
+    return res.status(400).json({
+      error: 'invalid channel',
+    });
   }
 
   const videoId = await findLiveVideo(channel);
 
   if (!videoId) {
-    return res.status(200).json({ offline: true });
+    return res.status(200).json({
+      offline: true,
+    });
   }
 
   const chatUrl =
@@ -141,18 +207,28 @@ export default async function handler(
   });
 
   if (!response.ok) {
-    return res
-      .status(502)
-      .json({ error: `live_chat page: ${response.status}` });
+    return res.status(502).json({
+      error: `live_chat page: ${response.status}`,
+      videoId,
+    });
   }
 
   const html = await response.text();
 
-  const apiKey = html.match(API_KEY_RE)?.[1];
-  const clientVersion = html.match(CLIENT_VERSION_RE)?.[1];
-  const continuation = html.match(CONTINUATION_RE)?.[1];
+  const apiKey =
+    html.match(API_KEY_RE)?.[1];
 
-  if (!apiKey || !clientVersion || !continuation) {
+  const clientVersion =
+    html.match(CLIENT_VERSION_RE)?.[1];
+
+  const continuation =
+    html.match(CONTINUATION_RE)?.[1];
+
+  if (
+    !apiKey ||
+    !clientVersion ||
+    !continuation
+  ) {
     return res.status(502).json({
       error: 'could not bootstrap live chat',
       videoId,

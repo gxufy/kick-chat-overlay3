@@ -29,9 +29,9 @@ interface Props {
    *
    * The parser defaults the field to 'icon', so the config alone cannot tell an
    * explicit `sourceTag=icon` from an omitted parameter. Only the raw query can,
-   * and the distinction matters: an omitted parameter keeps the old
-   * single-platform behaviour of showing no marker, while an explicit value is
-   * always honoured. Defaults to false so existing callers are unaffected.
+   * and the distinction matters: an omitted parameter shows the shared icon for
+   * YouTube and no marker for the other single-platform overlays, while an explicit
+   * value is always honoured. Defaults to false so existing callers are unaffected.
    */
   sourceTagExplicit?: boolean;
   /** Preview-only override; production callers leave this absent. */
@@ -204,16 +204,18 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const emoteMaxW  = `${parseFloat(sz.emoteMaxW) * emoteScale}px`;
   /* Source tag mode.
      An explicit sourceTag= always wins, for one platform or four. With no
-     parameter, the old behaviour stands: a single-platform overlay shows no
-     marker (nothing to disambiguate), a multi-platform one shows icons.
+     parameter, multi-platform and YouTube-only overlays show icons; the other
+     single-platform overlays retain their existing marker-free appearance.
 
      The bug this replaces ignored cfg.sourceTag entirely whenever fewer than two
      platforms were configured, so dot, label, and icon were all unreachable from
      a one-platform URL and every value rendered identically. */
-  const multiPlatform = [cfg.kick || cfg.channel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean).length > 1;
+  const configuredPlatforms = [cfg.kick || cfg.channel, cfg.twitch, cfg.youtube, cfg.tiktok].filter(Boolean);
+  const multiPlatform = configuredPlatforms.length > 1;
+  const youtubeOnly = Boolean(cfg.youtube) && configuredPlatforms.length === 1;
   const tagMode: SourceTagMode = sourceTagOverride ?? (sourceTagExplicit
     ? cfg.sourceTag
-    : (multiPlatform ? 'icon' : 'none'));
+    : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most

@@ -200,10 +200,23 @@ describe('ChatOverlay honours sourceTag', () => {
     };
   };
 
-  it('renders no marker when sourceTag is omitted on one platform', () => {
-    /* Long-standing behaviour, deliberately preserved: a single-platform overlay
-       has nothing to disambiguate, so an omitted parameter shows nothing. */
-    const { markers } = overlay({ twitch: 'hatecaps' });
+  it('keeps no marker when sourceTag is omitted on one non-YouTube platform', () => {
+    for (const [platform, channel] of [['twitch', 'hatecaps'], ['kick', 'xqc'], ['tiktok', 'somebody']] as const) {
+      const { markers } = overlay({ [platform]: channel }, [msg(platform)]);
+      expect(markers).toHaveLength(0);
+      cleanup();
+    }
+  });
+
+  it('renders the shared icon when sourceTag is omitted on YouTube only', () => {
+    const { markers, mode } = overlay({ youtube: 'IShowSpeed' }, [msg('youtube')]);
+    expect(markers).toHaveLength(1);
+    expect(mode).toBe('icon');
+    expect(markers[0].getAttribute('data-platform')).toBe('youtube');
+  });
+
+  it('still honours explicit none on YouTube only', () => {
+    const { markers } = overlay({ youtube: 'IShowSpeed', sourceTag: 'none' }, [msg('youtube')]);
     expect(markers).toHaveLength(0);
   });
 

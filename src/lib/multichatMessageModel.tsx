@@ -236,11 +236,16 @@ export function buildParsedMessage(
       }
     }
   }
-  // mention map: remember every chatter's color (lowercase name)
+  // YouTube may include @ in authorName; keep it in the normalized message for
+  // commands/moderation, but do not show the handle marker as part of the name.
+  const displayUsername = um.platform === 'youtube' ? um.username.replace(/^@/, '') : um.username;
+  // mention map: remember every chatter's color under both upstream and display
+  // spellings so presentation cleanup does not change mention resolution.
   const displayColor = um.color
     ? readableColor(um.color)
     : fallbackColor(um.platform, um.username, um.senderId);
   mentions.colors.set(um.username.toLowerCase(), displayColor);
+  mentions.colors.set(displayUsername.toLowerCase(), displayColor);
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,
@@ -253,7 +258,7 @@ export function buildParsedMessage(
     raw: um,
     timestamp,
     identity: {
-      username: um.username,
+      username: displayUsername,
       color: displayColor,
       background,
       filter,

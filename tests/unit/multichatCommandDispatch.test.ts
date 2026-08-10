@@ -274,7 +274,10 @@ const ingestYouTube: Ingest = async (onMessage, text, role, id = 'y1') => {
                     item: {
                       liveChatTextMessageRenderer: {
                         id,
-                        authorName: { simpleText: role === 'broadcaster' ? 'streamer' : 'somemod' },
+                        /* YouTube may send handle-style author names. The command
+                           runtime must keep accepting the upstream identity even
+                           though the presentation model removes the display @. */
+                        authorName: { simpleText: role === 'broadcaster' ? '@streamer' : '@somemod' },
                         authorExternalChannelId: 'UC123',
                         authorBadges: YT_BADGES[role],
                         /* Runs, not a flat string: this is the shape the real

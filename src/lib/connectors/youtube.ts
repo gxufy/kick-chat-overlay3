@@ -9,107 +9,205 @@
  * Pins: addBannerToLiveChatCommand → liveChatBannerRenderer wraps a
  * liveChatTextMessageRenderer; removeBannerForLiveChatCommand unpins.
  */
-import type { Connector, ConnectorCallbacks, UnifiedEmote, UnifiedMessage } from '../types';
+import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 
 const OFFLINE_RECHECK_MS = 60_000;
 const POLL_FLOOR_MS = 800;
 
 interface Bootstrap { videoId: string; apiKey: string; clientVersion: string; continuation: string }
+interface ParsedRuns { text: string; emotes: UnifiedEmote[] }
+
+function codepointLength(value: string): number {
+  return Array.from(value).length;
+}
+
+function normalizeImageUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const url = value.startsWith('//') ? `https:${value}` : value;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function bestThumbnail(thumbnails: any): string | undefined {
+  if (!Array.isArray(thumbnails)) return undefined;
+  return thumbnails
+    .map((thumbnail, index) => ({
+      url: normalizeImageUrl(thumbnail?.url),
+      area: Number(thumbnail?.width || 0) * Number(thumbnail?.height || 0),
+      index,
+    }))
+    .filter((thumbnail): thumbnail is { url: string; area: number; index: number } => Boolean(thumbnail.url))
+    .sort((a, b) => b.area - a.area || b.index - a.index)[0]?.url;
+}
+
+function authorAvatar(renderer: any): string | undefined {
+  const avatar = bestThumbnail(renderer?.authorPhoto?.thumbnails);
+  if (!avatar) return undefined;
+  return avatar.replace(/=s\d+(?=-|$)/, '=s160');
+}
 
 /** Flatten InnerTube runs[] → text + emote char-offsets. */
-export function parseRuns(runs: any[]): { text: string; emotes: UnifiedEmote[] } {
+export function parseRuns(runs: any[]): ParsedRuns {
   let text = '';
   const emotes: UnifiedEmote[] = [];
-  for (const run of runs ?? []) {
-    if (typeof run.text === 'string') {
+  for (const run of Array.isArray(runs) ? runs : []) {
+    if (typeof run?.text === 'string') {
       text += run.text;
-    } else if (run.emoji) {
-      const emoji = run.emoji;
-      if (emoji.isCustomEmoji) {
-        const name = (emoji.shortcuts?.[0] ?? emoji.emojiId ?? 'emote').replace(/^:|:$/g, '');
-        const thumbs = emoji.image?.thumbnails ?? [];
-        const url = thumbs[thumbs.length - 1]?.url;
-        if (url) {
-          emotes.push({
-            begin: [...text].length,
-            end: [...text].length + [...name].length,
-            text: name,
-            url,
-          });
-        }
-        text += name;
-      } else {
-        text += emoji.emojiId ?? '';
-      }
+      continue;
+    }
+    const emoji = run?.emoji;
+    if (!emoji) continue;
+    if (!emoji.isCustomEmoji) {
+      if (typeof emoji.emojiId === 'string') text += emoji.emojiId;
+      continue;
+    }
+
+    const shortcut = Array.isArray(emoji.shortcuts)
+      ? emoji.shortcuts.find((candidate: unknown) => typeof candidate === 'string' && candidate.length)
+      : undefined;
+    const rawName = shortcut ?? (typeof emoji.emojiId === 'string' ? emoji.emojiId : 'emote');
+    const name = rawName.replace(/^:+|:+$/g, '') || 'emote';
+    const begin = codepointLength(text);
+    text += name;
+    const url = bestThumbnail(emoji.image?.thumbnails);
+    if (url) {
+      emotes.push({ begin, end: begin + codepointLength(name), text: name, url });
     }
   }
   return { text, emotes };
 }
 
+function parseText(value: any): ParsedRuns {
+  if (Array.isArray(value?.runs)) return parseRuns(value.runs);
+  return { text: typeof value?.simpleText === 'string' ? value.simpleText : '', emotes: [] };
+}
+
+function appendText(target: ParsedRuns, value: string): void {
+  target.text += value;
+}
+
+function appendRuns(target: ParsedRuns, value: ParsedRuns): void {
+  const shift = codepointLength(target.text);
+  target.text += value.text;
+  target.emotes.push(...value.emotes.map((emote) => ({
+    ...emote,
+    begin: emote.begin + shift,
+    end: emote.end + shift,
+  })));
+}
+
+function canonicalBadgeType(renderer: any, hasThumbnail: boolean): string | null {
+  if (hasThumbnail) return 'subscriber';
+  const value = `${renderer?.icon?.iconType ?? ''} ${renderer?.tooltip ?? ''}`.trim().toLowerCase();
+  if (/\b(owner|channel owner)\b/.test(value)) return 'owner';
+  if (/\b(moderator|moderator wrench)\b/.test(value)) return 'moderator';
+  if (/\bverified\b/.test(value)) return 'verified';
+  return null;
+}
+
+function authorBadges(renderer: any): UnifiedBadge[] {
+  const badges: UnifiedBadge[] = [];
+  for (const value of Array.isArray(renderer?.authorBadges) ? renderer.authorBadges : []) {
+    const badge = value?.liveChatAuthorBadgeRenderer;
+    if (!badge) continue;
+    const url = bestThumbnail(badge.customThumbnail?.thumbnails);
+    const type = canonicalBadgeType(badge, Boolean(url));
+    if (type) badges.push({ type, ...(url ? { url } : {}) });
+  }
+  return badges;
+}
+
+function authorName(renderer: any): string {
+  return parseText(renderer?.authorName).text;
+}
+
+function timestamp(renderer: any): number {
+  const usec = Number(renderer?.timestampUsec);
+  return Number.isFinite(usec) && usec > 0 ? Math.floor(usec / 1000) : Date.now();
+}
+
 function buildMessage(renderer: any): UnifiedMessage | null {
   if (!renderer?.id) return null;
-  const { text, emotes } = parseRuns(renderer.message?.runs ?? []);
-  const badges: UnifiedMessage['badges'] = [];
-  for (const b of renderer.authorBadges ?? []) {
-    const br = b.liveChatAuthorBadgeRenderer;
-    if (!br) continue;
-    const type = (br.icon?.iconType ?? br.tooltip ?? '').toLowerCase();
-    // member badges carry custom thumbnails; owner/mod/verified are icon types
-    const thumbs = br.customThumbnail?.thumbnails ?? [];
-    badges.push({ type: type === 'owner' ? 'owner' : thumbs.length ? 'subscriber' : type, url: thumbs[thumbs.length - 1]?.url });
-  }
-  // avatar: last authorPhoto thumbnail, upsized (StreamNook hiResAvatar)
-  const photos = renderer.authorPhoto?.thumbnails ?? [];
-  const avatar = (photos[photos.length - 1]?.url as string | undefined)?.replace(/=s\d+(-|$)/, '=s160$1');
+  const { text, emotes } = parseText(renderer.message);
   return {
     platform: 'youtube',
     id: renderer.id,
     senderId: renderer.authorExternalChannelId ?? '',
-    username: renderer.authorName?.simpleText ?? '',
+    username: authorName(renderer),
     color: '',
-    badges,
+    badges: authorBadges(renderer),
     text,
     emotes,
-    timestamp: renderer.timestampUsec ? Math.floor(Number(renderer.timestampUsec) / 1000) : Date.now(),
+    timestamp: timestamp(renderer),
     kind: 'chat',
-    avatar,
+    avatar: authorAvatar(renderer),
   };
 }
 
-/** Paid/membership renderers → system messages ("{author} sent a $5 Super Chat: msg"). */
+/** Paid/membership renderers → normalized system messages. */
 function buildSystemMessage(item: any): UnifiedMessage | null {
   const paid = item.liveChatPaidMessageRenderer;
   const sticker = item.liveChatPaidStickerRenderer;
   const member = item.liveChatMembershipItemRenderer;
   const gift = item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer;
-  const r = paid ?? sticker ?? member ?? (gift ? gift.header?.liveChatSponsorshipsHeaderRenderer : null);
-  if (!r) return null;
+  const renderer = paid ?? sticker ?? member ?? (gift ? gift.header?.liveChatSponsorshipsHeaderRenderer : null);
   const id = paid?.id ?? sticker?.id ?? member?.id ?? gift?.id;
-  if (!id) return null;
-  const author = r.authorName?.simpleText ?? 'Someone';
-  let prefix: string;
+  if (!renderer || !id) return null;
+
+  const author = authorName(renderer) || 'Someone';
+  const displayAuthor = author.replace(/^@/, '');
+  const content: ParsedRuns = { text: '', emotes: [] };
   let category: UnifiedMessage['category'];
-  if (paid) { prefix = `${author} sent a ${paid.purchaseAmountText?.simpleText ?? ''} Super Chat`; category = 'cheer'; }
-  else if (sticker) { prefix = `${author} sent a ${sticker.purchaseAmountText?.simpleText ?? ''} Super Sticker!`; category = 'cheer'; }
-  else if (gift) { prefix = `${author} ${parseRuns(r.primaryText?.runs ?? []).text || 'gifted memberships!'}`; category = 'gift'; }
-  else { prefix = `${author} ${parseRuns(member.headerSubtext?.runs ?? []).text || 'became a member!'}`; category = 'subscription'; }
-  const body = parseRuns(r.message?.runs ?? []);
-  const sep = body.text ? ': ' : '';
-  const shift = [...prefix].length + [...sep].length;
-  const photos = r.authorPhoto?.thumbnails ?? [];
+
+  if (paid) {
+    appendText(content, `${displayAuthor} sent a ${parseText(paid.purchaseAmountText).text} Super Chat`);
+    const body = parseText(paid.message);
+    if (body.text) appendText(content, ': ');
+    appendRuns(content, body);
+    category = 'cheer';
+  } else if (sticker) {
+    appendText(content, `${displayAuthor} sent a ${parseText(sticker.purchaseAmountText).text} Super Sticker!`);
+    const stickerUrl = bestThumbnail(sticker.sticker?.thumbnails);
+    if (stickerUrl) {
+      const label = parseText(sticker.stickerDisplayText).text || 'Super Sticker';
+      appendText(content, ' ');
+      const begin = codepointLength(content.text);
+      appendText(content, label);
+      content.emotes.push({ begin, end: begin + codepointLength(label), text: label, url: stickerUrl });
+    }
+    category = 'cheer';
+  } else if (gift) {
+    appendText(content, `${displayAuthor} `);
+    const primary = parseText(renderer.primaryText);
+    appendRuns(content, primary.text ? primary : { text: 'gifted memberships!', emotes: [] });
+    category = 'gift';
+  } else {
+    appendText(content, `${displayAuthor} `);
+    const header = parseText(member.headerSubtext);
+    appendRuns(content, header.text ? header : { text: 'became a member!', emotes: [] });
+    const body = parseText(member.message);
+    if (body.text) appendText(content, ': ');
+    appendRuns(content, body);
+    category = 'subscription';
+  }
+
   return {
     platform: 'youtube',
     id,
-    senderId: r.authorExternalChannelId ?? '',
+    senderId: renderer.authorExternalChannelId ?? '',
     username: author,
     color: '',
-    badges: [],
-    text: prefix + sep + body.text,
-    emotes: body.emotes.map(e => ({ ...e, begin: e.begin + shift, end: e.end + shift })),
-    timestamp: r.timestampUsec ? Math.floor(Number(r.timestampUsec) / 1000) : Date.now(),
+    badges: authorBadges(renderer),
+    text: content.text,
+    emotes: content.emotes,
+    timestamp: timestamp(renderer),
     kind: 'system',
     category,
-    avatar: (photos[photos.length - 1]?.url as string | undefined)?.replace(/=s\d+(-|$)/, '=s160$1'),
+    avatar: authorAvatar(renderer),
   };
 }
 
@@ -166,7 +264,6 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
 
         const cont = data?.continuationContents?.liveChatContinuation;
         if (!cont) {
-          // chat ended → back to offline recheck loop
           opts.onStatus('offline', 'Stream ended');
           schedule(bootstrap, OFFLINE_RECHECK_MS);
           return;

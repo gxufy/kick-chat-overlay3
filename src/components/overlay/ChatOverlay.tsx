@@ -220,43 +220,23 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     ? cfg.sourceTag
     : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
-  /* The page keeps the canonical 200ms chatis flush. A flush can contain many
-     YouTube actions, but one aggregate SlideGroup measures them as one tall jump.
-     Presentation membership is therefore per row. Ordinary traffic keeps the
-     150ms launch cadence; a deep queue uses bounded staggered catch-up while every
-     row still runs its own complete 150ms height animation. */
-  const [presentedIds, setPresentedIds] = useState<string[]>([]);
+  /* Batching — chatis has ONE 200ms update loop (script.js update()).
+     pages/index.tsx owns that loop now and flushes messages at most
+     every 200ms, so each prop change here IS one chatis batch: turn it
+     straight into a slide/fade group. A second interval here would
+     double-buffer (up to 400ms lag) and desync animation starts. */
+  const seqRef = useRef(0);
+  /* Batches retain only membership. Their current ParsedMessage values come from
+     `messagesById`, so late badge/paint/emote data repaints an existing row without
+     creating another batch or replaying its entrance animation. */
+  const [batches, setBatches] = useState<{ id: number; messageIds: string[] }[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const pendingSlideIdsRef = useRef<string[]>([]);
-  const slideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveIdsRef = useRef<Set<string>>(new Set());
   const messagesById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
 
-  function slideLaunchDelay(pendingDepth: number): number {
-    if (pendingDepth > 6) return 25;
-    if (pendingDepth > 3) return 60;
-    return 150;
-  }
-
-  function launchNextSlideRow(): void {
-    slideTimerRef.current = null;
-    let id = pendingSlideIdsRef.current.shift();
-    while (id && !liveIdsRef.current.has(id)) id = pendingSlideIdsRef.current.shift();
-    if (!id) return;
-    setPresentedIds((previous) => [...previous, id!].slice(-100));
-    if (pendingSlideIdsRef.current.length) {
-      slideTimerRef.current = setTimeout(
-        launchNextSlideRow,
-        slideLaunchDelay(pendingSlideIdsRef.current.length),
-      );
-    }
-  }
-
   useEffect(() => {
-    liveIdsRef.current = new Set(messages.map((message) => message.id));
     const newMessageIds = messages
       .filter((message) => !seenIdsRef.current.has(message.id))
       .map((message) => message.id);
@@ -265,27 +245,28 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       seenIdsRef.current = new Set(messages.map((message) => message.id));
     }
     if (!newMessageIds.length) return;
-
-    if (cfg.animation !== 'slide') {
-      setPresentedIds((previous) => [...previous, ...newMessageIds].slice(-100));
-      return;
-    }
-
-    pendingSlideIdsRef.current.push(...newMessageIds);
-    if (!slideTimerRef.current) launchNextSlideRow();
-  }, [messages, cfg.animation]);
-
-  /* Remove deleted/capped rows from both the visible list and entrance queue. */
-  useEffect(() => {
-    const ids = new Set(messages.map((message) => message.id));
-    liveIdsRef.current = ids;
-    pendingSlideIdsRef.current = pendingSlideIdsRef.current.filter((id) => ids.has(id));
-    setPresentedIds((previous) => previous.filter((id) => ids.has(id)));
+    const id = ++seqRef.current;
+    setBatches((previous) => {
+      const next = [...previous, { id, messageIds: newMessageIds }];
+      let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
+      while (total > 100 && next.length) {
+        total -= next[0].messageIds.length;
+        next.shift();
+      }
+      return next;
+    });
   }, [messages]);
 
-  useEffect(() => () => {
-    if (slideTimerRef.current) clearTimeout(slideTimerRef.current);
-  }, []);
+  /* Sync deletions while preserving batch identity for every surviving row. */
+  useEffect(() => {
+    const ids = new Set(messages.map((message) => message.id));
+    setBatches((previous) => previous
+      .map((batch) => ({
+        ...batch,
+        messageIds: batch.messageIds.filter((id) => ids.has(id)),
+      }))
+      .filter((batch) => batch.messageIds.length));
+  }, [messages]);
 
   const renderMsg = (msg: ParsedMessage) => (
     <div key={msg.id} style={{
@@ -547,22 +528,15 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
                 ...(filterVal ? { filter:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
-        {presentedIds.map((messageId) => {
-          const message = messagesById.get(messageId);
-          if (!message) return null;
-          const content = renderMsg(message);
-          if (cfg.animation==='slide') return <SlideGroup key={messageId} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily}>{content}</SlideGroup>;
-          if (cfg.animation==='fade') return <FadeGroup key={messageId}>{content}</FadeGroup>;
-          return <div key={messageId}>{content}</div>;
+        {batches.map(({ id, messageIds }) => {
+          const content = messageIds
+            .map((messageId) => messagesById.get(messageId))
+            .filter((message): message is ParsedMessage => Boolean(message))
+            .map(renderMsg);
+          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
+          if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
+          return <div key={id}>{content}</div>;
         })}
-        {cfg.animation === 'slide' && pendingSlideIdsRef.current.length > 0 && (
-          <div aria-hidden="true" style={{ position:'fixed', top:'-9999px', left:0, visibility:'hidden', pointerEvents:'none' }}>
-            {pendingSlideIdsRef.current
-              .map((messageId) => messagesById.get(messageId))
-              .filter((message): message is ParsedMessage => Boolean(message))
-              .map(renderMsg)}
-          </div>
-        )}
       </div>
     </>
   );

@@ -13,6 +13,9 @@ import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, Unified
 
 const OFFLINE_RECHECK_MS = 60_000;
 const POLL_FLOOR_MS = 800;
+/** Slightly above the canonical page flush so consecutive releases cannot share it. */
+export const YOUTUBE_DELIVERY_INTERVAL_MS = 210;
+const YOUTUBE_MAX_DELIVERY_BATCHES = 5;
 
 interface Bootstrap { videoId: string; apiKey: string; clientVersion: string; continuation: string }
 interface ParsedRuns { text: string; emotes: UnifiedEmote[] }
@@ -218,10 +221,47 @@ export interface YouTubeConnectorOpts extends ConnectorCallbacks {
 export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let deliveryTimer: ReturnType<typeof setTimeout> | null = null;
+  let deliveryBatchesRemaining = 0;
+  const deliveryQueue: UnifiedMessage[] = [];
 
   function schedule(fn: () => void, ms: number) {
     if (stopped) return;
     timer = setTimeout(fn, ms);
+  }
+
+  function releaseMessages(): void {
+    deliveryTimer = null;
+    if (stopped) return;
+    const batchSize = Math.max(1, Math.ceil(deliveryQueue.length / Math.max(1, deliveryBatchesRemaining)));
+    let released = 0;
+    while (deliveryQueue.length && released < batchSize) {
+      const message = deliveryQueue.shift()!;
+      opts.onMessage(message);
+      released += 1;
+    }
+    deliveryBatchesRemaining = Math.max(0, deliveryBatchesRemaining - 1);
+    if (deliveryQueue.length) deliveryTimer = setTimeout(releaseMessages, YOUTUBE_DELIVERY_INTERVAL_MS);
+  }
+
+  function enqueueMessage(message: UnifiedMessage): void {
+    deliveryQueue.push(message);
+    /* Defer the first release to the next task so every action in this InnerTube
+       continuation is known before the bounded batch size is chosen. */
+    if (!deliveryTimer) {
+      deliveryBatchesRemaining = YOUTUBE_MAX_DELIVERY_BATCHES;
+      deliveryTimer = setTimeout(releaseMessages, 0);
+    }
+  }
+
+  function deleteQueued(optsToDelete: { id?: string; senderId?: string }): void {
+    for (let index = deliveryQueue.length - 1; index >= 0; index -= 1) {
+      const message = deliveryQueue[index];
+      if (optsToDelete.id === message.id || (optsToDelete.senderId && optsToDelete.senderId === message.senderId)) {
+        deliveryQueue.splice(index, 1);
+      }
+    }
+    opts.onDelete(optsToDelete);
   }
 
   async function bootstrap() {
@@ -306,18 +346,18 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
     if (item) {
       if (item.liveChatTextMessageRenderer) {
         const msg = buildMessage(item.liveChatTextMessageRenderer);
-        if (msg) opts.onMessage(msg);
+        if (msg) enqueueMessage(msg);
       } else {
         const sys = buildSystemMessage(item);
-        if (sys) opts.onMessage(sys);
+        if (sys) enqueueMessage(sys);
       }
       return;
     }
     const delId = action.markChatItemAsDeletedAction?.targetItemId;
-    if (delId) { opts.onDelete({ id: delId }); return; }
+    if (delId) { deleteQueued({ id: delId }); return; }
     // ban/timeout: remove all messages from that channel id (StreamNook)
     const banned = action.markChatItemsByAuthorAsDeletedAction?.externalChannelId;
-    if (banned) { opts.onDelete({ senderId: banned }); return; }
+    if (banned) { deleteQueued({ senderId: banned }); return; }
 
     // Pinned message banner (not implemented in either reference repo;
     // shape: addBannerToLiveChatCommand.bannerRenderer.liveChatBannerRenderer
@@ -339,6 +379,8 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (deliveryTimer) clearTimeout(deliveryTimer);
+      deliveryQueue.length = 0;
     },
   };
 }

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
-import { createYouTubeConnector, parseRuns } from '@/lib/connectors/youtube';
+import { createYouTubeConnector, parseRuns, YOUTUBE_DELIVERY_INTERVAL_MS } from '@/lib/connectors/youtube';
 import { NO_COSMETICS, buildParsedMessage } from '@/lib/multichatMessageModel';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';
@@ -13,13 +13,23 @@ function connectFixture() {
   const deletes: { id?: string; senderId?: string }[] = [];
   const pins: (UnifiedPin | null)[] = [];
   const statuses: string[] = [];
+  let chatPolls = 0;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(typeof input === 'string' ? input : (input as Request).url ?? input);
-    return {
-      ok: true,
-      status: 200,
-      json: async () => url.includes('/api/youtube/live') ? youtubeBootstrap : youtubeContinuation,
-    } as Response;
+    if (url.includes('/api/youtube/live')) {
+      return { ok: true, status: 200, json: async () => youtubeBootstrap } as Response;
+    }
+    const continuation = chatPolls++ === 0
+      ? youtubeContinuation
+      : {
+          continuationContents: {
+            liveChatContinuation: {
+              actions: [],
+              continuations: [{ timedContinuationData: { continuation: 'continuation-next', timeoutMs: 1000 } }],
+            },
+          },
+        };
+    return { ok: true, status: 200, json: async () => continuation } as Response;
   }));
   const connector = createYouTubeConnector({
     channel: 'IShowSpeed',
@@ -54,6 +64,54 @@ afterEach(() => {
 });
 
 describe('YouTube InnerTube ingestion', () => {
+  it('releases one continuation across bounded canonical presentation cycles in order', async () => {
+    const fixture = connectFixture();
+    await vi.advanceTimersByTimeAsync(1200);
+    /* Six visible actions are split across at most five releases: the first
+       catch-up batch coalesces two, then later releases stay one per cycle. */
+    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback']);
+    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS);
+    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback', 'yt-super-chat']);
+    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS * 3);
+    expect(fixture.messages.map(message => message.id)).toEqual([
+      'yt-normal', 'yt-fallback', 'yt-super-chat', 'yt-super-sticker', 'yt-membership', 'yt-gift',
+    ]);
+    expect(fixture.messages.some(message => message.kind === 'system')).toBe(true);
+    fixture.connector.stop();
+  });
+
+  it('never releases a message deleted later in the same continuation', async () => {
+    const deletedContinuation = {
+      continuationContents: {
+        liveChatContinuation: {
+          actions: [
+            { addChatItemAction: { item: { liveChatTextMessageRenderer: {
+              id: 'queued-delete', authorName: { simpleText: 'User' },
+              authorExternalChannelId: 'UC-delete', message: { simpleText: 'do not show' },
+            } } } },
+            { markChatItemAsDeletedAction: { targetItemId: 'queued-delete' } },
+          ],
+          continuations: [{ timedContinuationData: { continuation: 'next', timeoutMs: 1000 } }],
+        },
+      },
+    };
+    const messages: UnifiedMessage[] = [];
+    const deletes: { id?: string; senderId?: string }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => ({
+      ok: true, status: 200,
+      json: async () => String(input).includes('/api/youtube/live') ? youtubeBootstrap : deletedContinuation,
+    }) as Response));
+    const connector = createYouTubeConnector({
+      channel: 'channel', onMessage: message => messages.push(message),
+      onDelete: deletion => deletes.push(deletion), onPin: vi.fn(), onStatus: vi.fn(),
+    });
+    connector.start();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(messages).toEqual([]);
+    expect(deletes).toEqual([{ id: 'queued-delete' }]);
+    connector.stop();
+  });
+
   it('keeps Unicode offsets correct and preserves custom-emote fallback text', () => {
     const result = parseRuns([
       { text: '😀 before ' },
@@ -81,7 +139,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('normalizes realistic chat, badge, avatar, event, deletion, and pin actions', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(1900);
     fixture.connector.stop();
 
     expect(fixture.statuses).toEqual(['connecting', 'connected']);
@@ -131,7 +189,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('renders ingested YouTube identity, source, badges, avatar, and emotes through the shared overlay', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(1900);
     fixture.connector.stop();
     const [normal] = parsed(fixture.messages);
 
@@ -169,7 +227,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('renders normalized YouTube paid and membership events with shared source chrome', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(1900);
     fixture.connector.stop();
     const events = parsed(fixture.messages.filter((message) => message.kind === 'system'));
     const config = MultichatQuerySchema.parse({ youtube: 'IShowSpeed', animation: 'none' });

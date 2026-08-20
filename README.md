@@ -61,18 +61,11 @@ registry, so it always matches what the overlay implements.
 | :--- | :--- |
 | <img src="https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png" width="20" /> **[TwitchTV](https://www.twitch.tv/)** | **Emotes:** Global, Channel, Follow, Sub, Bit<br>**Badges:** Sub Badges, Bit Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
 | <img src="https://kick.com/favicon.ico" width="20" /> **[Kick](https://kick.com/)** | **Emotes:** Global, Channel, Sub<br>**Badges:** Sub Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
-| <img src="https://www.youtube.com/s/desktop/55bb6e84/img/favicon_32x32.png" width="20" /> **[YouTube](https://www.youtube.com/)** | **Emotes:** Native Unicode and YouTube channel emoji<br>**Badges:** Owner, Moderator, Verified, Membership<br>**Events:** Super Chats, Super Stickers, Memberships, Gifted Memberships<br>**Moderation:** Message and Author Deletions |
+| <img src="[https://www.youtube.com/s/desktop/55bb6e84/img/favicon_32x32.png](https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg)" width="20" /> **[YouTube](https://www.youtube.com/)** | **Emotes:** Native Unicode and YouTube channel emoji<br>**Badges:** Owner, Moderator, Verified, Membership<br>**Events:** Super Chats, Super Stickers, Memberships, Gifted Memberships<br>**Moderation:** Message and Author Deletions |
 | <img src="https://7tv.app/favicon.svg" width="20" /> **[7TV](https://7tv.app/)** | **Emotes:** Global, Channel, Personal/Special Sets, Auto Set Updates, Zero-Width<br>**User Customization:** Paints, Badges, Personal/Special Emote Sets |
 | <img src="https://betterttv.com/favicon.png" width="20" /> **[BTTV](https://betterttv.com/)** | **Emotes:** Global, Channel, Auto Set Updates |
 | <img src="https://www.frankerfacez.com/static/images/favicon-32.png" width="20" /> **[FFZ](https://www.frankerfacez.com/)** | **Emotes:** Global, Channel<br>**User Customization:** Global + Channel Badges |
 <!-- prettier-ignore-end -->
-
-YouTube third-party channel emotes and user cosmetics are intentionally not
-claimed. The current 7TV and BTTV APIs do not provide a sufficiently stable,
-verified mapping for arbitrary YouTube channels/users, and FFZ has no supported
-YouTube channel mapping. MultiChat never guesses from a YouTube display name or
-maps it to a Twitch account; these integrations remain limited to platforms with
-provider-backed identities until a reliable `UC…` channel-ID contract is available.
 
 ## OBS Setup
 

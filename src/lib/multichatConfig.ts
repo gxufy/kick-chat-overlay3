@@ -409,7 +409,11 @@ export function multichatSourceTagOf(
  */
 export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {
   const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;
-  return { ...shared, sourceTag: platformIcons ? 'icon' : 'none' };
+  return {
+    ...shared,
+    smoothScroll: true,
+    sourceTag: platformIcons ? 'icon' : 'none',
+  };
 })();
 
 /** Channel state matching MULTICHAT_GENERATOR_DEFAULTS — all empty. */
@@ -461,6 +465,7 @@ export function buildMultichatQuery(
   /* Both shapes collapse to one tag. 'icon' omits the parameter, which is what
      the legacy platformIcons=true branch did, so legacy output is unchanged. */
   const sourceTag = multichatSourceTagOf(style);
+  const workspaceStyle = 'sourceTag' in style;
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -482,9 +487,13 @@ export function buildMultichatQuery(
     ...(emoteScale !== '' ? { emoteScale } : {}),
     ...(msgBold ? {} : { msgBold: 'false' }),
     ...(msgCaps ? { msgCaps: 'true' } : {}),
-    /* Match bChat's query convention: boolean settings use 1 when enabled. */
+    /* Match bChat's query convention for the horizontal entrance. Smooth
+       scrolling is implicit for workspace URLs; only an explicit workspace OFF
+       needs a parameter. The legacy serializer keeps its original 1/omitted form. */
     ...(msgSlideIn ? { msgSlideIn: '1' } : {}),
-    ...(smoothScroll ? { smoothScroll: '1' } : {}),
+    ...(workspaceStyle
+      ? (smoothScroll ? {} : { smoothScroll: '0' })
+      : (smoothScroll ? { smoothScroll: '1' } : {})),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),

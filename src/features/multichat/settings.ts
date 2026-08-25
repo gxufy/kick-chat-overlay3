@@ -199,7 +199,7 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'smoothScroll',
     type: 'toggle',
     label: 'Smooth message scroll',
-    description: 'bChat-style scrolling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',
+    description: 'Default message handling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',
     default: D.smoothScroll,
   },
   {

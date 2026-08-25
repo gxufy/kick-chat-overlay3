@@ -162,8 +162,9 @@ describe('descriptor identity', () => {
 
   it('derives the workspace defaults from the generator defaults', () => {
     const { platformIcons, ...shared } = LEGACY;
-    /* Every field but the swapped one comes straight from the legacy object. */
-    expect(D).toEqual({ ...shared, sourceTag: 'icon' });
+    /* sourceTag replaces platformIcons, and smooth scrolling is the intentional
+       modern workspace default while the pinned legacy object stays unchanged. */
+    expect(D).toEqual({ ...shared, smoothScroll: true, sourceTag: 'icon' });
     expect(platformIcons).toBe(true);
     expect('platformIcons' in D).toBe(false);
   });

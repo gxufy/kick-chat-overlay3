@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import handler from '@/pages/api/twitch/preview-identity';
 import { parsePreviewIdentityResponse } from '@/features/multichat/previewIdentity';
+import { __resetCommunityBadgeCache } from '@/lib/communityBadges';
 
 function response(body: unknown, status = 200): Response {
   return { status, ok: status >= 200 && status < 300, json: async () => body } as Response;
@@ -42,6 +43,14 @@ const sevenEmote = (id: string, name: string, flags = 0) => ({
 function allProviderFetch(input: RequestInfo | URL): Promise<Response> {
   const url = String(input);
   if (url === 'https://gql.twitch.tv/gql') return Promise.resolve(response(twitchBody));
+  if (url === 'https://api.chatterino.com/badges') return Promise.resolve(response({
+    badges: [{
+      id: 'preview-owner',
+      tooltip: 'Preview Owner',
+      image1: 'https://cdn.example/community-preview-owner.png',
+      users: ['42'],
+    }],
+  }));
   if (url.endsWith('/frankerfacez/emotes/global')) return Promise.resolve(response([{ id: 'fg', code: 'FFZG', images: { '4x': 'https://cdn.example/ffzg.png' } }]));
   if (url.endsWith('/frankerfacez/users/twitch/42')) return Promise.resolve(response({ emotes: [{ id: 'fr', code: 'FFZR', images: { '4x': 'https://cdn.example/ffzr.png' } }] }));
   if (url.endsWith('/v1/_room/id/42')) return Promise.resolve(response({ room: { moderator_badge: true } }));
@@ -55,7 +64,11 @@ function allProviderFetch(input: RequestInfo | URL): Promise<Response> {
   throw new Error(`unexpected request ${url}`);
 }
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => __resetCommunityBadgeCache());
+afterEach(() => {
+  __resetCommunityBadgeCache();
+  vi.unstubAllGlobals();
+});
 
 describe('Twitch Preview Identity API', () => {
   it('rejects methods and invalid input before an upstream request', async () => {
@@ -78,6 +91,9 @@ describe('Twitch Preview Identity API', () => {
       globalBadges: { 'subscriber/1': 'https://cdn.example/global-sub.png' },
       channelBadges: { 'subscriber/1': 'https://cdn.example/channel-sub.png' },
     });
+    expect(
+      parsed.providers.Twitch?.resources.globalBadges['community:chatterino:preview-owner/1'],
+    ).toBe('https://cdn.example/community-preview-owner.png');
     expect(parsed.providers.FFZ?.resources.badgeOverrides['moderator/1']).toContain('/room-badge/mod/id/42/');
     expect(parsed.providers.BTTV?.resources.sharedEmotes[0].scope).toBe('shared');
     expect(parsed.providers['7TV']?.resources.personalEmotes[0].scope).toBe('personal');
@@ -117,6 +133,7 @@ describe('Twitch Preview Identity API', () => {
     const urls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(urls).toContain('https://gql.twitch.tv/gql');
     expect(urls.some((url) => url.includes('frankerfacez'))).toBe(false);
+    expect(urls.some((url) => url.includes('api.chatterino.com'))).toBe(false);
     expect(urls.some((url) => url.includes('cached/emotes/global'))).toBe(true);
     expect(urls.some((url) => url.includes('7tv.io'))).toBe(true);
   });

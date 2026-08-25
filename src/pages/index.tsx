@@ -124,7 +124,7 @@ export default function Hub() {
 
       <div className="wrap">
         <div className="hero">
-          <img className="hero-avatar" src="/gxufy-avatar.jpg" alt="Gxufy" />
+          <img className="hero-avatar" src="/gxufy-avatar.gif" alt="Gxufy" />
           <div className="hero-text">
             <p className="hero-kicker">overlays &amp; stream tools</p>
             <h1>wtw, I&rsquo;m <span>Gxufy</span> 🕊️</h1>

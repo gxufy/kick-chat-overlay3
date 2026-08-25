@@ -30,7 +30,7 @@ describe('production Chat startup presentation', () => {
     expect(loader.textContent).toContain('Multi-Chat Overlay');
     expect(loader.textContent).toContain('made by @Gxufy');
     expect(loader.textContent).toContain('Loading...');
-    expect(loader.querySelector('img')?.getAttribute('src')).toBe('/tpl.webp');
+    expect(loader.querySelector('img')?.getAttribute('src')).toBe('/tpl.gif');
   });
 
   it('keeps the layer mounted during fade and removes it when hidden', () => {

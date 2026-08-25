@@ -59,6 +59,11 @@ const hrefs = () =>
   Array.from(document.querySelectorAll('a[href]')).map((a) => a.getAttribute('href'));
 
 describe('homepage product cards', () => {
+  it('uses the supplied GIF as the homepage logo', () => {
+    render(<HomePage />);
+    expect(document.querySelector('img.hero-avatar')?.getAttribute('src')).toBe('/gxufy-avatar.gif');
+  });
+
   it('links the generator and the counter panel at their canonical addresses', () => {
     render(<HomePage />);
     expect(hrefs()).toContain(CANONICAL_MULTICHAT_ROUTE);

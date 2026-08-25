@@ -531,7 +531,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {loaderPhase !== 'hidden' && (
         <div className="ck-startup-loader" data-phase={loaderPhase} data-testid="chat-startup-loader">
           <div className="ck-startup-card">
-            <img className="ck-startup-logo" src="/tpl.webp" alt="" width={104} height={104} />
+            <img className="ck-startup-logo" src="/tpl.gif" alt="" width={104} height={104} />
             <div className="ck-startup-copy">
               <p className="ck-startup-title">Multi-Chat Overlay</p>
               <p className="ck-startup-byline">made by @Gxufy</p>

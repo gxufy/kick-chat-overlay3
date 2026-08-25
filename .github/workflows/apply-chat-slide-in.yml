@@ -75,6 +75,17 @@ jobs:
           )
 
           replace_once(
+              'src/components/classic/ClassicGenerator.tsx',
+              "const MC_MSG_BOLD = toggleSetting(MC, 'msgBold');\nconst MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');\nconst MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');",
+              "const MC_MSG_BOLD = toggleSetting(MC, 'msgBold');\nconst MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');\nconst MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');\nconst MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');",
+          )
+          replace_once(
+              'src/components/classic/ClassicGenerator.tsx',
+              "            {chat(MC_MSG_BOLD)}\n            {chat(MC_MSG_CAPS)}\n            {chat(MC_HIDE_NAMES)}",
+              "            {chat(MC_MSG_BOLD)}\n            {chat(MC_MSG_CAPS)}\n            {chat(MC_MSG_SLIDE_IN)}\n            {chat(MC_HIDE_NAMES)}",
+          )
+
+          replace_once(
               'src/components/overlay/ChatOverlay.tsx',
               "  const renderMsg = (msg: ParsedMessage) => (\n    <div key={msg.id} style={{",
               "  const renderMsg = (msg: ParsedMessage) => (\n    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-bchat-slide-in' : undefined} style={{",
@@ -137,6 +148,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/multichatConfig.ts src/features/multichat/config.ts src/features/multichat/settings.ts src/components/overlay/ChatOverlay.tsx tests/unit/classicGenerator.test.tsx tests/unit/multichatCatalog.test.ts tests/unit/multichatConfig.test.ts tests/unit/msgSlideIn.test.tsx
+          git add src/lib/multichatConfig.ts src/features/multichat/config.ts src/features/multichat/settings.ts src/components/classic/ClassicGenerator.tsx src/components/overlay/ChatOverlay.tsx tests/unit/classicGenerator.test.tsx tests/unit/multichatCatalog.test.ts tests/unit/multichatConfig.test.ts tests/unit/msgSlideIn.test.tsx
           git commit -m "Add bChat-style message slide-in"
           git push origin HEAD:feat/chat-slide-in

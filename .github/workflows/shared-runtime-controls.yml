@@ -188,7 +188,7 @@ jobs:
               expect(source.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example/avatar.png');
             });
           });
-          '''.replace(/^          /gm, ''))
+          '''.replace('\n          ', '\n'))
           PY
           python3 .github/scripts/add-shared-runtime-controls.py
       - name: Install dependencies

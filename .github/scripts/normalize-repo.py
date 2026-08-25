@@ -99,7 +99,6 @@ for rel, mapping in replacements.items():
 # Replace the dedicated disclosure route with one direct source link in the footer.
 generator = ROOT / 'src/components/classic/ClassicGenerator.tsx'
 text = generator.read_text(encoding='utf-8')
-text = text.replace("import Link from 'next/link';\n", '')
 text = text.replace(
     '''        <p>\n          <Link href="/open-source">Source &amp; Open Source Licenses</Link>\n        </p>''',
     '''        <p>\n          <a\n            href="https://github.com/gxufy/multichat-gxufy"\n            target="_blank"\n            rel="noreferrer"\n          >\n            Source\n          </a>\n        </p>''',

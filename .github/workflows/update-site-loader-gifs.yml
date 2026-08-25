@@ -1,0 +1,45 @@
+name: Update site and loader GIFs
+
+on:
+  push:
+    branches: [feat/update-site-loader-gifs]
+    paths:
+      - .github/workflows/update-site-loader-gifs.yml
+      - .github/scripts/update-site-loader-gifs.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/update-site-loader-gifs
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply GIF references
+        run: python3 .github/scripts/update-site-loader-gifs.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/index.tsx src/components/overlay/ChatOverlay.tsx tests/unit/chatStartupLoader.test.tsx tests/unit/homepageRoutes.test.tsx
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit"
+          else
+            git commit -m "Use supplied GIFs for site and chat loader"
+            git push origin HEAD:feat/update-site-loader-gifs
+          fi

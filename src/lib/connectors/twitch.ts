@@ -11,6 +11,7 @@
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 import { loadFFZRoomBadges } from '../twitchEmotes';
 import { fetchTwitchProfile } from '../twitchProfileClient';
+import { resolveTwitchCommunityBadges } from '../communityBadges';
 
 const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 
@@ -19,6 +20,7 @@ const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 const PRIORITY_BADGES = ['predictions', 'admin', 'global_mod', 'staff', 'twitchbot', 'broadcaster', 'lead_moderator', 'moderator', 'vip'];
 
 const TAG_ESCAPES: Record<string, string> = { '\\:': ';', '\\s': ' ', '\\\\': '\\', '\\r': '\r', '\\n': '\n' };
+const MAX_ENRICHMENT_MESSAGES = 250;
 
 function unescapeTag(v: string): string {
   return v.replace(/\\[:s\\rn]/g, m => TAG_ESCAPES[m] ?? m);
@@ -172,7 +174,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   // (messages arriving before then just render without badge art)
   let badgeMap: Record<string, string> = {};
   let generation = 0;
-  const sharedMessages = new Map<string, UnifiedMessage>();
+  const deliveredMessages = new Map<string, UnifiedMessage>();
 
   fetch(`/api/twitch/badges?channel=${encodeURIComponent(channel)}`)
     .then(r => r.ok ? r.json() : null)
@@ -185,17 +187,49 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     })
     .catch(() => { /* fall back to bare types */ });
 
+  function remember(message: UnifiedMessage): void {
+    deliveredMessages.set(message.id, message);
+    while (deliveredMessages.size > MAX_ENRICHMENT_MESSAGES) {
+      const oldest = deliveredMessages.keys().next().value as string | undefined;
+      if (!oldest) break;
+      deliveredMessages.delete(oldest);
+    }
+  }
+
+  function withCurrentNativeBadgeArt(message: UnifiedMessage): UnifiedMessage {
+    const badges = message.badges.map((badge) => {
+      if (badge.type.startsWith('community:') || badge.url) return badge;
+      const version = badge.version ?? (badge.count ? String(badge.count) : '1');
+      const url = badgeMap[`${badge.type}/${version}`] ?? badgeMap[`${badge.type}/1`];
+      return url ? { ...badge, url } : badge;
+    });
+    return { ...message, badges };
+  }
+
   function enrichSharedMessage(message: UnifiedMessage): void {
     const roomId = message.sourceChannel?.roomId;
     if (!roomId) return;
-    sharedMessages.set(message.id, message);
     const ownedGeneration = generation;
     void fetchTwitchProfile(roomId).then(profile => {
       if (stopped || generation !== ownedGeneration || !profile) return;
-      const current = sharedMessages.get(message.id);
+      const current = deliveredMessages.get(message.id);
       if (!current || current.sourceChannel?.roomId !== roomId) return;
       const enriched = { ...current, sourceChannel: profile };
-      sharedMessages.set(message.id, enriched);
+      remember(enriched);
+      opts.onMessageUpdate?.(enriched);
+    });
+  }
+
+  function enrichCommunityBadges(message: UnifiedMessage): void {
+    if (!message.senderId) return;
+    const ownedGeneration = generation;
+    void resolveTwitchCommunityBadges(message.senderId, message.username).then(communityBadges => {
+      if (stopped || generation !== ownedGeneration || !communityBadges.length) return;
+      const current = deliveredMessages.get(message.id);
+      if (!current || current.senderId !== message.senderId) return;
+      const native = withCurrentNativeBadgeArt(current).badges.filter((badge) => !badge.type.startsWith('community:'));
+      const enriched = { ...current, badges: [...native, ...communityBadges] };
+      remember(enriched);
       opts.onMessageUpdate?.(enriched);
     });
   }
@@ -223,8 +257,10 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   }
 
   function deliver(message: UnifiedMessage): void {
+    remember(message);
     opts.onMessage(message);
     enrichSharedMessage(message);
+    enrichCommunityBadges(message);
   }
 
   /* StreamNook CATEGORY_OF: msg-id → event category */
@@ -340,7 +376,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     stop() {
       stopped = true;
       generation += 1;
-      sharedMessages.clear();
+      deliveredMessages.clear();
       ws?.close();
     },
   };

@@ -9,6 +9,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 const API_KEY_RE = /"INNERTUBE_API_KEY":"([^"]+)"/;
 const CLIENT_VERSION_RE = /"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/;
 const CONTINUATION_RE = /"continuation":"([^"]+)"/;
+const CHANNEL_ID_RE = /"channelId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/;
 
 const CANONICAL_WATCH_RE =
   /<link[^>]+rel=["']canonical["'][^>]+href=["']https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})[^"']*["']/i;
@@ -27,6 +28,45 @@ const WATCHING_NOW_RE =
 
 const LIVE_FLAG_RE =
   /"isLiveNow"\s*:\s*true|"isLiveContent"\s*:\s*true/i;
+
+export function extractAssignedJson(html: string, marker: string): any | null {
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const start = html.indexOf('{', markerIndex + marker.length);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < html.length; index += 1) {
+    const char = html[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') { inString = true; continue; }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try { return JSON.parse(html.slice(start, index + 1)); }
+        catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+export function liveViewContinuation(initialData: any): string | null {
+  const items = initialData?.contents?.liveChatRenderer?.header?.liveChatHeaderRenderer
+    ?.viewSelector?.sortFilterSubMenuRenderer?.subMenuItems;
+  if (!Array.isArray(items)) return null;
+  const live = items.find((item: any) =>
+    typeof item?.title === 'string' && !item.title.toLowerCase().includes('top'));
+  const continuation = live?.continuation?.reloadContinuationData?.continuation;
+  return typeof continuation === 'string' && continuation ? continuation : null;
+}
 
 const HEADERS = {
   'User-Agent':
@@ -172,6 +212,23 @@ async function findLiveVideo(
   return null;
 }
 
+async function findVideoChannelId(videoId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: HEADERS,
+      redirect: 'follow',
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const player = extractAssignedJson(html, 'ytInitialPlayerResponse');
+    const channelId = player?.videoDetails?.channelId;
+    if (typeof channelId === 'string' && /^UC[A-Za-z0-9_-]{22}$/.test(channelId)) return channelId;
+    return html.match(CHANNEL_ID_RE)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -201,6 +258,8 @@ export default async function handler(
   const chatUrl =
     `https://www.youtube.com/live_chat?is_popout=1&v=${videoId}`;
 
+  const channelIdPromise = findVideoChannelId(videoId);
+
   const response = await fetch(chatUrl, {
     headers: HEADERS,
     redirect: 'follow',
@@ -221,8 +280,9 @@ export default async function handler(
   const clientVersion =
     html.match(CLIENT_VERSION_RE)?.[1];
 
-  const continuation =
-    html.match(CONTINUATION_RE)?.[1];
+  const initialData = extractAssignedJson(html, 'ytInitialData');
+  const continuation = liveViewContinuation(initialData) ?? html.match(CONTINUATION_RE)?.[1];
+  const channelId = await channelIdPromise;
 
   if (
     !apiKey ||
@@ -240,5 +300,6 @@ export default async function handler(
     apiKey,
     clientVersion,
     continuation,
+    ...(channelId ? { channelId } : {}),
   });
 }

@@ -381,9 +381,16 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .gx-bchat-slide-in { animation: none; }
           }
 
-          /* Badge sizing — exact from size_*.css .badge
-             Targets img AND svg (platform icons) via the bare class,
-             plus the wrapper-child selector for stragglers */
+          /* Provider badge row: flex-centre every badge as one inline unit.
+             This removes image-baseline drift while keeping the ChatIS line height. */
+          .ck-bw {
+            display:        inline-flex;
+            align-items:    center;
+            gap:            ${sz.badgeMR};
+            margin-right:   ${sz.badgeLastMR};
+            vertical-align: middle;
+            line-height:    0;
+          }
           .ck-bw img,
           .ck-bw svg,
           .ck-badge-img {
@@ -393,15 +400,12 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             min-height:     ${sz.badgeH} !important;
             max-width:      ${sz.badgeW} !important;
             max-height:     ${sz.badgeH} !important;
-            margin-right:   ${sz.badgeMR};
-            margin-bottom:  ${sz.badgeMB};
+            margin:         0 !important;
             vertical-align: middle;
             border-radius:  10%;
-            display:        inline-block;
+            display:        block;
+            flex:           0 0 auto;
           }
-          .ck-bw img:last-of-type,
-          .ck-bw svg:last-of-type,
-          .ck-bw .ck-badge-img:last-of-type { margin-right: ${sz.badgeLastMR}; }
 
           /* Wide badges (TikTok fan-club/gifter art): height-locked,
              natural width, so they baseline-align with square badges */
@@ -801,17 +805,24 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
     </div>
   );
 
-  const line = (
+  const replyNode = msg.reply ? (
+    <div style={{
+      fontSize:'0.6em', lineHeight:1.35, opacity:0.68, marginLeft:'0.35em',
+      paddingLeft:'0.45em', borderLeft:'2px solid rgba(255,255,255,0.28)',
+      whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+    }}>
+      <span aria-hidden="true">↪ </span><strong>{msg.reply.username}</strong>{msg.reply.text ? ` ${msg.reply.text}` : ''}
+    </div>
+  ) : null;
+
+  const messageLine = (
     <div style={{ lineHeight:sz.lineHeight, wordBreak:'break-word' }}>
       {tag}
       {sourceChannel}
       {avatar}
       {!hideNames && (
         <span style={{ display:'inline' }}>
-          {/* StreamNook: YouTube renders name THEN badges; others badges-first */}
-          {msg.platform === 'youtube'
-            ? <>{nameNode}{badgesNode && <span style={{ marginLeft:'0.25em' }}>{badgesNode}</span>}</>
-            : <>{badgesNode}{nameNode}</>}
+          {badgesNode}{nameNode}
           <span className="ck-colon">:</span>
         </span>
       )}
@@ -821,6 +832,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
     </div>
   );
 
+  const line = replyNode ? <div>{replyNode}{messageLine}</div> : messageLine;
   return msg.redeem ? redeemWrap(line) : line;
 }
 

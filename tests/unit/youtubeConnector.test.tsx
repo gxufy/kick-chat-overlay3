@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
-import { createYouTubeConnector, parseRuns, YOUTUBE_DELIVERY_INTERVAL_MS } from '@/lib/connectors/youtube';
+import { createYouTubeConnector, parseRuns } from '@/lib/connectors/youtube';
 import { NO_COSMETICS, buildParsedMessage } from '@/lib/multichatMessageModel';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';
@@ -64,15 +64,9 @@ afterEach(() => {
 });
 
 describe('YouTube InnerTube ingestion', () => {
-  it('releases one continuation across bounded canonical presentation cycles in order', async () => {
+  it('publishes the initial backlog immediately in provider order', async () => {
     const fixture = connectFixture();
     await vi.advanceTimersByTimeAsync(1200);
-    /* Six visible actions are split across at most five releases: the first
-       catch-up batch coalesces two, then later releases stay one per cycle. */
-    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback']);
-    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS);
-    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback', 'yt-super-chat']);
-    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS * 3);
     expect(fixture.messages.map(message => message.id)).toEqual([
       'yt-normal', 'yt-fallback', 'yt-super-chat', 'yt-super-sticker', 'yt-membership', 'yt-gift',
     ]);
@@ -89,7 +83,7 @@ describe('YouTube InnerTube ingestion', () => {
               id: 'queued-delete', authorName: { simpleText: 'User' },
               authorExternalChannelId: 'UC-delete', message: { simpleText: 'do not show' },
             } } } },
-            { markChatItemAsDeletedAction: { targetItemId: 'queued-delete' } },
+            { removeChatItemAction: { targetItemId: 'queued-delete' } },
           ],
           continuations: [{ timedContinuationData: { continuation: 'next', timeoutMs: 1000 } }],
         },

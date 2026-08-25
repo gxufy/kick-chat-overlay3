@@ -55,7 +55,7 @@ import type { Platform, UnifiedMessage } from './types';
  * special case in the conversion itself.
  */
 export type ThirdPartyEmoteCatalog = Partial<
-  Record<Extract<Platform, 'kick' | 'twitch'>, SevenTVEmote[]>
+  Record<Extract<Platform, 'kick' | 'twitch' | 'youtube'>, SevenTVEmote[]>
 >;
 
 export type MessageCosmetics = {
@@ -256,6 +256,7 @@ export function buildParsedMessage(
     redeem: um.redeem,
     avatar: um.avatar,
     sourceChannel: um.sourceChannel,
+    reply: um.reply,
     raw: um,
     timestamp,
     identity: {
@@ -267,10 +268,10 @@ export function buildParsedMessage(
       // StreamNook: yt channel owner name renders as a gold pill
       ...(isYouTubeOwner(um) ? { namePill: '#ffd600|#111111' } : {}),
     },
-    // kick + twitch both get third-party emote word-swaps in text gaps
+    // Kick, Twitch and YouTube can all carry a platform-scoped 7TV set.
     message: renderMessageText(
       um,
-      (um.platform === 'kick' || um.platform === 'twitch') && cfg.sevenTVEmotesEnabled
+      (um.platform === 'kick' || um.platform === 'twitch' || um.platform === 'youtube') && cfg.sevenTVEmotesEnabled
         ? cosmetics.emotes[um.platform] ?? []
         : [],
       mentions,

@@ -248,8 +248,8 @@ export function renderMessageText(msg: UnifiedMessage, sevenTV: SevenTVEmote[], 
 
   const pushText = (segment: string, keyBase: string) => {
     if (!segment) return;
-    // 7TV word-swap applies to kick AND twitch text gaps
-    if ((msg.platform === 'kick' || msg.platform === 'twitch') && sevenTV.length) {
+    // Platform-scoped 7TV word-swap applies to Kick, Twitch and YouTube.
+    if ((msg.platform === 'kick' || msg.platform === 'twitch' || msg.platform === 'youtube') && sevenTV.length) {
       const parts = render7TVSegment(segment.replace(/\s\s+/g, ' '), sevenTV, keyBase);
       // apply mention coloring to the plain-string parts between emotes
       for (let pi = 0; pi < parts.length; pi++) {

@@ -23,29 +23,23 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           path = Path('tests/unit/classicGenerator.test.tsx')
           text = path.read_text(encoding='utf-8')
 
-          old = '''    expect(
-              document
-                .querySelector('iframe[title="Live viewer counter preview"]')
-                ?.getAttribute('src'),
-            ).toBe(counterUrl());'''
-          new = '''    expect(
+          pattern = r'''expect\(\s*document\s*\.querySelector\('iframe\[title="Live viewer counter preview"\]'\)\s*\?\.getAttribute\('src'\),\s*\)\.toBe\(counterUrl\(\)\);'''
+          replacement = '''expect(
               document
                 .querySelector('[data-testid="counter-live-preview"]')
                 ?.getAttribute('data-overlay-url'),
             ).toBe(counterUrl());'''
-          if old not in text:
-              raise SystemExit('exact counter URL assertion not found')
-          text = text.replace(old, new, 1)
+          text, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'counter URL assertion replacements: {count}')
 
-          old = '''    const height = (title: string) =>
-              (document.querySelector(`iframe[title="${title}"]`) as HTMLElement).style.height;
-            expect(height('Live chat overlay preview')).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
-            expect(height('Live viewer counter preview')).toBe(`${counterTool.obs.height}px`);'''
-          new = '''    const chatHeight = (
+          pattern = r'''const height = \(title: string\) =>\s*\(document\.querySelector\(`iframe\[title="\$\{title\}"\]`\) as HTMLElement\)\.style\.height;\s*expect\(height\('Live chat overlay preview'\)\)\.toBe\(`\$\{MULTICHAT_OBS_SIZE\.height\}px`\);\s*expect\(height\('Live viewer counter preview'\)\)\.toBe\(`\$\{counterTool\.obs\.height\}px`\);'''
+          replacement = '''const chatHeight = (
               document.querySelector('iframe[title="Live chat overlay preview"]') as HTMLElement
             ).style.height;
             const counterHeight = document
@@ -53,28 +47,12 @@ jobs:
               ?.getAttribute('data-preview-height');
             expect(chatHeight).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
             expect(counterHeight).toBe(String(counterTool.obs.height));'''
-          if old not in text:
-              raise SystemExit('exact preview height assertion not found')
-          text = text.replace(old, new, 1)
+          text, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'preview height assertion replacements: {count}')
 
-          old = '''  it('renders configured previews through real overlay iframes when selected', () => {
-            /* The claim is that nothing here is a mock-up: what a preview shows a
-               configured channel is the overlay itself, at its own URL, not a picture of
-               one. Two frames, both loading from this origin — one per tool, with no
-               third frame layered behind either of them. The exact count matters: a
-               revision that kept a sample preview mounted underneath the live counter is
-               what this asserts is gone. */
-            mount();
-            typeChannel('kick', 'somechannel');
-            fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
-            settle();
-            const frames = Array.from(document.querySelectorAll('iframe'));
-            expect(frames).toHaveLength(2);
-            for (const frame of frames) {
-              expect(frame.getAttribute('src')?.startsWith(BASE)).toBe(true);
-            }
-          });'''
-          new = '''  it('renders configured previews through their live production paths when selected', () => {
+          pattern = r'''  it\('renders configured previews through real overlay iframes when selected', \(\) => \{.*?\n  \}\);\n\n  it\('labels the built-in chat samples as preview data'\,'''
+          replacement = '''  it('renders configured previews through their live production paths when selected', () => {
             /* Chat keeps the exact generated overlay iframe. The Counter keeps the
                production renderer but polls in the parent document and renders into a
                local isolated frame, so no nested /counter navigation can be blocked. */
@@ -97,10 +75,12 @@ jobs:
             expect(counterLive?.getAttribute('data-overlay-url')).toBe(counterUrl());
             expect(counterFrame?.getAttribute('src')).toBeNull();
             expect(document.querySelectorAll('iframe')).toHaveLength(2);
-          });'''
-          if old not in text:
-              raise SystemExit('exact configured preview assertion not found')
-          text = text.replace(old, new, 1)
+          });
+
+          it('labels the built-in chat samples as preview data','''
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'configured preview assertion replacements: {count}')
 
           path.write_text(text, encoding='utf-8')
       - name: Commit patched assertions

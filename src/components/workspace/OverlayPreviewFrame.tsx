@@ -1,19 +1,29 @@
-/* OverlayPreviewFrame — the one live-overlay preview implementation.
+/* OverlayPreviewFrame — live-overlay preview routing.
  *
- * It embeds a real same-origin overlay route in an iframe using the very same
- * URL the Copy button hands out. There is no synthetic data and no duplicated
- * platform logic: the preview shows actual counts, actual availability
- * behaviour, and the actual polling cadence, because it *is* the overlay.
+ * Chat still embeds the exact generated overlay URL in an iframe. The Viewer
+ * Counter is different: common content blockers can block a nested /counter
+ * navigation even while the same URL works as a top-level OBS/browser source.
+ * Counter URLs therefore render through LiveCounterPreview, which polls in the
+ * parent document and mounts the production counter renderer inside a local
+ * isolated frame. That keeps the visual result identical without making the
+ * counter overlay URL itself a nested network navigation.
  *
- * The incoming URL changes on every keystroke in a channel field, so
- * navigation is debounced: the iframe only reloads once typing has paused.
- * Appearance changes navigate the iframe too — there is no parent/overlay
- * message protocol, so every settled URL is a fresh document load.
+ * Incoming URLs change on every keystroke in a channel field, so both paths are
+ * debounced and only switch once typing has paused.
  */
 import { useEffect, useState } from 'react';
+import LiveCounterPreview from './LiveCounterPreview';
 
-/** How long the incoming URL must hold still before the iframe navigates. */
+/** How long the incoming URL must hold still before the preview updates. */
 export const PREVIEW_DEBOUNCE_MS = 350;
+
+function isCounterUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname === '/counter';
+  } catch {
+    return false;
+  }
+}
 
 export default function OverlayPreviewFrame({
   url,
@@ -25,35 +35,31 @@ export default function OverlayPreviewFrame({
   url: string;
   /** Whether the tool has enough valid channel input to render. */
   configured: boolean;
-  /** Accessible iframe title. */
+  /** Accessible iframe/preview title. */
   title: string;
   /** Fixed viewport height in pixels. */
   height: number;
 }) {
   /* The last settled URL, or null when there is nothing valid to show.
      Deliberately never seeded from `url`: at mount `url` is the channel-less
-     default, and using it would let the iframe load that URL the instant a
-     first character makes `configured` true, before the debounce has run. */
+     default, and using it would let a live preview start the instant a first
+     character makes `configured` true, before the debounce has run. */
   const [settledUrl, setSettledUrl] = useState<string | null>(null);
 
   useEffect(() => {
     /* Only a configured URL is ever settled, so no channel-less URL can reach
-       the iframe's src — not at mount, and not on any later transition back
-       to configured. */
+       either the chat iframe or the native Counter poller. */
     const next = configured ? url : null;
-
     const timeout = setTimeout(() => setSettledUrl(next), PREVIEW_DEBOUNCE_MS);
 
-    /* Runs before the next effect and on unmount, so a pending navigation is
-       always cancelled by newer typing or by leaving the workspace. */
     return () => clearTimeout(timeout);
   }, [url, configured]);
 
-  /* Nothing configured, or nothing settled yet: render no iframe at all, so no
-     overlay mounts and no polling starts. The `configured` half is checked on
-     every render, so clearing the last channel removes the iframe immediately
-     rather than after the debounce. */
   if (!configured || settledUrl === null) return null;
+
+  if (isCounterUrl(settledUrl)) {
+    return <LiveCounterPreview url={settledUrl} height={height} />;
+  }
 
   return (
     <iframe

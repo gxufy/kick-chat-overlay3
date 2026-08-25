@@ -1,0 +1,117 @@
+name: Patch stale counter preview assertions
+
+on:
+  push:
+    branches:
+      - fix/native-counter-preview
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/native-counter-preview
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Update stale Classic generator assertions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('tests/unit/classicGenerator.test.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    expect(
+              document
+                .querySelector('iframe[title="Live viewer counter preview"]')
+                ?.getAttribute('src'),
+            ).toBe(counterUrl());'''
+          new = '''    expect(
+              document
+                .querySelector('[data-testid="counter-live-preview"]')
+                ?.getAttribute('data-overlay-url'),
+            ).toBe(counterUrl());'''
+          if old not in text:
+              raise SystemExit('exact counter URL assertion not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    const height = (title: string) =>
+              (document.querySelector(`iframe[title="${title}"]`) as HTMLElement).style.height;
+            expect(height('Live chat overlay preview')).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
+            expect(height('Live viewer counter preview')).toBe(`${counterTool.obs.height}px`);'''
+          new = '''    const chatHeight = (
+              document.querySelector('iframe[title="Live chat overlay preview"]') as HTMLElement
+            ).style.height;
+            const counterHeight = document
+              .querySelector('[data-testid="counter-live-preview"]')
+              ?.getAttribute('data-preview-height');
+            expect(chatHeight).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
+            expect(counterHeight).toBe(String(counterTool.obs.height));'''
+          if old not in text:
+              raise SystemExit('exact preview height assertion not found')
+          text = text.replace(old, new, 1)
+
+          old = '''  it('renders configured previews through real overlay iframes when selected', () => {
+            /* The claim is that nothing here is a mock-up: what a preview shows a
+               configured channel is the overlay itself, at its own URL, not a picture of
+               one. Two frames, both loading from this origin — one per tool, with no
+               third frame layered behind either of them. The exact count matters: a
+               revision that kept a sample preview mounted underneath the live counter is
+               what this asserts is gone. */
+            mount();
+            typeChannel('kick', 'somechannel');
+            fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
+            settle();
+            const frames = Array.from(document.querySelectorAll('iframe'));
+            expect(frames).toHaveLength(2);
+            for (const frame of frames) {
+              expect(frame.getAttribute('src')?.startsWith(BASE)).toBe(true);
+            }
+          });'''
+          new = '''  it('renders configured previews through their live production paths when selected', () => {
+            /* Chat keeps the exact generated overlay iframe. The Counter keeps the
+               production renderer but polls in the parent document and renders into a
+               local isolated frame, so no nested /counter navigation can be blocked. */
+            mount();
+            typeChannel('kick', 'somechannel');
+            fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
+            settle();
+
+            const chatFrame = document.querySelector<HTMLIFrameElement>(
+              'iframe[title="Live chat overlay preview"]',
+            );
+            const counterLive = document.querySelector<HTMLElement>(
+              '[data-testid="counter-live-preview"]',
+            );
+            const counterFrame = document.querySelector<HTMLIFrameElement>(
+              'iframe[title="Live viewer counter preview"]',
+            );
+
+            expect(chatFrame?.getAttribute('src')?.startsWith(BASE)).toBe(true);
+            expect(counterLive?.getAttribute('data-overlay-url')).toBe(counterUrl());
+            expect(counterFrame?.getAttribute('src')).toBeNull();
+            expect(document.querySelectorAll('iframe')).toHaveLength(2);
+          });'''
+          if old not in text:
+              raise SystemExit('exact configured preview assertion not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+      - name: Commit patched assertions
+        shell: bash
+        run: |
+          if git diff --quiet -- tests/unit/classicGenerator.test.tsx; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/unit/classicGenerator.test.tsx
+          git commit -m "Update Classic generator tests for native counter preview"
+          git push origin HEAD:fix/native-counter-preview

@@ -195,6 +195,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.msgSlideIn,
   },
   {
+    key: 'smoothScroll',
+    param: 'smoothScroll',
+    type: 'toggle',
+    label: 'Smooth message scroll',
+    description: 'bChat-style scrolling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',
+    default: D.smoothScroll,
+  },
+  {
     key: 'modAction',
     param: 'modAction',
     type: 'toggle',

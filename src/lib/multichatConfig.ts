@@ -179,6 +179,8 @@ export const MultichatQuerySchema = z.object({
   msgCaps: z.string().optional().transform(v => v === 'true'),
   /* bChat: new messages slide in from the right. Its boolean query format is 1/0. */
   msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),
+  /* bChat smooth-scroll is opt-in for existing overlay URLs; new generator URLs enable it. */
+  smoothScroll: z.string().optional().transform(v => v === '1' || v === 'true'),
   fontColor: z.string().optional().transform(v =>
     /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
   paintShadows: z.string().optional().transform(v => v !== 'false'),
@@ -304,6 +306,8 @@ export type MultichatGeneratorStyle = {
   msgCaps: boolean;
   /** bChat-style horizontal entrance for newly inserted chat rows. */
   msgSlideIn: boolean;
+  /** Smoothly scroll the message stack as new rows arrive. */
+  smoothScroll: boolean;
   modAction: boolean;
   paintShadows: boolean;
   /** '' means unset. A leading '#' is stripped when emitted. */
@@ -345,6 +349,7 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   msgBold: true,
   msgCaps: false,
   msgSlideIn: false,
+  smoothScroll: false,
   modAction: true,
   paintShadows: true,
   fontColor: '',
@@ -449,7 +454,7 @@ export function buildMultichatQuery(
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     textSize, font, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, modAction,
+    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, modAction,
     paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
     botNames, userBL, prefixBL,
   } = style;
@@ -479,6 +484,7 @@ export function buildMultichatQuery(
     ...(msgCaps ? { msgCaps: 'true' } : {}),
     /* Match bChat's query convention: boolean settings use 1 when enabled. */
     ...(msgSlideIn ? { msgSlideIn: '1' } : {}),
+    ...(smoothScroll ? { smoothScroll: '1' } : {}),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),

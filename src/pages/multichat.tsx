@@ -298,7 +298,7 @@ function MultichatOverlay() {
           touched = true;
           return { ...buildParsed(m.raw as UnifiedMessage), timestamp: m.timestamp };
         });
-        if (touched) dirty = true;
+        if (touched) markDirty();
         /* Repaint the visible Twitch pin too: pin authors are queued
            separately and their cosmetics usually land after the banner
            was built. Reuses msg.id, so PinBanner's cycle never restarts. */
@@ -351,16 +351,31 @@ function MultichatOverlay() {
        apply the identical predicate to respond to the filter settings at all. */
     const shouldDisplay = buildMessageFilter(cfg);
 
-    /* chatis-exact render loop: messages buffer into s.messages and a
-       single 200ms interval flushes to React (script.js update()).
-       Per-message setState with 4 platforms caused re-renders mid-slide
-       — that was the stutter. Deletions flush on the same tick. */
+    /* Message flush policy.
+       Legacy URLs keep the old chatis 200ms batch cadence. New generator URLs
+       opt into bChat-style smooth scrolling, where store changes are coalesced
+       to one React commit per animation frame instead of arriving in 200ms chunks. */
     let dirty = false;
-    const flushInterval = setInterval(() => {
+    let flushFrame: number | null = null;
+
+    function flushMessages() {
       if (!dirty) return;
       dirty = false;
       setMessages([...s.messages]);
-    }, 200);
+    }
+
+    function markDirty() {
+      dirty = true;
+      if (!cfg.smoothScroll || flushFrame !== null) return;
+      flushFrame = requestAnimationFrame(() => {
+        flushFrame = null;
+        flushMessages();
+      });
+    }
+
+    const flushInterval: ReturnType<typeof setInterval> | null = cfg.smoothScroll
+      ? null
+      : setInterval(flushMessages, 200);
 
     function addMessage(um: UnifiedMessage) {
       handleCommand(um); // !multichat commands work from any platform
@@ -373,7 +388,7 @@ function MultichatOverlay() {
       }
       s.messages.push(buildParsed(um));
       if (s.messages.length > 100) s.messages.shift();
-      dirty = true;
+      markDirty();
       dismissLoaderWhenEligible();
     }
 
@@ -388,7 +403,7 @@ function MultichatOverlay() {
       } else {
         s.messages = s.messages.filter(m => m.platform !== platform);
       }
-      dirty = true;
+      markDirty();
     }
 
     function handlePin(pin: UnifiedPin | null) {
@@ -452,7 +467,7 @@ function MultichatOverlay() {
             touched = true;
             return { ...buildParsed(updated), id: message.id, timestamp: message.timestamp };
           });
-          if (touched) dirty = true;
+          if (touched) markDirty();
         },
         onDelete: o => removeMessages('twitch', o),
         onPin: handlePin, // never fires — Twitch pins need OAuth
@@ -473,7 +488,7 @@ function MultichatOverlay() {
               timestamp: message.timestamp,
             };
           });
-          if (touched) dirty = true;
+          if (touched) markDirty();
         },
         onStatus: (status, detail) => {
           if (status !== 'connecting') settle('twitch');
@@ -645,7 +660,7 @@ function MultichatOverlay() {
           id: message.id,
           timestamp: message.timestamp,
         }));
-        dirty = true;
+        markDirty();
       },
       findEmoteUrl: (name) => {
         if (!name) return null;
@@ -836,7 +851,7 @@ function MultichatOverlay() {
         setTimeout(() => {
           fadingSet.delete(expired.id);
           s.messages = s.messages.filter(m => m.id !== expired.id);
-          dirty = true; // removal flushes on the shared 200ms tick
+          markDirty(); // removal uses the active flush policy
           setFadingIds(new Set(fadingSet));
         }, 400);
       }, 200);
@@ -846,7 +861,8 @@ function MultichatOverlay() {
       if (loaderMinimumTimer) clearTimeout(loaderMinimumTimer);
       if (loaderFadeTimer) clearTimeout(loaderFadeTimer);
       if (loaderMaximumTimer) clearTimeout(loaderMaximumTimer);
-      clearInterval(flushInterval);
+      if (flushInterval) clearInterval(flushInterval);
+      if (flushFrame !== null) cancelAnimationFrame(flushFrame);
       if (fadeInterval) clearInterval(fadeInterval);
       connectors.forEach(c => c.stop());
       cleanups.forEach(fn => fn());

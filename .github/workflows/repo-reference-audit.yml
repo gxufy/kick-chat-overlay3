@@ -35,11 +35,11 @@ jobs:
       - name: Audit repository text
         shell: bash
         run: |
-          if grep -RniE 'StreamNook|ChatIS|Fiszh/UChat|ref-uchat|UChat-style|bChat-style|unified-chat-lite' src tests README.md; then
+          if grep -RnE 'StreamNook|ChatIS|Fiszh/UChat|ref-uchat|UChat-style|bChat-style|unified-chat-lite' src tests README.md; then
             echo 'Reference-project wording remains in application source.'
             exit 1
           fi
-          if grep -Rni '/open-source' src tests; then
+          if grep -Rn '/open-source' src tests; then
             echo 'Removed disclosure route is still referenced.'
             exit 1
           fi

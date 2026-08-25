@@ -144,6 +144,7 @@ const MC_FADE = textSetting(MC, 'fade');
 const MC_MSG_BOLD = toggleSetting(MC, 'msgBold');
 const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
 const MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');
+const MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');
 const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
 const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
 const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
@@ -1219,6 +1220,7 @@ export default function ClassicGenerator({
             {chat(MC_MSG_BOLD)}
             {chat(MC_MSG_CAPS)}
             {chat(MC_MSG_SLIDE_IN)}
+            {chat(MC_SMOOTH_SCROLL)}
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}

@@ -220,6 +220,37 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     ? cfg.sourceTag
     : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
+  /* bChat smooth message handling: observe structural row changes, coalesce
+     them to one frame, and smooth-scroll to the newest row. If messages arrive
+     within 100ms, jump immediately so browser smooth-scroll animations never queue. */
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!cfg.smoothScroll) return;
+    const el = chatContainerRef.current;
+    if (!el || typeof MutationObserver === 'undefined') return;
+    let raf = 0;
+    let lastScrollAt = 0;
+    const scrollNewestIntoView = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const now = Date.now();
+        const burst = now - lastScrollAt < 100;
+        lastScrollAt = now;
+        try {
+          el.scrollTo({ top: el.scrollHeight, behavior: burst ? 'auto' : 'smooth' });
+        } catch {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+    };
+    const observer = new MutationObserver(scrollNewestIntoView);
+    observer.observe(el, { childList: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [cfg.smoothScroll]);
+
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most
      every 200ms, so each prop change here IS one chatis batch: turn it
@@ -274,6 +305,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       // jQuery fadeOut: opacity 1→0 over 400ms, exact chatis behaviour
       opacity: fadingIds.has(msg.id) ? 0 : 1,
       transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',
+      ...(cfg.smoothScroll && filterVal ? { filter: filterVal } : {}),
 
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
@@ -328,11 +360,13 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
              No fill-mode: after 250ms the ordinary row opacity/transform rules
              take back control, including the existing fade-out path. */
           @keyframes gxBChatSlideIn {
-            from { opacity: 0; transform: translateX(40px); }
-            to   { opacity: 1; transform: translateX(0); }
+            from { opacity: 0; transform: translate3d(40px, 0, 0); }
+            to   { opacity: 1; transform: translate3d(0, 0, 0); }
           }
           .gx-bchat-slide-in {
             animation: gxBChatSlideIn 250ms ease-out;
+            will-change: transform, opacity;
+            backface-visibility: hidden;
           }
           @media (prefers-reduced-motion: reduce) {
             .gx-bchat-slide-in { animation: none; }
@@ -526,11 +560,15 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           word-break: break-word
         font-size from size_*.css applied inline.
       */}
-      <div id="chat_container" style={{
+      <div id="chat_container" ref={chatContainerRef} style={{
         width:      'calc(100% - 20px)',
         padding:    '10px',
         position:   'absolute',
         bottom:     0,
+        maxHeight:  cfg.smoothScroll ? 'calc(100vh - 20px)' : undefined,
+        display:    cfg.smoothScroll ? 'flex' : undefined,
+        flexDirection: cfg.smoothScroll ? 'column' : undefined,
+        willChange: cfg.smoothScroll ? 'scroll-position' : undefined,
         overflow:   'hidden',
         background: 'transparent',
         color:      cfg.fontColor || 'white',
@@ -539,7 +577,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
-                ...(filterVal ? { filter:filterVal } : {}),
+                ...(!cfg.smoothScroll && filterVal ? { filter:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
         {batches.map(({ id, messageIds }) => {
@@ -547,7 +585,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .map((messageId) => messagesById.get(messageId))
             .filter((message): message is ParsedMessage => Boolean(message))
             .map(renderMsg);
-          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
+          if (cfg.animation==='slide' && !cfg.smoothScroll) return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
           if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
         })}

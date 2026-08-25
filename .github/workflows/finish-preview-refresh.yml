@@ -1,0 +1,76 @@
+name: Finish preview refresh
+
+on:
+  push:
+    branches: [feat/preview-real-badges]
+    paths:
+      - .github/workflows/finish-preview-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/preview-real-badges
+          fetch-depth: 0
+      - name: Refresh stale preview expectations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/tests/unit/multichatPreview.test.tsx')
+          text = path.read_text()
+          anchor = "import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';\n"
+          if "from '@/features/multichat/previewRoster'" not in text:
+              text = text.replace(anchor, anchor + "import { PREVIEW_ROSTER } from '@/features/multichat/previewRoster';\n")
+          text = text.replace("expect(seen).toHaveLength(7);", "expect(seen).toHaveLength(PREVIEW_ROSTER.length);")
+          path.write_text(text)
+
+          path = Path('app/tests/unit/previewContainment.test.tsx')
+          text = path.read_text()
+          anchor = "import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';\n"
+          if "from '@/features/multichat/previewRoster'" not in text:
+              text = text.replace(anchor, anchor + "import { PREVIEW_ROSTER } from '@/features/multichat/previewRoster';\n")
+          text = text.replace("expect(inside).toContain('feelssunnyman');", "expect(inside).toContain(PREVIEW_ROSTER[1]!.displayName);")
+          text = text.replace("expect(document.body.textContent ?? '').not.toContain('feelssunnyman');", "expect(document.body.textContent ?? '').not.toContain(PREVIEW_ROSTER[1]!.displayName);")
+          path.write_text(text)
+
+          path = Path('app/tests/unit/previewIdentityUi.test.tsx')
+          text = path.read_text()
+          text = text.replace(
+              "globalBadges: { 'moderator/1': 'https://cdn.example/twitch-mod.png' },",
+              "globalBadges: {\n          'moderator/1': 'https://cdn.example/twitch-mod.png',\n          'community:chatterino:verified/1': 'https://cdn.example/community-verified.png',\n        },",
+          )
+          text = text.replace("expect(fetchMock).toHaveBeenCalledTimes(7)", "expect(fetchMock).toHaveBeenCalledTimes(PREVIEW_ROSTER.length)")
+          text = text.replace("expect(screen.getByText(/7 of 7/)).toBeTruthy()", "expect(screen.getByText(new RegExp(`${PREVIEW_ROSTER.length} of ${PREVIEW_ROSTER.length}`))).toBeTruthy()")
+          text = text.replace("img[src=\"https://cdn.example/ffz-mod.png\"]", "img[src=\"https://cdn.example/community-verified.png\"]")
+          text = text.replace("/gxufy|feelssunnyman|preview-roster|seven-badge/i", "/gxufy|blu01_|preview-roster|seven-badge/i")
+          path.write_text(text)
+
+          path = Path('app/tests/unit/previewStaticShowcase.test.tsx')
+          text = path.read_text().replace(
+              "renders the seven exact fallback identities on first paint",
+              "renders the exact fallback identities on first paint",
+          )
+          path.write_text(text)
+
+          path = Path('app/src/components/classic/ClassicGenerator.tsx')
+          text = path.read_text().replace(
+              "The exact seven-person Preview Data roster is generator-only.",
+              "The curated Preview Data roster is generator-only.",
+          )
+          path.write_text(text)
+          PY
+      - name: Commit refreshed expectations
+        shell: bash
+        run: |
+          git config user.name "Isaac"
+          git config user.email "unstoppableboy99@gmail.com"
+          git add app/src/components/classic/ClassicGenerator.tsx app/tests/unit/multichatPreview.test.tsx app/tests/unit/previewContainment.test.tsx app/tests/unit/previewIdentityUi.test.tsx app/tests/unit/previewStaticShowcase.test.tsx
+          git commit -m "Update preview roster expectations"
+          git push origin HEAD:feat/preview-real-badges

@@ -207,6 +207,7 @@ export function normalizeMultichatStyle(
     emoteScale: keepString(style.emoteScale, d.emoteScale),
     msgBold: keepBoolean(style.msgBold, d.msgBold),
     msgCaps: keepBoolean(style.msgCaps, d.msgCaps),
+    msgSlideIn: keepBoolean(style.msgSlideIn, d.msgSlideIn),
     modAction: keepBoolean(style.modAction, d.modAction),
     paintShadows: keepBoolean(style.paintShadows, d.paintShadows),
     fontColor: keepString(style.fontColor, d.fontColor),

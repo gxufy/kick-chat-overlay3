@@ -269,7 +269,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   }, [messages]);
 
   const renderMsg = (msg: ParsedMessage) => (
-    <div key={msg.id} style={{
+    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-bchat-slide-in' : undefined} style={{
       margin: '0 10px',
       // jQuery fadeOut: opacity 1→0 over 400ms, exact chatis behaviour
       opacity: fadingIds.has(msg.id) ? 0 : 1,
@@ -323,6 +323,20 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             overflow: visible !important;
           }
           ${cfg.font==='alsina' ? `@font-face { font-family:Alsina; src:url(https://chatis.is2511.com/v2/styles/Alsina_Ultrajada.ttf); }` : ''}
+
+          /* bChat msgSlideIn: each newly mounted row enters independently.
+             No fill-mode: after 250ms the ordinary row opacity/transform rules
+             take back control, including the existing fade-out path. */
+          @keyframes gxBChatSlideIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to   { opacity: 1; transform: translateX(0); }
+          }
+          .gx-bchat-slide-in {
+            animation: gxBChatSlideIn 250ms ease-out;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .gx-bchat-slide-in { animation: none; }
+          }
 
           /* Badge sizing — exact from size_*.css .badge
              Targets img AND svg (platform icons) via the bare class,

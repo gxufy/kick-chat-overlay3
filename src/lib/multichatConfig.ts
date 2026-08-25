@@ -177,6 +177,8 @@ export const MultichatQuerySchema = z.object({
   /* ── UChat-ported settings ── */
   msgBold: z.string().optional().transform(v => v !== 'false'),
   msgCaps: z.string().optional().transform(v => v === 'true'),
+  /* bChat: new messages slide in from the right. Its boolean query format is 1/0. */
+  msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),
   fontColor: z.string().optional().transform(v =>
     /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
   paintShadows: z.string().optional().transform(v => v !== 'false'),
@@ -300,6 +302,8 @@ export type MultichatGeneratorStyle = {
   emoteScale: string;
   msgBold: boolean;
   msgCaps: boolean;
+  /** bChat-style horizontal entrance for newly inserted chat rows. */
+  msgSlideIn: boolean;
   modAction: boolean;
   paintShadows: boolean;
   /** '' means unset. A leading '#' is stripped when emitted. */
@@ -340,6 +344,7 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   emoteScale: '',
   msgBold: true,
   msgCaps: false,
+  msgSlideIn: false,
   modAction: true,
   paintShadows: true,
   fontColor: '',
@@ -444,7 +449,7 @@ export function buildMultichatQuery(
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     textSize, font, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, modAction,
+    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, modAction,
     paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
     botNames, userBL, prefixBL,
   } = style;
@@ -472,6 +477,8 @@ export function buildMultichatQuery(
     ...(emoteScale !== '' ? { emoteScale } : {}),
     ...(msgBold ? {} : { msgBold: 'false' }),
     ...(msgCaps ? { msgCaps: 'true' } : {}),
+    /* Match bChat's query convention: boolean settings use 1 when enabled. */
+    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),

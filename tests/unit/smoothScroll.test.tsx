@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
 import { buildParsedMessage } from '@/lib/multichatMessageModel';
-import { MULTICHAT_GENERATOR_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';
+import { MULTICHAT_GENERATOR_DEFAULTS, MULTICHAT_WORKSPACE_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';
 import { SAMPLE_COSMETICS, SAMPLE_MESSAGES } from '@/features/multichat/samples';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -10,15 +10,23 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const channels = { kick: '', twitch: 'gxufy', youtube: '', tiktok: '' };
 
 describe('bChat-style smooth message handling', () => {
-  it('keeps legacy/default URLs unchanged and serializes only when enabled', () => {
+  it('makes smooth handling the workspace default without changing legacy URL strings', () => {
+    // The parser remains a compatibility surface; the /multichat page promotes
+    // omission to smooth at runtime. Legacy serialization therefore stays exact.
     expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);
-    const off = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));
-    const on = new URLSearchParams(buildMultichatQuery(channels, {
-      ...MULTICHAT_GENERATOR_DEFAULTS,
-      smoothScroll: true,
+    expect(MULTICHAT_GENERATOR_DEFAULTS.smoothScroll).toBe(false);
+    expect(MULTICHAT_WORKSPACE_DEFAULTS.smoothScroll).toBe(true);
+
+    const legacy = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));
+    const workspace = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_WORKSPACE_DEFAULTS));
+    const workspaceLegacyFallback = new URLSearchParams(buildMultichatQuery(channels, {
+      ...MULTICHAT_WORKSPACE_DEFAULTS,
+      smoothScroll: false,
     }));
-    expect(off.has('smoothScroll')).toBe(false);
-    expect(on.get('smoothScroll')).toBe('1');
+
+    expect(legacy.has('smoothScroll')).toBe(false);
+    expect(workspace.has('smoothScroll')).toBe(false);
+    expect(workspaceLegacyFallback.get('smoothScroll')).toBe('0');
   });
 
   it('accepts both 1 and true query spellings', () => {

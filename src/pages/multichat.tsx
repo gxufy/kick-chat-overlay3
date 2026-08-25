@@ -235,7 +235,14 @@ function MultichatOverlay() {
 
     const parsed = safeParseMultichatConfig(router.query);
     if (!parsed.success) return;
-    const cfg = parsed.data;
+    const cfg = {
+      ...parsed.data,
+      // Smooth handling is the normal runtime path. Existing/generated URLs do
+      // not need a flag; smoothScroll=0/false is the explicit legacy fallback.
+      smoothScroll: router.query.smoothScroll === undefined
+        ? true
+        : parsed.data.smoothScroll,
+    };
     const kickChannel = multichatKickChannel(cfg);
     const platformCount = multichatPlatformCount(cfg);
     if (!hasConfiguredMultichatChannel(cfg)) return;

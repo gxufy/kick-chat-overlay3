@@ -187,6 +187,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.msgCaps,
   },
   {
+    key: 'msgSlideIn',
+    param: 'msgSlideIn',
+    type: 'toggle',
+    label: 'New messages slide in from the right',
+    description: 'bChat-style 250ms horizontal entrance for each newly inserted chat row.',
+    default: D.msgSlideIn,
+  },
+  {
     key: 'modAction',
     param: 'modAction',
     type: 'toggle',

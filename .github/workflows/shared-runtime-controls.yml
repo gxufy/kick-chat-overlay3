@@ -29,8 +29,8 @@ jobs:
           p = Path('src/components/classic/ClassicGenerator.tsx')
           text = p.read_text()
           text = text.replace(
-              '          These\n          commands apply to the chat overlay only; the viewer counter has none.',
-              '          These commands apply to the chat overlay only; the viewer counter has none.',
+              '<code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above. These\n          commands apply to the chat overlay only; the viewer counter has none.',
+              '<code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above.\n          These commands apply to the chat overlay only; the viewer counter has none.',
           )
           p.write_text(text)
           PY

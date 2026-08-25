@@ -7,6 +7,7 @@ on:
       - .github/workflows/shared-runtime-controls.yml
       - .github/scripts/add-shared-runtime-controls.py
       - .github/scripts/prepare-shared-runtime-controls.py
+      - .github/scripts/fix-shared-runtime-tests.py
 
 permissions:
   contents: write
@@ -27,6 +28,8 @@ jobs:
         run: python3 .github/scripts/prepare-shared-runtime-controls.py
       - name: Apply shared chat/runtime control changes
         run: python3 .github/scripts/add-shared-runtime-controls.py
+      - name: Update regression fixtures
+        run: python3 .github/scripts/fix-shared-runtime-tests.py
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
@@ -39,6 +42,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f \
+            .github/scripts/add-shared-runtime-controls.py \
+            .github/scripts/prepare-shared-runtime-controls.py \
+            .github/scripts/fix-shared-runtime-tests.py \
+            .github/workflows/shared-runtime-controls.yml
           git add -A
           if git diff --cached --quiet; then
             echo "No implementation changes to commit"

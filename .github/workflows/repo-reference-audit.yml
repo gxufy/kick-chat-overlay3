@@ -1,0 +1,22 @@
+name: Repository cleanup audit
+
+on:
+  push:
+    branches: [chore/repo-cleanup]
+    paths:
+      - .github/workflows/repo-reference-audit.yml
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find reference-project names
+        shell: bash
+        run: |
+          set +e
+          grep -RniE 'StreamNook|ChatIS|chatis|bChat|BChat|unified-chat-lite|Fiszh/UChat|ref-uchat|UChat-style' \
+            src tests README.md .github \
+            --exclude='repo-reference-audit.yml' \
+            --exclude='THIRD_PARTY_NOTICES.md'
+          exit 0

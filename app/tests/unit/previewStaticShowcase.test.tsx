@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe('the curated moving Preview Data showcase', () => {
-  it('renders the seven exact fallback identities on first paint', () => {
+  it('renders the exact fallback identities on first paint', () => {
     render(<ClassicGenerator />);
     expect(bodies()).toHaveLength(PREVIEW_ROSTER.length);
     for (const entry of PREVIEW_ROSTER) expect(preview().textContent ?? '').toContain(entry.displayName);

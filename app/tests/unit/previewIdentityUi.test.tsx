@@ -25,7 +25,10 @@ const identityResponse = (login = 'canonical'): PreviewIdentityResponse => ({
     Twitch: {
       status: 'loaded',
       resources: {
-        globalBadges: { 'moderator/1': 'https://cdn.example/twitch-mod.png' },
+        globalBadges: {
+          'moderator/1': 'https://cdn.example/twitch-mod.png',
+          'community:chatterino:verified/1': 'https://cdn.example/community-verified.png',
+        },
         channelBadges: { 'subscriber/1': 'https://cdn.example/twitch-channel.png' },
       },
     },
@@ -200,14 +203,14 @@ describe('curated identities in the Chat Preview card', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<ClassicGenerator />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(PREVIEW_ROSTER.length));
     expect(fetchMock.mock.calls.map((call) => new URL(String(call[0]), 'http://local').searchParams.get('login'))).toEqual(
       PREVIEW_ROSTER.map((entry) => entry.login),
     );
-    await waitFor(() => expect(screen.getByText(/7 of 7/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new RegExp(`${PREVIEW_ROSTER.length} of ${PREVIEW_ROSTER.length}`))).toBeTruthy());
     const body = document.querySelector<HTMLIFrameElement>('iframe[title="MultiChat sample preview"]')?.contentDocument?.body;
     for (const entry of PREVIEW_ROSTER) expect(body?.textContent ?? '').toContain(entry.displayName);
-    expect(body?.querySelector('img[src="https://cdn.example/ffz-mod.png"]')).not.toBeNull();
+    expect(body?.querySelector('img[src="https://cdn.example/community-verified.png"]')).not.toBeNull();
     expect(body?.querySelector('img[alt="7tv badge"]')).not.toBeNull();
     expect(Array.from(body?.querySelectorAll<HTMLElement>('*') ?? []).some((node) => node.style.background.includes('linear-gradient'))).toBe(true);
   });
@@ -217,13 +220,13 @@ describe('curated identities in the Chat Preview card', () => {
     render(<ClassicGenerator />);
     const chatUrl = screen.getByLabelText('Generated MultiChat overlay URL').textContent;
     const counterUrl = screen.getByLabelText('Generated viewer counter URL').textContent;
-    await waitFor(() => expect(screen.getByText(/7 of 7/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new RegExp(`${PREVIEW_ROSTER.length} of ${PREVIEW_ROSTER.length}`))).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'LOAD MORE BADGES' }));
     expect(screen.getByLabelText('Generated MultiChat overlay URL').textContent).toBe(chatUrl);
     expect(screen.getByLabelText('Generated viewer counter URL').textContent).toBe(counterUrl);
     const storage = [workspaceDraftKey('multichat'), workspaceDraftKey('counter')]
       .map((key) => window.sessionStorage.getItem(key) ?? '').join('');
-    expect(storage).not.toMatch(/gxufy|feelssunnyman|preview-roster|seven-badge/i);
+    expect(storage).not.toMatch(/gxufy|blu01_|preview-roster|seven-badge/i);
     expect(Array.from(document.querySelector('.tool-grid')!.children).map((node) => node.className)).toEqual([
       'card panel-chat-output', 'card panel-chat-settings', 'card panel-counter-output',
       'card panel-counter-settings', 'card panel-commands', 'card panel-obs',

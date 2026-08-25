@@ -45,6 +45,7 @@ import IsolatedPreviewFrame from '@/components/classic/IsolatedPreviewFrame';
 import { multichatTool } from '@/features/multichat/config';
 import { counterTool } from '@/features/counter/config';
 import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { PREVIEW_ROSTER } from '@/features/multichat/previewRoster';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_PIN_BY,
@@ -399,8 +400,8 @@ describe('no preview content reaches the generator document', () => {
   it('keeps curated roster messages inside the chat frame', () => {
     render(<ClassicGenerator />);
     const inside = frameDoc(CHAT_TITLE).body.textContent ?? '';
-    expect(inside).toContain('feelssunnyman');
-    expect(document.body.textContent ?? '').not.toContain('feelssunnyman');
+    expect(inside).toContain(PREVIEW_ROSTER[1]!.displayName);
+    expect(document.body.textContent ?? '').not.toContain(PREVIEW_ROSTER[1]!.displayName);
   });
 
   it('leaves no positioned overlay layer in the generator document', () => {

@@ -243,7 +243,7 @@ export default function ClassicGenerator({
      Fixtures stay the safe default even when channels are configured; the live
      overlay is an explicit opt-in and is unmounted whenever this returns to data. */
   const [chatPreviewMode, setChatPreviewMode] = useState<'data' | 'live'>('data');
-  /* The exact seven-person Preview Data roster is generator-only. It loads through
+  /* The curated Preview Data roster is generator-only. It loads through
      the validated Preview Identity client, incrementally and independently, while
      its deterministic fallback rows remain visible from the first paint. */
   const previewRoster = useTwitchPreviewRoster();

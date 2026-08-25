@@ -29,6 +29,7 @@ import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import { PREVIEW_DEBOUNCE_MS } from '@/components/workspace/OverlayPreviewFrame';
 import { multichatTool } from '@/features/multichat/config';
 import { MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { PREVIEW_ROSTER } from '@/features/multichat/previewRoster';
 import {
   SAMPLE_COSMETICS,
   SAMPLE_EPOCH,
@@ -328,7 +329,7 @@ describe('the preview opens no connections', () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 4);
     });
     expect(seen.every((entry) => entry.startsWith('fetch:/api/twitch/preview-identity?login='))).toBe(true);
-    expect(seen).toHaveLength(7);
+    expect(seen).toHaveLength(PREVIEW_ROSTER.length);
     /* Specifically: no live overlay socket, pin poll, or viewer poll. */
     expect(seen.filter((entry) => entry.includes('/api/twitch/pins') || entry.includes('/api/viewers'))).toEqual([]);
     vi.useRealTimers();

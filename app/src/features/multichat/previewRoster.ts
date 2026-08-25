@@ -95,7 +95,7 @@ function template(
     platform: 'twitch',
     displayPlatform: visualPlatform(index, page),
     senderId: response?.identity.userId ?? `preview-roster-${entry.login}`,
-    username: response?.identity.displayName ?? entry.displayName,
+    username: entry.displayName,
     color: '#a970ff',
     badges: curatedBadges(entry, response, page),
     text,

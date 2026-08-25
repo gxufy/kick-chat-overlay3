@@ -1,0 +1,210 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected one match, found {count}\n{old}")
+    p.write_text(text.replace(old, new, 1))
+
+
+replace_once(
+    'src/lib/multichatConfig.ts',
+    "  /* bChat: new messages slide in from the right. Its boolean query format is 1/0. */\n  msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),\n  fontColor:",
+    "  /* bChat: new messages slide in from the right. Its boolean query format is 1/0. */\n  msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),\n  /* bChat smooth-scroll is opt-in for existing overlay URLs; new generator URLs enable it. */\n  smoothScroll: z.string().optional().transform(v => v === '1' || v === 'true'),\n  fontColor:",
+)
+replace_once(
+    'src/lib/multichatConfig.ts',
+    "  /** bChat-style horizontal entrance for newly inserted chat rows. */\n  msgSlideIn: boolean;\n  modAction: boolean;",
+    "  /** bChat-style horizontal entrance for newly inserted chat rows. */\n  msgSlideIn: boolean;\n  /** Smoothly scroll the message stack as new rows arrive. */\n  smoothScroll: boolean;\n  modAction: boolean;",
+)
+replace_once(
+    'src/lib/multichatConfig.ts',
+    "  msgSlideIn: false,\n  modAction: true,",
+    "  msgSlideIn: false,\n  smoothScroll: true,\n  modAction: true,",
+)
+replace_once(
+    'src/lib/multichatConfig.ts',
+    "    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, modAction,",
+    "    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, modAction,",
+)
+replace_once(
+    'src/lib/multichatConfig.ts',
+    "    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),\n    ...(modAction ? {} : { modAction: 'false' }),",
+    "    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),\n    ...(smoothScroll ? { smoothScroll: '1' } : {}),\n    ...(modAction ? {} : { modAction: 'false' }),",
+)
+
+replace_once(
+    'src/features/multichat/config.ts',
+    "    msgCaps: keepBoolean(style.msgCaps, d.msgCaps),\n    msgSlideIn: keepBoolean(style.msgSlideIn, d.msgSlideIn),\n    modAction:",
+    "    msgCaps: keepBoolean(style.msgCaps, d.msgCaps),\n    msgSlideIn: keepBoolean(style.msgSlideIn, d.msgSlideIn),\n    smoothScroll: keepBoolean(style.smoothScroll, d.smoothScroll),\n    modAction:",
+)
+
+replace_once(
+    'src/features/multichat/settings.ts',
+    "  {\n    key: 'msgSlideIn',\n    param: 'msgSlideIn',\n    type: 'toggle',\n    label: 'New messages slide in from the right',\n    description: 'bChat-style 250ms horizontal entrance for each newly inserted chat row.',\n    default: D.msgSlideIn,\n  },\n  {\n    key: 'modAction',",
+    "  {\n    key: 'msgSlideIn',\n    param: 'msgSlideIn',\n    type: 'toggle',\n    label: 'New messages slide in from the right',\n    description: 'bChat-style 250ms horizontal entrance for each newly inserted chat row.',\n    default: D.msgSlideIn,\n  },\n  {\n    key: 'smoothScroll',\n    param: 'smoothScroll',\n    type: 'toggle',\n    label: 'Smooth message scroll',\n    description: 'bChat-style scrolling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',\n    default: D.smoothScroll,\n  },\n  {\n    key: 'modAction',",
+)
+
+replace_once(
+    'src/components/classic/ClassicGenerator.tsx',
+    "const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');\nconst MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');\nconst MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');",
+    "const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');\nconst MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');\nconst MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');\nconst MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');",
+)
+replace_once(
+    'src/components/classic/ClassicGenerator.tsx',
+    "            {chat(MC_MSG_CAPS)}\n            {chat(MC_MSG_SLIDE_IN)}\n            {chat(MC_HIDE_NAMES)}",
+    "            {chat(MC_MSG_CAPS)}\n            {chat(MC_MSG_SLIDE_IN)}\n            {chat(MC_SMOOTH_SCROLL)}\n            {chat(MC_HIDE_NAMES)}",
+)
+
+p = Path('src/pages/multichat.tsx')
+text = p.read_text()
+text = text.replace('dirty = true;', 'markDirty();')
+old_flush = """    /* chatis-exact render loop: messages buffer into s.messages and a
+       single 200ms interval flushes to React (script.js update()).
+       Per-message setState with 4 platforms caused re-renders mid-slide
+       — that was the stutter. Deletions flush on the same tick. */
+    let dirty = false;
+    const flushInterval = setInterval(() => {
+      if (!dirty) return;
+      dirty = false;
+      setMessages([...s.messages]);
+    }, 200);
+"""
+new_flush = """    /* Message flush policy.
+       Legacy URLs keep the old chatis 200ms batch cadence. New generator URLs
+       opt into bChat-style smooth scrolling, where store changes are coalesced
+       to one React commit per animation frame instead of arriving in 200ms chunks. */
+    let dirty = false;
+    let flushFrame: number | null = null;
+
+    function flushMessages() {
+      if (!dirty) return;
+      dirty = false;
+      setMessages([...s.messages]);
+    }
+
+    function markDirty() {
+      dirty = true;
+      if (!cfg.smoothScroll || flushFrame !== null) return;
+      flushFrame = requestAnimationFrame(() => {
+        flushFrame = null;
+        flushMessages();
+      });
+    }
+
+    const flushInterval: ReturnType<typeof setInterval> | null = cfg.smoothScroll
+      ? null
+      : setInterval(flushMessages, 200);
+"""
+if text.count(old_flush) != 1:
+    raise SystemExit('src/pages/multichat.tsx: flush block mismatch')
+text = text.replace(old_flush, new_flush, 1)
+text = text.replace('markDirty(); // removal flushes on the shared 200ms tick', 'markDirty(); // removal uses the active flush policy')
+if text.count('      clearInterval(flushInterval);') != 1:
+    raise SystemExit('src/pages/multichat.tsx: cleanup mismatch')
+text = text.replace(
+    '      clearInterval(flushInterval);',
+    '      if (flushInterval) clearInterval(flushInterval);\n      if (flushFrame !== null) cancelAnimationFrame(flushFrame);',
+    1,
+)
+p.write_text(text)
+
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "  const tagMode: SourceTagMode = sourceTagOverride ?? (sourceTagExplicit\n    ? cfg.sourceTag\n    : (multiPlatform || youtubeOnly ? 'icon' : 'none'));\n\n  /* Batching",
+    "  const tagMode: SourceTagMode = sourceTagOverride ?? (sourceTagExplicit\n    ? cfg.sourceTag\n    : (multiPlatform || youtubeOnly ? 'icon' : 'none'));\n\n  /* bChat smooth message handling: observe structural row changes, coalesce\n     them to one frame, and smooth-scroll to the newest row. If messages arrive\n     within 100ms, jump immediately so browser smooth-scroll animations never queue. */\n  const chatContainerRef = useRef<HTMLDivElement>(null);\n  useEffect(() => {\n    if (!cfg.smoothScroll) return;\n    const el = chatContainerRef.current;\n    if (!el || typeof MutationObserver === 'undefined') return;\n    let raf = 0;\n    let lastScrollAt = 0;\n    const scrollNewestIntoView = () => {\n      cancelAnimationFrame(raf);\n      raf = requestAnimationFrame(() => {\n        const now = Date.now();\n        const burst = now - lastScrollAt < 100;\n        lastScrollAt = now;\n        try {\n          el.scrollTo({ top: el.scrollHeight, behavior: burst ? 'auto' : 'smooth' });\n        } catch {\n          el.scrollTop = el.scrollHeight;\n        }\n      });\n    };\n    const observer = new MutationObserver(scrollNewestIntoView);\n    observer.observe(el, { childList: true });\n    return () => {\n      cancelAnimationFrame(raf);\n      observer.disconnect();\n    };\n  }, [cfg.smoothScroll]);\n\n  /* Batching",
+)
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "      transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',\n\n    }}>",
+    "      transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',\n      ...(cfg.smoothScroll && filterVal ? { filter: filterVal } : {}),\n\n    }}>",
+)
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "          @keyframes gxBChatSlideIn {\n            from { opacity: 0; transform: translateX(40px); }\n            to   { opacity: 1; transform: translateX(0); }\n          }\n          .gx-bchat-slide-in {\n            animation: gxBChatSlideIn 250ms ease-out;\n          }",
+    "          @keyframes gxBChatSlideIn {\n            from { opacity: 0; transform: translate3d(40px, 0, 0); }\n            to   { opacity: 1; transform: translate3d(0, 0, 0); }\n          }\n          .gx-bchat-slide-in {\n            animation: gxBChatSlideIn 250ms ease-out;\n            will-change: transform, opacity;\n            backface-visibility: hidden;\n          }",
+)
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "      <div id=\"chat_container\" style={{\n        width:      'calc(100% - 20px)',\n        padding:    '10px',\n        position:   'absolute',\n        bottom:     0,\n        overflow:   'hidden',",
+    "      <div id=\"chat_container\" ref={chatContainerRef} style={{\n        width:      'calc(100% - 20px)',\n        padding:    '10px',\n        position:   'absolute',\n        bottom:     0,\n        maxHeight:  cfg.smoothScroll ? 'calc(100vh - 20px)' : undefined,\n        display:    cfg.smoothScroll ? 'flex' : undefined,\n        flexDirection: cfg.smoothScroll ? 'column' : undefined,\n        willChange: cfg.smoothScroll ? 'scroll-position' : undefined,\n        overflow:   'hidden',",
+)
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "                ...(filterVal ? { filter:filterVal } : {}),\n        ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),",
+    "                ...(!cfg.smoothScroll && filterVal ? { filter:filterVal } : {}),\n        ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),",
+)
+replace_once(
+    'src/components/overlay/ChatOverlay.tsx',
+    "          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;",
+    "          if (cfg.animation==='slide' && !cfg.smoothScroll) return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;",
+)
+
+replace_once(
+    'tests/unit/classicGenerator.test.tsx',
+    "  it('renders all 25 MultiChat settings', () => {\n    mount();\n    expect(MULTICHAT_CATALOG).toHaveLength(25);",
+    "  it('renders all 26 MultiChat settings', () => {\n    mount();\n    expect(MULTICHAT_CATALOG).toHaveLength(26);",
+)
+replace_once(
+    'tests/unit/classicGenerator.test.tsx',
+    "       render must already show all 25. */",
+    "       render must already show all 26. */",
+)
+replace_once(
+    'tests/unit/multichatCatalog.test.ts',
+    "      msgSlideIn: true,\n      modAction: false,",
+    "      msgSlideIn: true,\n      smoothScroll: false,\n      modAction: false,",
+)
+replace_once(
+    'tests/unit/multichatCatalog.test.ts',
+    "      msgSlideIn: [true, false],\n      modAction: [true, false],",
+    "      msgSlideIn: [true, false],\n      smoothScroll: [true, false],\n      modAction: [true, false],",
+)
+replace_once(
+    'tests/unit/multichatConfig.test.ts',
+    "      msgSlideIn: false,\n      fontColor: '',",
+    "      msgSlideIn: false,\n      smoothScroll: false,\n      fontColor: '',",
+)
+replace_once(
+    'tests/unit/multichatConfig.test.ts',
+    "      msgSlideIn: false,\n      modAction: true,",
+    "      msgSlideIn: false,\n      smoothScroll: true,\n      modAction: true,",
+)
+
+Path('tests/unit/smoothScroll.test.tsx').write_text("""import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, waitFor } from '@testing-library/react';
+import ChatOverlay from '@/components/overlay/ChatOverlay';
+import { buildParsedMessage } from '@/lib/multichatMessageModel';
+import { MULTICHAT_GENERATOR_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';
+import { SAMPLE_COSMETICS, SAMPLE_MESSAGES } from '@/features/multichat/samples';
+
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+const channels = { kick: '', twitch: 'gxufy', youtube: '', tiktok: '' };
+
+describe('bChat-style smooth message handling', () => {
+  it('preserves legacy overlay URLs but enables smooth scrolling in new generator URLs', () => {
+    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);
+    const q = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));
+    expect(q.get('smoothScroll')).toBe('1');
+  });
+
+  it('accepts both 1 and true query spellings', () => {
+    expect(MultichatQuerySchema.parse({ smoothScroll: '1' }).smoothScroll).toBe(true);
+    expect(MultichatQuerySchema.parse({ smoothScroll: 'true' }).smoothScroll).toBe(true);
+    expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);
+  });
+
+  it('does not stack the legacy height ghost on top of smooth scrolling', async () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
+    const raw = SAMPLE_MESSAGES[0].message;
+    const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
+    const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
+    await waitFor(() => expect(container.querySelector('.gx-bchat-slide-in')).not.toBeNull());
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+  });
+});
+""")

@@ -11,6 +11,7 @@ import {
   loadSevenTVPreviewResources,
   loadTwitchPreviewIdentity,
 } from '@/lib/previewIdentityProviders';
+import { resolveTwitchCommunityBadges } from '@/lib/communityBadges';
 
 const GENERIC_ERROR = { error: 'Unable to load Twitch preview identity.' };
 
@@ -40,11 +41,32 @@ const handler: NextApiHandler = async (req, res) => {
     const twitch = await loadTwitchPreviewIdentity(login);
     if (!twitch) return res.status(404).json({ error: 'Twitch user not found.' });
 
+    let twitchOutcome = twitch.outcome;
+    if (providers.includes('Twitch')) {
+      const communityBadges = await resolveTwitchCommunityBadges(
+        twitch.identity.userId,
+        twitch.identity.login,
+      );
+      const communityBadgeMap = Object.fromEntries(
+        communityBadges.flatMap((badge) => badge.url ? [[`${badge.type}/1`, badge.url]] : []),
+      );
+      twitchOutcome = {
+        ...twitch.outcome,
+        resources: {
+          ...twitch.outcome.resources,
+          globalBadges: {
+            ...twitch.outcome.resources.globalBadges,
+            ...communityBadgeMap,
+          },
+        },
+      };
+    }
+
     const outcomes = await Promise.all(providers.map(async (provider) => {
       try {
         switch (provider) {
           case 'Twitch':
-            return [provider, twitch.outcome] as const;
+            return [provider, twitchOutcome] as const;
           case 'FFZ':
             return [provider, await loadFFZPreviewResources(twitch.identity.userId)] as const;
           case 'BTTV':

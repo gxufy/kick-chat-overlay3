@@ -1,22 +1,58 @@
-name: Repository cleanup audit
+name: Repository cleanup
 
 on:
   push:
     branches: [chore/repo-cleanup]
     paths:
+      - .github/scripts/normalize-repo.py
       - .github/workflows/repo-reference-audit.yml
 
+permissions:
+  contents: write
+
 jobs:
-  audit:
+  normalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Find reference-project names
+        with:
+          ref: chore/repo-cleanup
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Normalize repository
+        run: python3 .github/scripts/normalize-repo.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Audit repository text
         shell: bash
         run: |
-          set +e
-          grep -RniE 'StreamNook|ChatIS|chatis|bChat|BChat|unified-chat-lite|Fiszh/UChat|ref-uchat|UChat-style' \
-            src tests README.md .github \
-            --exclude='repo-reference-audit.yml' \
-            --exclude='THIRD_PARTY_NOTICES.md'
-          exit 0
+          if grep -RniE 'StreamNook|ChatIS|Fiszh/UChat|ref-uchat|UChat-style|bChat-style|unified-chat-lite' src tests README.md; then
+            echo 'Reference-project wording remains in application source.'
+            exit 1
+          fi
+          if grep -Rni '/open-source' src tests; then
+            echo 'Removed disclosure route is still referenced.'
+            exit 1
+          fi
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git checkout -- next-env.d.ts 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No cleanup changes to commit"
+          else
+            git commit -m "Normalize repository source"
+            git push origin HEAD:chore/repo-cleanup
+          fi

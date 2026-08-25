@@ -19,7 +19,6 @@ import {
   type PlatformStatuses,
   type ViewerCounterChannels,
   type ViewerCounterConfig,
-  type ViewerPlatform,
 } from '@/lib/viewerCounterConfig';
 
 const POLL_INTERVAL_MS = 10_000;
@@ -171,6 +170,8 @@ export default function LiveCounterPreview({
       role="group"
       aria-label="Live viewer counter preview"
       data-testid="counter-live-preview"
+      data-overlay-url={url}
+      data-preview-height={String(height)}
     >
       <IsolatedPreviewFrame
         title="Live viewer counter preview"

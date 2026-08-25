@@ -13,8 +13,8 @@ afterEach(cleanup);
 
 const channels = { kick: 'gxufy', twitch: '', youtube: '', tiktok: '' };
 
-describe('bChat-style message slide-in', () => {
-  it('is off by default and accepts bChat boolean query syntax', () => {
+describe('message slide-in', () => {
+  it('is off by default and accepts boolean query syntax', () => {
     expect(MultichatQuerySchema.parse({}).msgSlideIn).toBe(false);
     expect(MultichatQuerySchema.parse({ msgSlideIn: '1' }).msgSlideIn).toBe(true);
     expect(MultichatQuerySchema.parse({ msgSlideIn: '0' }).msgSlideIn).toBe(false);
@@ -59,7 +59,7 @@ describe('bChat-style message slide-in', () => {
       />,
     );
     await waitFor(() => {
-      expect(container.querySelector('.gx-bchat-slide-in')).not.toBeNull();
+      expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
     });
   });
 });

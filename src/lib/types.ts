@@ -1,19 +1,12 @@
-/* Unified multi-platform chat model.
- *
- * Connectors (kick/youtube/tiktok) emit UnifiedMessage — a plain-data,
- * platform-agnostic message (modelled after unified-chat-lite's Message
- * dataclass: text + emote char-offsets, not pre-rendered nodes).
- * The renderer in pages/index.tsx converts UnifiedMessage → ParsedMessage
- * (React nodes), applying 7TV emotes/cosmetics for Kick.
- */
+
 
 export type Platform = 'kick' | 'twitch' | 'youtube' | 'tiktok';
 
-/** StreamNook event categories — drive event-card icon + tint */
+
 export type EventCategory = 'subscription' | 'gift' | 'raid' | 'cheer' | 'milestone' | 'follow' | 'announcement';
 
 export interface UnifiedEmote {
-  /** char offsets into `text` (codepoint-safe, like unified-chat-lite) */
+  
   begin: number;
   end: number;
   /** the literal token in the text, e.g. emote name */
@@ -69,7 +62,7 @@ export interface UnifiedMessage {
   category?: EventCategory;
   /** channel-point redeem / highlighted message (twitch tags, kick reward event) */
   redeem?: boolean | string;
-  /** avatar URL — yt/tiktok only (StreamNook: other platforms don't carry one) */
+  
   avatar?: string;
   /** Provider-native reply preview (currently Kick). */
   reply?: UnifiedReply;

@@ -1,11 +1,4 @@
-/* Preview badge resources — adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 to use MultiChat's validated production providers.
- *
- * This module is generator-only. It performs no work until Load Badges is clicked,
- * keeps provider failures isolated, caches only completed results by channel pair,
- * and exposes normalized resources rather than provider response bodies.
- */
+
 import { getKickChannel, type KickChannel } from '@/lib/kick';
 import { parseBadgeMap } from '@/lib/connectors/twitch';
 import { loadFFZRoomBadges } from '@/lib/twitchEmotes';

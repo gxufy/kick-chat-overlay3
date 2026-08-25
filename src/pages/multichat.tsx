@@ -289,10 +289,7 @@ function MultichatOverlay() {
     let twitchRoomId: string | null = null; // for !multichat refresh emotes
     let youtubeChannelId: string | null = null;
 
-    /* GQL cosmetics fetcher (UChat approach) — deterministic per-chatter
-       lookups; EventAPI stays on for live deltas. When cosmetics land,
-       rebuild that sender's buffered messages so paints apply
-       retroactively, not just to their next message. */
+    
     const cosmeticsFetcher = createCosmeticsFetcher(
       {
         get paints() { return s.paints; },
@@ -334,7 +331,7 @@ function MultichatOverlay() {
       settled.add(platform);
       if (settled.size >= platformCount) {
         dismissLoaderWhenEligible();
-        // chatis-style connect greeting — once, when everything's up
+
         if (!greeted) {
           greeted = true;
           showFloat(1, 'Multi-Chat Overlay made by @Gxufy', 5000, 0.3);
@@ -342,7 +339,7 @@ function MultichatOverlay() {
       }
     }
 
-    /* UChat mention coloring: name→color map fills as users chat */
+    
     const mentionColors = new Map<string, string>();
     const mentionCtx = { enabled: cfg.mentionColor, colors: mentionColors };
 
@@ -369,11 +366,7 @@ function MultichatOverlay() {
     const hiddenPlatforms = new Set<Platform>();
     let sharedChatRuntime = cfg.sharedChatEnabled;
 
-    /* Message flush policy.
-       Smooth handling normally coalesces store changes to one React commit per
-       animation frame. ChatIS Slide is the exception by design: the upstream
-       implementation consumes one aggregate batch every 200ms, then opens that
-       batch's height over 150ms. Keep that cadence whenever Slide is selected. */
+    
     const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
     let dirty = false;
     let flushFrame: number | null = null;
@@ -441,7 +434,7 @@ function MultichatOverlay() {
     }
 
     function removeMessages(platform: string, opts: { id?: string; username?: string; senderId?: string }) {
-      if (!cfg.modAction) return; // UChat: moderation actions can be disabled
+      if (!cfg.modAction) return;
       if (opts.id) {
         s.messages = s.messages.filter(m => m.id !== `${platform}:${opts.id}`);
       } else if (opts.senderId) {
@@ -549,7 +542,7 @@ function MultichatOverlay() {
           // FFZ → BTTV → 7TV (later wins), scoped to Twitch so a same-name
           // Kick emote can never alter Twitch rendering.
           s.emotes.twitch = await loadTwitchEmotes(roomId);
-          // 7TV cosmetics for Twitch chatters (chatis genSubs :481):
+
           // entitlements/cosmetics for the channel ctx + live emote set
           if (cfg.sevenTVCosmeticsEnabled) {
             let setId: string | null = null;
@@ -787,10 +780,7 @@ function MultichatOverlay() {
     /** Everything on screen or in the speakers, gone on unmount. */
     cleanups.push(removeAllFloats);
 
-    /* handle7TVDispatch — ChatIS-v2 handleDispatchEvent (script.js:700).
-       platform: which connection namespace the entitlements belong to;
-       entitlements are keyed "<platform>:<user-id>" so kick and twitch
-       users can't collide. */
+    
     function handle7TVDispatch(data: any, platform: 'kick' | 'twitch') {
       if (data.type === 'cosmetic.create') {
         // cosmetic id lives on body.object.id (body.id is the event id —
@@ -798,7 +788,7 @@ function MultichatOverlay() {
         const obj = data.body.object;
         const id = obj?.id ?? data.body.id;
         if (obj.kind === 'BADGE') {
-          // badge art from the object's own host url (chatis :870)
+
           const host = obj.data?.host?.url;
           s.badges.push({ id, image: host ? `https:${host}/3x` : `https://cdn.7tv.app/badge/${id}/3x` });
         }
@@ -809,7 +799,7 @@ function MultichatOverlay() {
       }
       if (data.type === 'entitlement.create') {
         const kind = data.body.object.kind;
-        // chatis :829 switches on kind — EMOTE_SET/AVATAR entitlements are
+
         // the most common and MUST be ignored (treating them as paints
         // clobbered every real paint ref with an emote-set id)
         if (kind !== 'BADGE' && kind !== 'PAINT') return;
@@ -841,7 +831,7 @@ function MultichatOverlay() {
         if (obj?.kind === 'BADGE') s.badges = s.badges.filter(b => b.id !== obj.id);
         if (obj?.kind === 'PAINT') s.paints = s.paints.filter(p => p.id !== obj.id);
       }
-      // Live emote updates (chatis :745): channel adds/renames/removes
+
       // land without a reload
       if (data.type === 'emote_set.update') {
         const body = data.body;
@@ -870,13 +860,7 @@ function MultichatOverlay() {
       }
     }
 
-    /* One SSE per platform context — reconnects itself on error.
-       StreamNook bootstrap_presence (seventv_eventapi.rs): subscribing
-       alone only delivers DELTAS; a passive presence POST (kind 1, with
-       our session id from the hello frame) makes 7TV push the cosmetics
-       of everyone ALREADY in the channel. Without it, paints only ever
-       appeared for users who re-entered after we connected — the reason
-       cosmetics seemed to never load. */
+    
     function open7TVEvents(sseUrl: string, platform: 'kick' | 'twitch', stvUserId: string | null, channelId: string) {
       let sse = new EventSource(sseUrl);
       let closed = false;

@@ -1,15 +1,10 @@
-/* Renders UnifiedMessage → ParsedMessage (React nodes).
- *
- * Platform emotes arrive as char-offsets into text (unified-chat-lite
- * scheme); 7TV emotes (Kick only) are word-matched in the text gaps,
- * preserving the zero-width overlay behavior from the original overlay.
- */
+
 import React from 'react';
 import type { SevenTVEmote, ParsedMessage, KickChannel } from './kick';
 import type { UnifiedMessage, Platform } from './types';
 import { handleAssetError } from './render/imageFallback';
 
-/* StreamNook PROVIDERS metadata (types/providers.ts) — brand colors/labels */
+
 export const PROVIDERS: Record<Platform, { color: string; label: string }> = {
   twitch: { color: '#9147ff', label: 'Twitch' },
   kick: { color: '#53fc18', label: 'Kick' },
@@ -47,9 +42,7 @@ function providerIcon(p: Platform): React.ReactNode {
 
 export type SourceTagMode = 'none' | 'dot' | 'label' | 'icon';
 
-/* StreamNook SourceTag (OverlayChat.tsx:294) — inline platform marker.
-   'dot' (default): 0.5em provider-colored circle; 'icon': brand SVG;
-   'label': colored text pill. NOT a badge — leads the message line. */
+
 export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactNode {
   if (mode === 'none') return null;
   const meta = PROVIDERS[platform];
@@ -85,12 +78,8 @@ export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactN
   );
 }
 
-/* Name colors for platforms that don't send one:
-   - YouTube/TikTok: StreamNook color_for (youtube.rs:1708) — FNV-1a hash
-     of the user id over its exact 14-color palette
-   - Twitch: chatis (script.js:1898) — classic 15-color palette indexed
-     by (firstCharCode + lastCharCode) % 15 */
-const SN_PALETTE = ['#ff4f4f', '#ff8c42', '#ffd23f', '#9ee493', '#4fd1c5', '#4f9dff', '#7c6cff', '#c77dff', '#ff6fae', '#f25c54', '#43aa8b', '#577590', '#e07a5f', '#81b29a'];
+
+const NAME_PALETTE = ['#ff4f4f', '#ff8c42', '#ffd23f', '#9ee493', '#4fd1c5', '#4f9dff', '#7c6cff', '#c77dff', '#ff6fae', '#f25c54', '#43aa8b', '#577590', '#e07a5f', '#81b29a'];
 const TWITCH_COLORS = ['#FF0000', '#0000FF', '#008000', '#B22222', '#FF7F50', '#9ACD32', '#FF4500', '#2E8B57', '#DAA520', '#D2691E', '#5F9EA0', '#1E90FF', '#FF69B4', '#8A2BE2', '#00FF7F'];
 
 export function fallbackColor(platform: Platform, username: string, senderId?: string): string {
@@ -102,7 +91,7 @@ export function fallbackColor(platform: Platform, username: string, senderId?: s
       hash ^= key.charCodeAt(i) & 0xff;
       hash = Math.imul(hash, 16777619);
     }
-    return SN_PALETTE[(hash >>> 0) % SN_PALETTE.length];
+    return NAME_PALETTE[(hash >>> 0) % NAME_PALETTE.length];
   }
   if (platform === 'twitch') {
     return TWITCH_COLORS[(username.charCodeAt(0) + username.charCodeAt(username.length - 1)) % TWITCH_COLORS.length];
@@ -110,9 +99,7 @@ export function fallbackColor(platform: Platform, username: string, senderId?: s
   return '#ffffff';
 }
 
-/* chatis lightens user-set colors with brightness ≤ 50 by 30 (tinycolor
-   formula: brightness = (R*299 + G*587 + B*114) / 1000; lighten = +30%
-   lightness in HSL). Keeps dark names readable on stream. */
+
 export function readableColor(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
@@ -207,10 +194,7 @@ function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: stri
   return nodes;
 }
 
-/* UChat-style colorable mentions (ref-uchat emoteParser.ts:286):
-   tokens normalized by stripping @ and trailing commas; a mention only
-   colors if that user has chatted before (name → color map filled as
-   messages arrive). */
+
 export interface MentionContext {
   enabled: boolean;
   /** lowercase username → their display color */
@@ -309,9 +293,7 @@ const SIMPLE_KICK_BADGES: Record<string, string> = {
   staff: '/badges/staff.svg',
 };
 
-/* YouTube role badges — StreamNook OverlayChat.tsx YT_ROLE_BADGES:
-   inline SVG data-URIs (blue mod shield #3ea6ff, grey verified check).
-   Owner gets no badge — the whole name renders as a gold pill instead. */
+
 const YT_ICON_BADGES: Record<string, string> = {
   moderator: 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3ea6ff"><path d="M12 2 4 5.5V12c0 4.7 3.4 8.6 8 10 4.6-1.4 8-5.3 8-10V5.5Zm5.3 6.1-6.5 6.9-3.6-3.4 1.2-1.3 2.4 2.2 5.3-5.7Z"/></svg>'),
@@ -319,10 +301,10 @@ const YT_ICON_BADGES: Record<string, string> = {
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#999999"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.5-3.9-3.9 1.4-1.4 2.5 2.5 5.9-5.9 1.4 1.4Z"/></svg>'),
 };
 
-/* StreamNook YT_BADGE_ORDER: verified → moderator → member */
+
 const YT_BADGE_ORDER: Record<string, number> = { verified: 0, moderator: 1, subscriber: 2 };
 
-/* Official Twitch badge UUIDs (unified-chat-lite app.js TWITCH_BADGE_IDS) */
+
 const TWITCH_BADGE_IDS: Record<string, string> = {
   broadcaster: '5527c58c-fb7d-422d-b71b-f309dcb85cc1',
   moderator: '3267646d-33f0-4b17-b3df-f923a41db1d0',
@@ -336,8 +318,7 @@ const TWITCH_BADGE_IDS: Record<string, string> = {
   'sub-gifter': 'f1d8486f-eb2e-4553-b44f-4d614617afc1',
 };
 
-/* StreamNook: the YouTube channel owner gets no badge — their whole
-   name renders as a gold pill (#ffd600 bg, dark text) instead. */
+
 export function isYouTubeOwner(msg: UnifiedMessage): boolean {
   return msg.platform === 'youtube' && msg.badges.some(b => b.type === 'owner');
 }
@@ -348,7 +329,7 @@ export function renderBadges(
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
 
-  // StreamNook: verified → moderator → member; owner has no badge
+
   // (the name renders as a gold pill instead — see isYouTubeOwner)
   const badges = msg.platform === 'youtube'
     ? [...msg.badges]

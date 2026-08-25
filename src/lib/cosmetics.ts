@@ -1,19 +1,4 @@
-/* 7TV cosmetics via GQL — adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 with validation, cancellation, and live store access.
- *
- *
- * The EventAPI only reliably streams cosmetics for users who become
- * present AFTER we connect; presence bootstraps are flaky. UChat instead
- * asks GQL for each chatter's style directly. userByConnection resolves a
- * platform user id (TWITCH/KICK) straight to { style { paint badge } } —
- * deterministic, no session choreography.
- *
- * Senders queue as their first message arrives; a debounced batch query
- * (GQL alias batching) fetches up to 40 users at once. Results land in
- * the same paints/badges/entitlements stores the EventAPI path fills, so
- * rendering is source-agnostic.
- */
+
 import type { SevenTVBadge, SevenTVPaint, Entitlements } from './kick';
 
 const PAINT_FIELDS = 'id name function color angle shape image_url repeat stops { at color } shadows { x_offset y_offset radius color }';

@@ -1,24 +1,4 @@
-/* Preview composer workflow adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's UnifiedMessage production renderer.
- *
- * The custom preview message control, inside the Chat overlay card.
- *
- * This is a preview control, not a demo mode: it changes what the preview above
- * it shows and nothing else. It sends no message to any provider, it does not
- * touch the generated overlay URL, and the messages it adds are never written to
- * the saved draft. A composed line exists in generator state until the tab is
- * closed.
- *
- * It is deliberately compact — one row of fields, one row of actions — because it
- * lives inside a card that already holds a 600px preview, a URL, and two buttons.
- * A taller control would push the chat settings card off the first screen, which
- * is the layout this page was approved with.
- *
- * The value it produces is a `UnifiedMessage`, built by composePreviewMessage,
- * so a composed line travels the identical conversion path as a fixture and as a
- * live message. See that module for why it is plain data rather than nodes.
- */
+
 import { useEffect, useState } from 'react';
 import {
   PREVIEW_NAME_MAX,

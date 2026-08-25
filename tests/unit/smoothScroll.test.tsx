@@ -9,7 +9,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const channels = { kick: '', twitch: 'gxufy', youtube: '', tiktok: '' };
 
-describe('bChat-style smooth message handling', () => {
+describe('smooth message handling', () => {
   it('makes smooth handling the workspace default without changing legacy URL strings', () => {
     // The parser remains a compatibility surface; the /multichat page promotes
     // omission to smooth at runtime. Legacy serialization therefore stays exact.
@@ -35,13 +35,13 @@ describe('bChat-style smooth message handling', () => {
     expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);
   });
 
-  it('keeps the authentic ChatIS height ghost when Slide is selected', async () => {
+  it('keeps the height ghost when Slide is selected', async () => {
     const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
     const raw = SAMPLE_MESSAGES[0].message;
     const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
     const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
     await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).not.toBeNull());
     await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).toBeNull());
-    expect(container.querySelector('.gx-bchat-slide-in')).not.toBeNull();
+    expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
   });
 });

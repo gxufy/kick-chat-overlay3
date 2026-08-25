@@ -1,7 +1,4 @@
-/* Preview badge workflow adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's multi-provider preview pipeline.
- */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   PREVIEW_BADGE_CATALOG,

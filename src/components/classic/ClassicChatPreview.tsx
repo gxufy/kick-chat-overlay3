@@ -1,41 +1,4 @@
-/* Preview rendering workflow adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 to retain MultiChat's one production rendering path.
- *
- * The generator's built-in chat preview: the production overlay over fixtures.
- *
- * This is NOT a second chat renderer, and deliberately so. It mounts
- * `components/ChatOverlay` — the same component pages/multichat.tsx mounts — and
- * feeds it messages produced by `lib/multichatMessageModel`, the same conversion
- * the overlay route performs on live connector output. Every appearance setting
- * therefore behaves here exactly as it will in OBS, because the code deciding
- * that is the same code: badges, 7TV emotes, paints, name pills, avatars, event
- * cards, source tags, stroke, shadow, fade, font, filters, and the pin card
- * included.
- *
- * The configuration is not mapped from generator state by hand. State is
- * serialized to a query string by the tool's own serializer and parsed back
- * through `MultichatQuerySchema` — the identical round trip the overlay route
- * performs on a real URL. A hand-written mapping would be a second
- * interpretation of the same twenty-four parameters and would drift; this cannot,
- * because a parameter the serializer stops emitting is a parameter this stops
- * receiving.
- *
- * WHAT IT DOES NOT DO. No socket, no fetch, no polling, no OAuth. It is a pure
- * function of (query string, fixtures): mount it and it paints, which is the
- * point — a live preview of a channel nobody has typed yet is correctly empty,
- * and an empty frame shows nothing about styling.
- *
- * There IS an iframe, but not a navigating one. `IsolatedPreviewFrame` writes a
- * local document and portals the renderer into it; nothing is loaded over the
- * network and no overlay URL is visited. That containment is not cosmetic: the
- * overlay's `html, body` reset and its absolutely positioned chat and pin layers
- * are written to own a whole browser source, and in a shared document they take
- * over the generator page. See the frame's own header for the full account.
- *
- * The fixtures never reach a generated URL. They are not serialized, not written
- * to the draft, and not part of `chatQuery`; this component only reads it.
- */
+
 import { useMemo } from 'react';
 import ChatOverlay, { type PinnedState } from '@/components/overlay/ChatOverlay';
 import IsolatedPreviewFrame, {

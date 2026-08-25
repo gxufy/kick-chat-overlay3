@@ -43,9 +43,7 @@ import {
 import { handleAssetError } from './render/imageFallback';
 import type { Platform, UnifiedMessage } from './types';
 
-/* Adapted from UChat's platform-specific emote parser at
- * Fiszh/UChat@ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's UnifiedMessage production path. */
+
 
 /**
  * The cosmetic data a conversion reads from.
@@ -88,11 +86,7 @@ export type MessageFilterConfig = {
   showRedeems: boolean;
 };
 
-/**
- * Well-known chat bots, hidden on every platform without being named.
- *
- * Matches the chatis list. Lowercase; comparisons lowercase the candidate.
- */
+
 const KNOWN_BOTS: ReadonlySet<string> = new Set([
   'streamelements', 'streamlabs', 'nightbot', 'moobot',
   'titlechange_bot', 'supibot', 'pajbot', 'huwobot',
@@ -178,7 +172,7 @@ export function buildPaintStyle(
     }
   }
   for (const shadow of paint.shadows) {
-    if (!paintShadows) break; // UChat: paint shadows toggle
+    if (!paintShadows) break;
     shadows.push(
       `drop-shadow(${decimalToRGBA(shadow.color)} ${shadow.x_offset}px ${shadow.y_offset}px ${shadow.radius}px)`,
     );
@@ -214,7 +208,7 @@ export function buildParsedMessage(
   const badgeNodes = renderBadges(um, cosmetics.channel?.subscriber_badges ?? []);
   let background = '';
   let filter = '';
-  // 7TV cosmetics apply to kick AND twitch chatters (chatis parity)
+
   if (
     (um.platform === 'kick' || um.platform === 'twitch') &&
     cfg.sevenTVCosmeticsEnabled &&
@@ -265,7 +259,7 @@ export function buildParsedMessage(
       background,
       filter,
       badges: badgeNodes,
-      // StreamNook: yt channel owner name renders as a gold pill
+
       ...(isYouTubeOwner(um) ? { namePill: '#ffd600|#111111' } : {}),
     },
     // Kick, Twitch and YouTube can all carry a platform-scoped 7TV set.

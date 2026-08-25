@@ -1,25 +1,4 @@
-/* The preview-only background workflow is adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's isolated production preview frame.
- *
- * WHAT IT IS. Four backdrops for the preview surface — Transparent, Dark, Light
- * and a Custom colour — so someone can judge how the overlay reads against
- * whatever their scene puts behind it. Workspace-only in the strictest sense:
- * the backdrop lives on the preview wrapper, never inside the overlay document
- * and never in a generated URL. It cannot reach OBS, and nothing it holds is
- * serialized into a query string.
- *
- * WHY RADIOS RATHER THAN THE TWO-STATE BUTTON IT REPLACED. Four discrete named
- * choices are a radio group, not a toggle: a native group announces "3 of 4" and
- * moves under the arrow keys with no scripting, and it can name Dark and Custom
- * outright rather than hiding them behind a cycle a screen reader cannot see.
- *
- * WHY THE COLOUR FIELD ONLY APPEARS UNDER CUSTOM. A colour input that did nothing
- * until Custom was picked would be a control that visibly does nothing, which
- * this card treats as worse than no control — so it is rendered only while Custom
- * is the selected mode. The chosen colour is remembered by the parent across a
- * detour through another mode, so returning to Custom restores it.
- */
+
 import {
   PREVIEW_BACKGROUNDS,
   isPreviewBackgroundId,

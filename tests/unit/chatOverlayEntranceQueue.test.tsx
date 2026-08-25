@@ -38,7 +38,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('shared ChatIS batch entrance', () => {
+describe('shared batch entrance', () => {
   it.each(['twitch', 'kick', 'tiktok'] as const)('uses one aggregate SlideGroup for one %s flush', (platform) => {
     const messages = [parsed(platform, 'one'), parsed(platform, 'two'), parsed(platform, 'three')];
     const { container } = render(<ChatOverlay {...props('slide', platform)} messages={messages} />);

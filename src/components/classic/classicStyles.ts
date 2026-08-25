@@ -25,10 +25,7 @@
  */
 
 export const CLASSIC_GENERATOR_CSS = `
-/* ── multichat design system ──
-   ChatIS-v2 card language (charcoal cards, chunky shadows, pill toggles, one
-   accent) with StreamNook polish: every section is a card, controls feel
-   tactile, single accent #4a84fa used sparingly. Montserrat for UI. */
+
 *, *::before, *::after { box-sizing: border-box; }
 :root {
   --bg: #141418;
@@ -265,7 +262,7 @@ label { font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: n
 .classic-range input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 20px; cursor: pointer; }
 .classic-range-out { font-family: 'Roboto Mono', monospace; font-size: 0.72rem; color: var(--accent); min-width: 3.4em; text-align: right; }
 
-/* Pill toggles — the ChatIS signature control, scaled to our palette */
+
 .toggle-wrap { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-bottom: 2px; }
 .toggle-wrap > label:first-child { font-size: 0.82rem; color: var(--muted); cursor: pointer; user-select: none; order: -1; flex: 1; text-align: right; }
 .toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; display: inline-block; }

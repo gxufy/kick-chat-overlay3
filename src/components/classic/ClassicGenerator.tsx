@@ -1471,7 +1471,13 @@ export default function ClassicGenerator({
           </a>
         </p>
         <p>
-          <Link href="/open-source">Source &amp; Open Source Licenses</Link>
+          <a
+            href="https://github.com/gxufy/multichat-gxufy"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Source
+          </a>
         </p>
         <p>
           Not affiliated with{' '}

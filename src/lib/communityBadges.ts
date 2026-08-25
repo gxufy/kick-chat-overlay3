@@ -428,18 +428,14 @@ function dedupe(assignments: Assignment[]): Assignment[] {
   return out;
 }
 
-function bchatParity(assignments: Assignment[]): Assignment[] {
+function applyProviderMultiplicity(assignments: Assignment[]): Assignment[] {
   const blue = assignments.filter((badge) => badge.provider === 'bluzyrino');
   if (blue.length <= 1) return assignments;
   const keep = blue[blue.length - 1];
   return assignments.filter((badge) => badge.provider !== 'bluzyrino' || badge === keep);
 }
 
-/**
- * Resolve every public community badge currently used by UChat/bChat for a Twitch chatter.
- * Native Twitch and 7TV badges are handled elsewhere; this function only returns
- * third-party/community badges with pre-resolved HTTPS artwork.
- */
+
 export async function resolveTwitchCommunityBadges(
   userId: string,
   username: string,
@@ -457,7 +453,7 @@ export async function resolveTwitchCommunityBadges(
     ...(username ? loaded.byUsername.get(username.toLowerCase()) ?? [] : []),
   ];
 
-  return bchatParity(dedupe(matches)).map((badge) => ({
+  return applyProviderMultiplicity(dedupe(matches)).map((badge) => ({
     type: `community:${badge.provider}:${slug(badge.id)}`,
     url: badge.url,
   }));

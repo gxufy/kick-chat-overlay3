@@ -191,7 +191,7 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'msgSlideIn',
     type: 'toggle',
     label: 'New messages slide in from the right',
-    description: 'bChat-style 250ms horizontal entrance for each newly inserted chat row.',
+    description: '250ms horizontal entrance for each newly inserted chat row.',
     default: D.msgSlideIn,
   },
   {

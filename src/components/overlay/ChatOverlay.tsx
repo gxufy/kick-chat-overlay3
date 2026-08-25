@@ -1,8 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
-/* Batch update behavior adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 so production and preview repaint same-ID resources. */
+
 import Head from 'next/head';
 import type { MultichatConfig } from '../../lib/multichatConfig';
 import type { ParsedMessage } from '../../lib/kick';
@@ -68,7 +66,7 @@ export const FONT_FAMILIES: Record<string, string> = {
   alsina:      "'Alsina', cursive",
 };
 
-/* Exact values from chatis size_small/medium/large.css */
+
 const SIZE = {
   small: {
     fontSize:'20px', lineHeight:'30px',
@@ -94,7 +92,7 @@ const SIZE = {
 } as const;
 type SzKey = keyof typeof SIZE;
 
-/* Exact chatis shadow_*.css — filter: drop-shadow (NOT text-shadow) */
+
 function getShadowFilter(s: string) {
   if (s === 'small')  return 'drop-shadow(2px 2px 0.2rem black)';
   if (s === 'medium') return 'drop-shadow(2px 2px 0.35rem black)';
@@ -102,27 +100,15 @@ function getShadowFilter(s: string) {
   return '';
 }
 
-/* Exact chatis stroke_*.css */
+
 function getStroke(s: string) {
   const m: Record<string,string> = { thin:'1px black', medium:'2px black', thick:'3px black', thicker:'4px black' };
   return m[s] ?? '';
 }
 
-/* Batch slide — exact chatis jQuery behaviour:
- *
- * Chatis does NOT slide the content in. It:
- *   1. Measures the natural height of the incoming batch (via hidden ghost div)
- *   2. Inserts an EMPTY ghost div at height 0 into the container
- *   3. Animates that ghost div 0 → naturalHeight over 150ms (jQuery swing = ease-in-out)
- *   4. In the animation COMPLETE callback: removes ghost, inserts real content
- *
- * Effect: space opens up (older messages get pushed), THEN content snaps in.
- * Content never moves — only the space moves.
- * Each batch runs its OWN independent 150ms regardless of how fast chat moves.
- * New batches never interrupt previous batches — they just stack their own ghost divs.
- */
+
 function SlideGroup({ children, fontSize, lineHeight, fontFamily }: { children: React.ReactNode; fontSize:string; lineHeight:string; fontFamily:string }) {
-  // Exact chatis jQuery behaviour:
+
   // 1. $auxDiv appended to #chat_container (hidden), measure height
   // 2. $animDiv inserted (empty), animated 0→naturalH over 150ms swing
   // 3. Complete callback: remove $animDiv, insert real content
@@ -200,9 +186,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
   const fontCss    = overlayFontCss(cfg.font);
-  /* ChatIS Slide is a complete entrance mode, not a smooth-scroll variant.
-     When Slide is selected, preserve ChatIS's original bottom-anchored layout
-     and height-ghost motion even though smooth handling is the site default. */
+  
   const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
   const loaderPhase: StartupLoaderPhase = showLoader === true
     ? 'visible'
@@ -227,10 +211,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     ? cfg.sourceTag
     : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
-  /* bChat smooth message handling for non-Slide modes: observe structural row
-     changes, coalesce them to one frame, and smooth-scroll to the newest row.
-     ChatIS Slide deliberately bypasses this observer so its own height animation
-     remains visually identical to the source implementation. */
+  
   const chatContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!smoothRuntime) return;
@@ -259,11 +240,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     };
   }, [smoothRuntime]);
 
-  /* Batching — chatis has ONE 200ms update loop (script.js update()).
-     pages/index.tsx owns that loop now and flushes messages at most
-     every 200ms, so each prop change here IS one chatis batch: turn it
-     straight into a slide/fade group. A second interval here would
-     double-buffer (up to 400ms lag) and desync animation starts. */
+  
   const seqRef = useRef(0);
   /* Batches retain only membership. Their current ParsedMessage values come from
      `messagesById`, so late badge/paint/emote data repaints an existing row without
@@ -308,9 +285,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   }, [messages]);
 
   const renderMsg = (msg: ParsedMessage) => (
-    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-bchat-slide-in' : undefined} style={{
+    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-message-slide-in' : undefined} style={{
       margin: '0 10px',
-      // jQuery fadeOut: opacity 1→0 over 400ms, exact chatis behaviour
+
       opacity: fadingIds.has(msg.id) ? 0 : 1,
       transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',
       ...(smoothRuntime && filterVal ? { filter: filterVal } : {}),
@@ -344,9 +321,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           </>
         )}
         <style>{`${LOCAL_OVERLAY_FONT_CSS}
-          /* Exact chatis body reset from style.css
-             Also reset #__next (Next.js wrapper) so it doesn't
-             offset position:absolute children of body */
+          
           html, body {
             margin: 0 !important;
             padding: 0 !important;
@@ -355,9 +330,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             position: relative !important;
             background: ${cfg.bgColor || 'transparent'} !important;
           }
-          /* Next.js inserts #__next between <body> and our content.
-             Make it invisible to layout so position:absolute;bottom:0
-             on #chat_container anchors to <body> exactly like chatis. */
+          
           #__next {
             position: static !important;
             height: 0 !important;
@@ -365,24 +338,21 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           }
           ${cfg.font==='alsina' ? `@font-face { font-family:Alsina; src:url(https://chatis.is2511.com/v2/styles/Alsina_Ultrajada.ttf); }` : ''}
 
-          /* bChat msgSlideIn: each newly mounted row enters independently.
-             No fill-mode: after 250ms the ordinary row opacity/transform rules
-             take back control, including the existing fade-out path. */
-          @keyframes gxBChatSlideIn {
+          
+          @keyframes gxMessageSlideIn {
             from { opacity: 0; transform: translate3d(40px, 0, 0); }
             to   { opacity: 1; transform: translate3d(0, 0, 0); }
           }
-          .gx-bchat-slide-in {
-            animation: gxBChatSlideIn 250ms ease-out;
+          .gx-message-slide-in {
+            animation: gxMessageSlideIn 250ms ease-out;
             will-change: transform, opacity;
             backface-visibility: hidden;
           }
           @media (prefers-reduced-motion: reduce) {
-            .gx-bchat-slide-in { animation: none; }
+            .gx-message-slide-in { animation: none; }
           }
 
-          /* Provider badge row: flex-centre every badge as one inline unit.
-             This removes image-baseline drift while keeping the ChatIS line height. */
+          
           .ck-bw {
             display:        inline-flex;
             align-items:    center;
@@ -473,7 +443,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             max-width:      none;
           }
 
-          /* Upscale emotes — fill full line-height (chatis upscale class) */
+          
           .ck-body img.ck-upscale {
             max-height:     ${sz.upscaleH};
             max-width:      ${sz.emoteMaxW};
@@ -556,15 +526,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         />
       )}
 
-      {/*
-        #chat_container — mirrors chatis style.css exactly:
-          width: calc(100% - 20px)  (not 100%)
-          padding: 10px
-          position: absolute; bottom: 0
-          font-weight: 800
-          word-break: break-word
-        font-size from size_*.css applied inline.
-      */}
+      {}
       <div id="chat_container" ref={chatContainerRef} style={{
         width:      'calc(100% - 20px)',
         padding:    '10px',
@@ -704,9 +666,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
   );
 }
 
-/* StreamNook event-card metadata: category → icon glyph + tint.
-   Rendered in 'plain' style: 2px provider-colored left border +
-   20%→transparent gradient wash (OverlayChat.tsx:682). */
+
 const CATEGORY_ICON: Record<string, string> = {
   subscription: '★', gift: '🎁', raid: '👥', cheer: '💰',
   milestone: '🔥', follow: '❤️', announcement: '📣',
@@ -741,7 +701,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
   const visualPlatform = msg.displayPlatform ?? msg.platform;
   const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;
 
-  // StreamNook: avatars only for yt/tiktok, 1.5em circle, leads the line
+
   const avatar = showAvatar && msg.avatar && (msg.platform === 'youtube' || msg.platform === 'tiktok') ? (
     <img src={msg.avatar} alt="" loading="lazy" referrerPolicy="no-referrer"
       style={{ width:'1.5em', height:'1.5em', minWidth:'1.5em', borderRadius:9999,
@@ -765,8 +725,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
   );
   const nameNode = <span style={nameStyle}>{msg.identity.username}</span>;
 
-  /* Event card (StreamNook 'plain' eventStyle): provider-colored left
-     border + gradient wash, category icon, regular-weight action text */
+  
   if (msg.kind === 'system') {
     const color = msg.platform ? PROVIDERS[msg.platform as Platform].color : '#888';
     return (
@@ -787,9 +746,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
     );
   }
 
-  /* Redeem / highlighted message: Twitch-style purple accent bar +
-     subtle wash (net-new — UChat only shows/hides these, StreamNook
-     routes them to event cards; the bar keeps them inline like Twitch) */
+  
   const redeemWrap = (inner: React.ReactNode) => (
     <div style={{
       borderLeft: '0.22em solid #9147ff',

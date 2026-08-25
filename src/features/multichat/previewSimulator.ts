@@ -1,28 +1,4 @@
-/* Preview feed workflow adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's deterministic UnifiedMessage fixtures.
- *
- * The generator's live preview feed: fake chat, generated deterministically.
- *
- * This exists so the built-in preview shows chat *moving* rather than a frozen
- * dozen fixtures. Everything here is generator-only. No socket is opened, no
- * pin is polled, nothing reaches an overlay URL, and nothing is serialized —
- * the output is `UnifiedMessage` values handed to the same preview component
- * the static fixtures already went through.
- *
- * DETERMINISM IS A PARAMETER, NOT A PROPERTY. `Math.random` is never called at
- * module scope or inside a generator. A caller supplies a `RandomSource`, and
- * the page supplies one backed by `Math.random` while tests supply the seeded
- * one below. That is what makes "all four platforms are reachable" and "the
- * interval stays in range" testable as facts rather than as flaky samples.
- *
- * IDS. Every generated message is `sim-<n>`, a namespace shared with neither
- * the fixtures (`sample-*`) nor the composer (`custom-*`). `buildParsedMessage`
- * keys React on `${platform}:${id}`, so a collision across those three sources
- * would produce duplicate keys and React would reuse the wrong node.
- *
- * Browser-safe — no server-only imports, no secrets, no network.
- */
+
 import type { Platform, UnifiedBadge, UnifiedMessage } from '@/lib/types';
 import { SAMPLE_EPOCH } from './samples';
 import {

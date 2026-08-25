@@ -1,14 +1,4 @@
-/* TikTok connection hub — ONE upstream TikTokLiveConnection per unique
- * channel, fanned out to every SSE subscriber (unified-chat-lite's hub
- * pattern). Load scales O(unique channels), not O(viewers).
- *
- * - subscribe(user, send): attach a subscriber; connection created on
- *   first subscriber, replayed a small recent-event buffer on attach
- * - 30s linger after the last subscriber detaches before disconnecting,
- *   so OBS refreshes / scene switches don't re-sign against Euler Stream
- * - module-level singleton (survives across API route invocations in the
- *   long-lived `next start` process)
- */
+
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-connector';
 
 type Send = (data: object) => void;

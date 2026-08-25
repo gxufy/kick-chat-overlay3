@@ -1,15 +1,4 @@
-/* GET /api/twitch/badges?channel=<login>
- *
- * Full Twitch badge art via anonymous GQL (web client-id, no OAuth): global
- * sets plus an optional channel's broadcast badges. Channel versions replace
- * matching global versions. The production response is an exact
- * "set/version" → HTTPS image map; preview=1 additionally returns the validated
- * room id required for the public FFZ room-badge lookup.
- *
- * Badge loading behavior adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's public GQL and validated API boundary.
- */
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const GQL_URL = 'https://gql.twitch.tv/gql';

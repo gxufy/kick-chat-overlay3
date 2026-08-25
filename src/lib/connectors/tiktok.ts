@@ -18,7 +18,7 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
     for (const url of d.badgeUrls ?? []) badges.push({ type: 'tiktok', url });
     if (d.moderator) badges.push({ type: 'moderator' });
     if (d.subscriber && !(d.badgeUrls?.length)) badges.push({ type: 'subscriber' });
-    // gift events lead with the gift's art inline (StreamNook overlay)
+
     let text: string = d.text ?? '';
     const emotes: UnifiedMessage['emotes'] = [];
     if (d.giftIcon) {

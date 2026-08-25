@@ -150,7 +150,7 @@ export const MultichatQuerySchema = z.object({
   showPinEnabled: z.string().optional().transform(v => v === 'true'),
   /* compatibility-only: parsed for URL compatibility, read by no runtime code */
   showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
-  /* UChat-style colorable mentions — default ON (mentionColor=false to disable) */
+  
   mentionColor: z.string().optional().transform(v => v !== 'false'),
   /* chat background: 'transparent' (default) or a hex color like 191919 */
   bgColor: z.string().optional().transform(v =>
@@ -158,8 +158,7 @@ export const MultichatQuerySchema = z.object({
   /* channel-point redeems (kick/twitch highlighted messages).
      compatibility-only: parsed, read by no runtime code */
   showRedeems: z.string().optional().transform(v => v !== 'false'),
-  /* StreamNook sourceTag: none | dot | label | icon (default icon —
-     official brand marks, same art Streamlabs uses) */
+  
   sourceTag: z.string().optional().transform(v =>
     ((MULTICHAT_SOURCE_TAGS as readonly string[]).includes(v ?? '')
       ? v!
@@ -174,12 +173,12 @@ export const MultichatQuerySchema = z.object({
     fromEnum(v, MULTICHAT_STROKES, 'none')),
   emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
   fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
-  /* ── UChat-ported settings ── */
+  
   msgBold: z.string().optional().transform(v => v !== 'false'),
   msgCaps: z.string().optional().transform(v => v === 'true'),
-  /* bChat: new messages slide in from the right. Its boolean query format is 1/0. */
+  
   msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),
-  /* bChat smooth-scroll is opt-in for existing overlay URLs; new generator URLs enable it. */
+  
   smoothScroll: z.string().optional().transform(v => v === '1' || v === 'true'),
   /* Twitch Shared Chat partner messages + source-streamer avatars. Default OFF. */
   sharedChatEnabled: z.string().optional().transform(v => v === '1' || v === 'true'),
@@ -306,7 +305,7 @@ export type MultichatGeneratorStyle = {
   emoteScale: string;
   msgBold: boolean;
   msgCaps: boolean;
-  /** bChat-style horizontal entrance for newly inserted chat rows. */
+  
   msgSlideIn: boolean;
   /** Smoothly scroll the message stack as new rows arrive. */
   smoothScroll: boolean;
@@ -492,9 +491,7 @@ export function buildMultichatQuery(
     ...(emoteScale !== '' ? { emoteScale } : {}),
     ...(msgBold ? {} : { msgBold: 'false' }),
     ...(msgCaps ? { msgCaps: 'true' } : {}),
-    /* Match bChat's query convention for the horizontal entrance. Smooth
-       scrolling is implicit for workspace URLs; only an explicit workspace OFF
-       needs a parameter. The legacy serializer keeps its original 1/omitted form. */
+    
     ...(msgSlideIn ? { msgSlideIn: '1' } : {}),
     ...(workspaceStyle
       ? (smoothScroll ? {} : { smoothScroll: '0' })

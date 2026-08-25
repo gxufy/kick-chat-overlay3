@@ -25,7 +25,7 @@ export interface SevenTVEmote {
   height: number;
   width: number;
   zeroWidth: boolean;
-  upscale: boolean;  // render at full line-height (chatis 'upscale' flag)
+  upscale: boolean;
 }
 
 export interface SevenTVPaint {

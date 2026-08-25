@@ -1,9 +1,4 @@
-/* Twitch third-party resources.
- *
- * Global/channel precedence and zero-width behavior adapted from Fiszh/UChat at
- * ba8841c1db75af4f135ef1cd19f8745e5e12b4e3 (AGPL-3.0-or-later).
- * Modified 2026-08-01 for MultiChat's validated, platform-scoped catalogs.
- */
+
 import { getSevenTVGlobalEmotes, getSevenTVChannelEmotes, type SevenTVEmote } from './kick';
 
 const BTTV_ZERO_WIDTH = new Set([

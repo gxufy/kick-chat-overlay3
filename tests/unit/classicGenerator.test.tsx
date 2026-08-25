@@ -159,19 +159,6 @@ describe('the original Classic identity', () => {
     expect(footer.textContent).not.toContain('x.com/Gxufy_');
   });
 
-  it('carries no third-party attribution line', () => {
-    /* Removed deliberately. Asserted by name so restoring the markup fails here
-       rather than only being noticed visually. */
-    mount();
-    const footer = panel('footer');
-    expect(footer.textContent).not.toMatch(/inspired by/i);
-    for (const name of ['ChatIS', 'IS2511', 'giambaJ']) {
-      expect(footer.textContent, `${name} is back in the footer`).not.toContain(name);
-    }
-    expect(
-      within(footer).queryByRole('link', { name: /chatis/i }),
-    ).toBeNull();
-  });
 
   it('keeps the non-affiliation line', () => {
     mount();

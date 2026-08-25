@@ -1,25 +1,4 @@
-/* Web-font loading for the MultiChat overlay.
- *
- * `ChatOverlay` resolves `font=` to a CSS `font-family` through its own
- * FONT_FAMILIES map, but naming a family does not load it. The overlay route
- * shipped no font stylesheet at all, so every family that is not a system font
- * or a self-hosted face fell back to the generic sans-serif — including
- * `opensans`, the generator's default. The generator's own inline preview loads
- * these faces for its UI, so the preview and the overlay disagreed about what a
- * given URL renders as.
- *
- * This module is the one place that maps a font key to the face it needs. Keys
- * are the values in MULTICHAT_FONTS; a key absent from the map needs no
- * stylesheet, which is true for three distinct reasons:
- *
- *   - `default` resolves to `inherit`.
- *   - `segoe` and `impact` are system faces present on the platforms that have
- *     them; there is no web font to fetch and never was.
- *   - `alsina` is self-hosted and ChatOverlay already emits its own `@font-face`
- *     pointing at the chatis CDN.
- *
- * Browser-safe — no server-only imports, no secrets.
- */
+
 
 /**
  * Google Fonts `family=` specifications, keyed by `font=` value.

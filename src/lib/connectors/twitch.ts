@@ -1,13 +1,4 @@
-/* Twitch chat connector — anonymous IRC over websocket (no OAuth).
- *
- * Read-only "justinfan<digits>" nick (unified-chat-lite twitch.py scheme),
- * runs entirely in the browser: wss://irc-ws.chat.twitch.tv:443 with
- * tags+commands caps. PRIVMSG → chat, USERNOTICE → system (subs/raids),
- * CLEARMSG/CLEARCHAT → deletes, RECONNECT → reconnect.
- * Emote offsets come from the `emotes` tag (code points, exclusive end
- * converted here). No anonymous pin events exist on Twitch — pins need
- * OAuth (StreamNook uses authed GQL) — so this connector never calls onPin.
- */
+
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 import { loadFFZRoomBadges } from '../twitchEmotes';
 import { fetchTwitchProfile } from '../twitchProfileClient';
@@ -15,8 +6,7 @@ import { resolveTwitchCommunityBadges } from '../communityBadges';
 
 const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 
-/* chatis badge render order (script.js:1846): priority badges first,
-   in-tag-order within each group; subscriber/bits/etc after */
+
 const PRIORITY_BADGES = ['predictions', 'admin', 'global_mod', 'staff', 'twitchbot', 'broadcaster', 'lead_moderator', 'moderator', 'vip'];
 
 const TAG_ESCAPES: Record<string, string> = { '\\:': ';', '\\s': ' ', '\\\\': '\\', '\\r': '\r', '\\n': '\n' };
@@ -98,10 +88,7 @@ export function parseTwitchEmotes(rawTag: string, text: string): UnifiedEmote[] 
   return emotes.sort((a, b) => a.begin - b.begin);
 }
 
-/** badges tag "moderator/1,subscriber/12" → UnifiedBadge[].
- * URLs resolved against the GQL badge map (global + channel sets) so
- * sub tiers / bits / event badges get their real art. Priority badges
- * (broadcaster/mod/vip/staff...) sort first — chatis render order. */
+
 function parseBadges(rawTag: string, badgeMap: Record<string, string>): UnifiedBadge[] {
   if (!rawTag) return [];
   const all = rawTag.split(',').filter(Boolean).map(b => {
@@ -146,7 +133,7 @@ export function parseBadgeMap(value: unknown): Record<string, string> | null {
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
-/** "prefix: text" with emote offsets shifted (unified-chat-lite prefix_text) */
+
 function prefixText(prefix: string, text: string, emotes: UnifiedEmote[]): { text: string; emotes: UnifiedEmote[] } {
   if (!text) return { text: prefix, emotes: [] };
   const shift = [...prefix].length + 2;
@@ -274,7 +261,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     enrichCommunityBadges(message);
   }
 
-  /* StreamNook CATEGORY_OF: msg-id → event category */
+  
   function usernoticeCategory(msgId: string): UnifiedMessage['category'] {
     if (['sub','resub','primepaidupgrade','giftpaidupgrade','anongiftpaidupgrade','standardpayforward','communitypayforward','sharedchatnotice'].includes(msgId)) return 'subscription';
     if (['subgift','submysterygift','anonsubgift','anonsubmysterygift'].includes(msgId)) return 'gift';
@@ -300,7 +287,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
         if (roomId && !roomIdSent) {
           roomIdSent = true;
           opts.onRoomId?.(roomId);
-          // FFZ custom room badges override stock mod/vip art (chatis :1416)
+
           loadFFZRoomBadges(roomId)
             .then(overrides => {
               Object.assign(badgeMap, overrides);
@@ -315,7 +302,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
         let emotes = parseTwitchEmotes(p.tags['emotes'] ?? '', text);
         const bits = p.tags['bits'];
         if (bits) {
-          // Cheers → system notices, like subs/gifts (unified-chat-lite)
+
           const author = p.tags['display-name'] || (p.prefix ?? '').split('!')[0];
           const pref = prefixText(`${author} cheered ${bits} bits`, text, emotes);
           deliver(buildMessage(p, 'system', pref.text, pref.emotes, 'cheer'));

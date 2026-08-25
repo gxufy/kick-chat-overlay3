@@ -5,42 +5,54 @@ def replace_once(path: str, old: str, new: str) -> None:
     p = Path(path)
     text = p.read_text()
     if old not in text:
-        raise SystemExit(f"expected text not found in {path}: {old[:120]!r}")
+        raise SystemExit(f"expected text not found in {path}: {old[:140]!r}")
     p.write_text(text.replace(old, new, 1))
 
 
+# Keep the query parser's historical default intact. The live /multichat page
+# promotes an omitted smoothScroll parameter to the modern smooth runtime path.
 replace_once(
-    "src/lib/multichatConfig.ts",
-    "  /* bChat smooth-scroll is opt-in for existing overlay URLs; new generator URLs enable it. */\n  smoothScroll: z.string().optional().transform(v => v === '1' || v === 'true'),",
-    "  /* bChat smooth-scroll is the normal runtime path. Omit the parameter for smooth handling;\n     smoothScroll=0/false is the explicit legacy fallback. */\n  smoothScroll: z.string().optional().transform(v => v !== '0' && v !== 'false'),",
+    "src/pages/multichat.tsx",
+    "    const cfg = parsed.data;",
+    "    const cfg = {\n      ...parsed.data,\n      // Smooth handling is the normal runtime path. Existing/generated URLs do\n      // not need a flag; smoothScroll=0/false is the explicit legacy fallback.\n      smoothScroll: router.query.smoothScroll === undefined\n        ? true\n        : parsed.data.smoothScroll,\n    };",
 )
+
+# The workspace/generator should visually start with smooth handling enabled,
+# without changing the pinned legacy generator-default object used by old tests.
 replace_once(
     "src/lib/multichatConfig.ts",
-    "  smoothScroll: false,",
-    "  smoothScroll: true,",
+    "export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {\n  const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;\n  return { ...shared, sourceTag: platformIcons ? 'icon' : 'none' };\n})();",
+    "export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {\n  const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;\n  return {\n    ...shared,\n    smoothScroll: true,\n    sourceTag: platformIcons ? 'icon' : 'none',\n  };\n})();",
+)
+
+# Preserve byte-for-byte legacy serializer behavior, but make smooth scrolling
+# implicit for workspace-generated URLs. Workspace OFF is the only case that
+# needs an explicit smoothScroll=0 escape hatch.
+replace_once(
+    "src/lib/multichatConfig.ts",
+    "  const sourceTag = multichatSourceTagOf(style);",
+    "  const sourceTag = multichatSourceTagOf(style);\n  const workspaceStyle = 'sourceTag' in style;",
 )
 replace_once(
     "src/lib/multichatConfig.ts",
     "    /* Match bChat's query convention: boolean settings use 1 when enabled. */\n    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),\n    ...(smoothScroll ? { smoothScroll: '1' } : {}),",
-    "    /* Match bChat's query convention for the horizontal entrance. Smooth\n       scrolling is the runtime default, so only the explicit legacy fallback\n       needs a parameter. */\n    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),\n    ...(!smoothScroll ? { smoothScroll: '0' } : {}),",
+    "    /* Match bChat's query convention for the horizontal entrance. Smooth\n       scrolling is implicit for workspace URLs; only an explicit workspace OFF\n       needs a parameter. The legacy serializer keeps its original 1/omitted form. */\n    ...(msgSlideIn ? { msgSlideIn: '1' } : {}),\n    ...(workspaceStyle\n      ? (smoothScroll ? {} : { smoothScroll: '0' })\n      : (smoothScroll ? { smoothScroll: '1' } : {})),",
 )
+
 replace_once(
     "src/features/multichat/settings.ts",
     "    description: 'bChat-style scrolling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',",
     "    description: 'Default message handling: smooth for ordinary arrivals, instant during rapid bursts so animations never pile up.',",
 )
+
+# Focused regression coverage for the new default/compatibility split.
+replace_once(
+    "tests/unit/smoothScroll.test.tsx",
+    "import { MULTICHAT_GENERATOR_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';",
+    "import { MULTICHAT_GENERATOR_DEFAULTS, MULTICHAT_WORKSPACE_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';",
+)
 replace_once(
     "tests/unit/smoothScroll.test.tsx",
     "  it('keeps legacy/default URLs unchanged and serializes only when enabled', () => {\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);\n    const off = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));\n    const on = new URLSearchParams(buildMultichatQuery(channels, {\n      ...MULTICHAT_GENERATOR_DEFAULTS,\n      smoothScroll: true,\n    }));\n    expect(off.has('smoothScroll')).toBe(false);\n    expect(on.get('smoothScroll')).toBe('1');\n  });",
-    "  it('uses smooth handling by default without changing default URL strings', () => {\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(true);\n    const defaultParams = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));\n    const legacyFallback = new URLSearchParams(buildMultichatQuery(channels, {\n      ...MULTICHAT_GENERATOR_DEFAULTS,\n      smoothScroll: false,\n    }));\n    expect(defaultParams.has('smoothScroll')).toBe(false);\n    expect(legacyFallback.get('smoothScroll')).toBe('0');\n  });",
-)
-replace_once(
-    "tests/unit/smoothScroll.test.tsx",
-    "  it('accepts both 1 and true query spellings', () => {\n    expect(MultichatQuerySchema.parse({ smoothScroll: '1' }).smoothScroll).toBe(true);\n    expect(MultichatQuerySchema.parse({ smoothScroll: 'true' }).smoothScroll).toBe(true);\n    expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);\n  });",
-    "  it('accepts explicit enable and legacy-fallback spellings', () => {\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(true);\n    expect(MultichatQuerySchema.parse({ smoothScroll: '1' }).smoothScroll).toBe(true);\n    expect(MultichatQuerySchema.parse({ smoothScroll: 'true' }).smoothScroll).toBe(true);\n    expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);\n    expect(MultichatQuerySchema.parse({ smoothScroll: 'false' }).smoothScroll).toBe(false);\n  });",
-)
-replace_once(
-    "tests/unit/smoothScroll.test.tsx",
-    "    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });",
-    "    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', msgSlideIn: '1' });",
+    "  it('makes smooth handling the workspace default without changing legacy URL strings', () => {\n    // The parser remains a compatibility surface; the /multichat page promotes\n    // omission to smooth at runtime. Legacy serialization therefore stays exact.\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);\n    expect(MULTICHAT_GENERATOR_DEFAULTS.smoothScroll).toBe(false);\n    expect(MULTICHAT_WORKSPACE_DEFAULTS.smoothScroll).toBe(true);\n\n    const legacy = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));\n    const workspace = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_WORKSPACE_DEFAULTS));\n    const workspaceLegacyFallback = new URLSearchParams(buildMultichatQuery(channels, {\n      ...MULTICHAT_WORKSPACE_DEFAULTS,\n      smoothScroll: false,\n    }));\n\n    expect(legacy.has('smoothScroll')).toBe(false);\n    expect(workspace.has('smoothScroll')).toBe(false);\n    expect(workspaceLegacyFallback.get('smoothScroll')).toBe('0');\n  });",
 )

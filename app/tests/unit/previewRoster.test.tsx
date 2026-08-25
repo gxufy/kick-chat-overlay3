@@ -17,7 +17,8 @@ const responseFor = (login: string): PreviewIdentityResponse => ({
     Twitch: { status: 'loaded', resources: { globalBadges: {
       'moderator/1': `https://cdn.example/${login}-global-mod.png`,
       'subscriber/1': `https://cdn.example/${login}-sub.png`,
-      'bits/100': `https://cdn.example/${login}-bits.png`,
+      'community:chatterino:owner/1': `https://cdn.example/${login}-community-owner.png`,
+      'community:moltorino:friend/1': `https://cdn.example/${login}-community-friend.png`,
     }, channelBadges: { 'moderator/1': `https://cdn.example/${login}-channel-mod.png` } } },
     FFZ: { status: 'loaded', resources: {
       globalEmotes: [], roomEmotes: [], badgeOverrides: { 'moderator/1': `https://cdn.example/${login}-ffz-mod.png` },
@@ -37,12 +38,12 @@ beforeEach(() => __resetPreviewIdentityClient());
 afterEach(() => vi.unstubAllGlobals());
 
 describe('curated Preview Identity roster', () => {
-  it('preserves the exact requested order, casing, and approved message pool', () => {
+  it('preserves the requested roster order, casing, and approved message pool', () => {
     expect(PREVIEW_ROSTER.map((entry) => entry.displayName)).toEqual([
-      'gxufy', 'feelssunnyman', 'uniiDev', 'Xslash58', 'wyydogg', 'JAYKAYRAH', 'slaiqe',
+      'gxufy', 'blu01_', 'uniiDev', 'Xslash58', 'moltobenne_', 'Said', 'slaiqe', 'wtwfrxsty',
     ]);
     expect(PREVIEW_ROSTER.map((entry) => entry.login)).toEqual([
-      'gxufy', 'feelssunnyman', 'uniidev', 'xslash58', 'wyydogg', 'jaykayrah', 'slaiqe',
+      'gxufy', 'blu01_', 'uniidev', 'xslash58', 'moltobenne_', 'said', 'slaiqe', 'wtwfrxsty',
     ]);
     expect(PREVIEW_MESSAGES).toEqual([
       'Alright',
@@ -56,26 +57,30 @@ describe('curated Preview Identity roster', () => {
     ]);
   });
 
-  it('shows seven deterministic fallbacks and varied logos before requests settle', () => {
+  it('shows deterministic fallbacks and varied logos before requests settle', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
     const { result, unmount } = renderHook(() => useTwitchPreviewRoster());
     expect(result.current.templates.map((template) => template.username)).toEqual(PREVIEW_ROSTER.map((entry) => entry.displayName));
-    expect(result.current.templates.map((template) => template.text)).toEqual(PREVIEW_MESSAGES.slice(0, 7));
-    expect(result.current.templates.map((template) => template.displayPlatform)).toEqual(PREVIEW_PLATFORM_SEQUENCE.slice(0, 7));
+    expect(result.current.templates.map((template) => template.text)).toEqual(PREVIEW_MESSAGES.slice(0, PREVIEW_ROSTER.length));
+    expect(result.current.templates.map((template) => template.displayPlatform)).toEqual(PREVIEW_PLATFORM_SEQUENCE.slice(0, PREVIEW_ROSTER.length));
     expect(result.current.templates.every((template) => template.platform === 'twitch')).toBe(true);
     const logos = result.current.templates.map((template) => template.displayPlatform);
     expect(logos.every((logo, index) => index === 0 || logo !== logos[index - 1])).toBe(true);
     unmount();
   });
 
-  it('composes multiple badges with channel and FFZ replacement, stable order, and ownership coexistence', () => {
+  it('uses resolved user badges and never invents native Twitch entitlements', () => {
     const response = responseFor('gxufy');
     const badges = curatedBadges(PREVIEW_ROSTER[0], response, 0);
-    expect(badges.length).toBeGreaterThan(3);
-    expect(badges.find((badge) => badge.type === 'moderator')?.url).toBe('https://cdn.example/gxufy-ffz-mod.png');
-    expect(badges.some((badge) => badge.type === 'bttv-owner')).toBe(true);
-    expect(badges.some((badge) => badge.type === 'ffz-owner')).toBe(true);
-    expect(curatedBadges(PREVIEW_ROSTER[0], response, 0)).toEqual(badges);
+    expect(badges.map((badge) => badge.type)).toEqual([
+      'community:chatterino:owner',
+      'community:moltorino:friend',
+      'bttv-owner',
+      'ffz-owner',
+    ]);
+    expect(badges.some((badge) => badge.type === 'moderator')).toBe(false);
+    expect(badges.some((badge) => badge.type === 'subscriber')).toBe(false);
+    expect(curatedBadges(PREVIEW_ROSTER[0], response, 7)).toEqual(badges);
     expect(new Set(badges.map((badge) => badge.url)).size).toBe(badges.length);
   });
 
@@ -95,7 +100,7 @@ describe('curated Preview Identity roster', () => {
     const { result } = renderHook(() => useTwitchPreviewRoster());
     await waitFor(() => expect(resolvers.size).toBe(PREVIEW_ROSTER_CONCURRENCY));
     expect(peak).toBe(PREVIEW_ROSTER_CONCURRENCY);
-    await act(async () => resolvers.get('feelssunnyman')!.reject(new Error('offline')));
+    await act(async () => resolvers.get('blu01_')!.reject(new Error('offline')));
     await waitFor(() => expect(resolvers.has('xslash58')).toBe(true));
     await act(async () => resolvers.get('gxufy')!.resolve(jsonResponse(responseFor('gxufy'))));
     await waitFor(() => expect(result.current.responses.has('gxufy')).toBe(true));
@@ -118,7 +123,7 @@ describe('curated Preview Identity roster', () => {
     expect(result.current.templates.map((template) => `${template.text}|${template.displayPlatform}`)).not.toEqual(before);
     act(() => result.current.reset());
     expect(result.current.page).toBe(0);
-    expect(result.current.templates.map((template) => template.text)).toEqual(PREVIEW_MESSAGES.slice(0, 7));
+    expect(result.current.templates.map((template) => template.text)).toEqual(PREVIEW_MESSAGES.slice(0, PREVIEW_ROSTER.length));
     expect(fetchMock).toHaveBeenCalledTimes(PREVIEW_ROSTER.length);
   });
 });

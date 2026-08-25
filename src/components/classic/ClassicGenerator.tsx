@@ -145,6 +145,7 @@ const MC_MSG_BOLD = toggleSetting(MC, 'msgBold');
 const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
 const MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');
 const MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');
+const MC_SHARED_CHAT = toggleSetting(MC, 'sharedChatEnabled');
 const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
 const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
 const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
@@ -1126,7 +1127,7 @@ export default function ClassicGenerator({
     );
   }
 
-  /** All 24 MultiChat settings, in the Classic multi-column arrangement. */
+  /** All MultiChat settings, in the Classic multi-column arrangement. */
   function chatSettingsPanel() {
     const chat = (
       setting: Parameters<typeof ClassicSetting<MultichatWorkspaceStyle>>[0]['setting'],
@@ -1221,6 +1222,7 @@ export default function ClassicGenerator({
             {chat(MC_MSG_CAPS)}
             {chat(MC_MSG_SLIDE_IN)}
             {chat(MC_SMOOTH_SCROLL)}
+            {chat(MC_SHARED_CHAT)}
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}
@@ -1379,8 +1381,8 @@ export default function ClassicGenerator({
           overlay itself, so they work from Kick, Twitch, YouTube, or TikTok.
           The overlay ignores them from everyone else.{' '}
           <code>{MULTICHAT_COMMAND_ALIAS}</code> works as an alias for{' '}
-          <code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above. These
-          commands apply to the chat overlay only; the viewer counter has none.
+          <code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above.
+          Most commands act on the chat overlay. The counterbgon/counterbgoff pair also controls the separate viewer-counter browser source when it uses the same gxufy.com origin and channel set.
         </p>
       </section>
     );

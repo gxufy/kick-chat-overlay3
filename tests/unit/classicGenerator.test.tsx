@@ -8,7 +8,7 @@
  *     card per section, the compact platform inputs, the two-column control table;
  *   - a chat panel and a Viewer Counter panel, chat first, both reachable without
  *     scrolling past a long settings list;
- *   - all 24 MultiChat settings and all six Counter settings, from the catalogs;
+ *   - all MultiChat settings and all six Counter settings, from the catalogs;
  *   - two authoritative URLs, each identical across Preview, the field, Copy, and
  *     Open;
  *   - Commands and then OBS setup beneath both tools;
@@ -229,13 +229,13 @@ describe('the original two-card tool layout', () => {
 });
 
 describe('every catalog setting is reachable', () => {
-  it('renders all 26 MultiChat settings', () => {
+  it('renders all 27 MultiChat settings', () => {
     mount();
-    expect(MULTICHAT_CATALOG).toHaveLength(26);
+    expect(MULTICHAT_CATALOG).toHaveLength(27);
     /* A multiselect is a group of checkboxes, so it has no single control id —
        it is present when its first option is. Both conditional settings (the
        fade duration and the pin platform set) are on by default, so a default
-       render must already show all 26. */
+       render must already show all 27. */
     const missing = MULTICHAT_CATALOG.filter((setting) => {
       const key = String(setting.key);
       const id =
@@ -1207,11 +1207,12 @@ describe('Commands and help', () => {
     );
   });
 
-  it('says the counter has no commands of its own', () => {
+  it('documents the counter background bridge for the separate counter source', () => {
     mount();
-    expect(panel('[aria-labelledby="commands-heading"]').textContent).toMatch(
-      /viewer counter has none/i,
-    );
+    const text = panel('[aria-labelledby="commands-heading"]').textContent ?? '';
+    expect(text).toContain('!multichat counterbgon');
+    expect(text).toContain('!multichat counterbgoff');
+    expect(text).toMatch(/separate viewer-counter browser source/i);
   });
 });
 

@@ -25,6 +25,10 @@ import {
   type PlatformStatuses,
   type ViewerPlatform,
 } from '../lib/viewerCounterConfig';
+import {
+  readCounterBackgroundControl,
+  subscribeCounterBackgroundControl,
+} from '../lib/multichatControlBus';
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -55,6 +59,7 @@ export default function Counter() {
   const router = useRouter();
   const [statuses, setStatuses] = useState<PlatformStatuses>({});
   const [started, setStarted] = useState(false);
+  const [counterBgOverride, setCounterBgOverride] = useState<boolean | null>(null);
 
   const config = router.isReady
     ? parseViewerCounterConfig(router.query as Record<string, unknown>)
@@ -63,6 +68,13 @@ export default function Counter() {
   /* A stable primitive: changes only when a channel actually changes, so
      restyling never restarts polling. */
   const pollKey = config ? channelPollKey(config.channels) : '';
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const channels = parseChannelPollKey(pollKey);
+    setCounterBgOverride(readCounterBackgroundControl(channels));
+    return subscribeCounterBackgroundControl(channels, setCounterBgOverride);
+  }, [router.isReady, pollKey]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -302,7 +314,10 @@ export default function Counter() {
         {/* Render nothing until the first poll settles, so no fabricated
             zero ever flashes on screen. */}
         {started && (
-          <ViewerCounterDisplay statuses={statuses} style={config.style} />
+          <ViewerCounterDisplay
+            statuses={statuses}
+            style={counterBgOverride === null ? config.style : { ...config.style, bg: counterBgOverride }}
+          />
         )}
       </div>
     </>

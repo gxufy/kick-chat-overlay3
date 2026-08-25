@@ -20,7 +20,7 @@ import {
   type Entitlements,
   type ParsedMessage,
 } from '../lib/kick';
-import type { Connector, UnifiedMessage, UnifiedPin } from '../lib/types';
+import type { Connector, Platform, UnifiedMessage, UnifiedPin } from '../lib/types';
 import { createKickConnector } from '../lib/connectors/kick';
 import { createTwitchConnector } from '../lib/connectors/twitch';
 import { createYouTubeConnector } from '../lib/connectors/youtube';
@@ -45,6 +45,7 @@ import {
   RELOAD_STAMP_KEY,
   createMultichatCommandRunner,
 } from '../lib/multichatCommandRuntime';
+import { publishCounterBackgroundControl } from '../lib/multichatControlBus';
 import ChatOverlay, {
   type PinnedState,
   type StartupLoaderPhase,
@@ -177,6 +178,7 @@ function MultichatOverlay() {
   const [ready, setReady] = useState(false);
   const [config, setConfig] = useState<OverlayConfig | null>(null);
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
+  const [sharedChatEnabled, setSharedChatEnabled] = useState(false);
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());
   const [loaderPhase, setLoaderPhase] = useState<StartupLoaderPhase>('hidden');
   const [pinnedMessage, setPinnedMessage] = useState<PinnedState | null>(null);
@@ -248,6 +250,8 @@ function MultichatOverlay() {
     if (!hasConfiguredMultichatChannel(cfg)) return;
 
     setConfig(cfg);
+    setSharedChatEnabled(cfg.sharedChatEnabled);
+    setError(null);
     stateRef.current.config = cfg;
     setLoaderPhase('visible');
 
@@ -358,6 +362,12 @@ function MultichatOverlay() {
        apply the identical predicate to respond to the filter settings at all. */
     const shouldDisplay = buildMessageFilter(cfg);
 
+    /* Runtime visibility controls deliberately do not stop connectors. That is
+       what lets a moderator issue twitchon/youtubeon from a platform that is
+       currently hidden without reloading the browser source. */
+    const hiddenPlatforms = new Set<Platform>();
+    let sharedChatRuntime = cfg.sharedChatEnabled;
+
     /* Message flush policy.
        Smooth handling normally coalesces store changes to one React commit per
        animation frame. ChatIS Slide is the exception by design: the upstream
@@ -386,10 +396,38 @@ function MultichatOverlay() {
       ? null
       : setInterval(flushMessages, 200);
 
+    function setPlatformChatVisible(platform: Platform, visible: boolean) {
+      if (visible) {
+        hiddenPlatforms.delete(platform);
+        return;
+      }
+      hiddenPlatforms.add(platform);
+      s.messages = s.messages.filter((message) => message.platform !== platform);
+      markDirty();
+    }
+
+    function setSharedChatVisible(visible: boolean) {
+      sharedChatRuntime = visible;
+      setSharedChatEnabled(visible);
+      if (visible) return;
+      s.messages = s.messages.filter((message) => {
+        if (message.platform !== 'twitch' || !message.raw) return true;
+        return !(message.raw as UnifiedMessage).sharedChat;
+      });
+      markDirty();
+    }
+
     function addMessage(um: UnifiedMessage) {
-      handleCommand(um); // !multichat commands work from any platform
-      /* Deliberately after handleCommand: a command still dispatches from a
-         hidden or blacklisted account, exactly as before this was extracted. */
+      /* Shared partner traffic is completely outside the overlay while the
+         feature is off, including its commands. Local Twitch chat remains live
+         and can turn Shared Chat on at any time. */
+      if (um.platform === 'twitch' && um.sharedChat && !sharedChatRuntime) return;
+      handleCommand(um); // !multichat commands work from any enabled source chat
+      /* Commands run before platform suppression so a hidden platform can issue
+         its own ...on command. A sharedoff command can also remove its own
+         partner row immediately after it executes. */
+      if (um.platform === 'twitch' && um.sharedChat && !sharedChatRuntime) return;
+      if (hiddenPlatforms.has(um.platform)) return;
       if (!shouldDisplay(um)) return;
       // queue this chatter for GQL cosmetics (kick/twitch only)
       if (cfg.sevenTVCosmeticsEnabled && (um.platform === 'kick' || um.platform === 'twitch')) {
@@ -467,6 +505,7 @@ function MultichatOverlay() {
       connectors.push(createTwitchConnector({
         channel: cfg.twitch,
         onMessage: addMessage,
+        shouldEnrichSourceChannel: () => sharedChatRuntime,
         onMessageUpdate: updated => {
           let touched = false;
           s.messages = s.messages.map(message => {
@@ -648,6 +687,16 @@ function MultichatOverlay() {
       },
       createElement: (tag) => document.createElement(tag),
       setChatVisible,
+      setPlatformChatVisible,
+      setSharedChatVisible,
+      setCounterBackground(visible) {
+        publishCounterBackgroundControl({
+          kick: kickChannel,
+          twitch: cfg.twitch ?? '',
+          youtube: cfg.youtube ?? '',
+          tiktok: cfg.tiktok ?? '',
+        }, visible);
+      },
       reload: () => window.location.reload(),
       async refreshEmotes() {
         // A manual refresh means "go get the current sets now", so drop the
@@ -1014,6 +1063,7 @@ function MultichatOverlay() {
         hypeTrain={hypeTrain}
         hypeTrainEnding={hypeTrainEnding}
         showLoader={loaderPhase}
+        sharedChatEnabled={sharedChatEnabled}
         /* The parser defaults sourceTag to 'icon', so only the raw query can say
            whether the user actually asked for a mode. */
         sourceTagExplicit={router.query.sourceTag !== undefined}

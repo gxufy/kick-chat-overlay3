@@ -24,13 +24,13 @@ function mount(showLoader: false | 'visible' | 'fading') {
 }
 
 describe('production Chat startup presentation', () => {
-  it('uses the existing TPL asset and exact overlay branding', () => {
+  it('uses text-only startup branding with no logo image', () => {
     mount('visible');
     const loader = screen.getByTestId('chat-startup-loader');
     expect(loader.textContent).toContain('Multi-Chat Overlay');
     expect(loader.textContent).toContain('made by @Gxufy');
     expect(loader.textContent).toContain('Loading...');
-    expect(loader.querySelector('img')?.getAttribute('src')).toBe('/tpl.gif');
+    expect(loader.querySelector('img')).toBeNull();
   });
 
   it('keeps the layer mounted during fade and removes it when hidden', () => {

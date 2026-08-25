@@ -23,7 +23,18 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply shared chat/runtime control changes
-        run: python3 .github/scripts/add-shared-runtime-controls.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/classic/ClassicGenerator.tsx')
+          text = p.read_text()
+          text = text.replace(
+              '          These\n          commands apply to the chat overlay only; the viewer counter has none.',
+              '          These commands apply to the chat overlay only; the viewer counter has none.',
+          )
+          p.write_text(text)
+          PY
+          python3 .github/scripts/add-shared-runtime-controls.py
       - name: Install dependencies
         run: npm ci
       - name: Typecheck

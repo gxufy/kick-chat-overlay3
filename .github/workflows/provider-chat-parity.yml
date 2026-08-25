@@ -5,6 +5,7 @@ on:
     branches: [feat/streamnook-provider-chat-parity]
     paths:
       - .github/scripts/apply-provider-chat-parity.py
+      - .github/scripts/fix-provider-parity-tests.py
       - .github/workflows/provider-chat-parity.yml
 
 permissions:
@@ -24,6 +25,8 @@ jobs:
           cache: npm
       - name: Apply provider chat parity changes
         run: python3 .github/scripts/apply-provider-chat-parity.py
+      - name: Update provider parity regression fixtures
+        run: python3 .github/scripts/fix-provider-parity-tests.py
       - name: Install dependencies
         run: npm ci
       - name: Typecheck

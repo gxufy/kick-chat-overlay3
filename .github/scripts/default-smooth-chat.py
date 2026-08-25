@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 
 def replace_once(path: str, old: str, new: str) -> None:
@@ -56,3 +57,15 @@ replace_once(
     "  it('keeps legacy/default URLs unchanged and serializes only when enabled', () => {\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);\n    const off = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));\n    const on = new URLSearchParams(buildMultichatQuery(channels, {\n      ...MULTICHAT_GENERATOR_DEFAULTS,\n      smoothScroll: true,\n    }));\n    expect(off.has('smoothScroll')).toBe(false);\n    expect(on.get('smoothScroll')).toBe('1');\n  });",
     "  it('makes smooth handling the workspace default without changing legacy URL strings', () => {\n    // The parser remains a compatibility surface; the /multichat page promotes\n    // omission to smooth at runtime. Legacy serialization therefore stays exact.\n    expect(MultichatQuerySchema.parse({}).smoothScroll).toBe(false);\n    expect(MULTICHAT_GENERATOR_DEFAULTS.smoothScroll).toBe(false);\n    expect(MULTICHAT_WORKSPACE_DEFAULTS.smoothScroll).toBe(true);\n\n    const legacy = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_GENERATOR_DEFAULTS));\n    const workspace = new URLSearchParams(buildMultichatQuery(channels, MULTICHAT_WORKSPACE_DEFAULTS));\n    const workspaceLegacyFallback = new URLSearchParams(buildMultichatQuery(channels, {\n      ...MULTICHAT_WORKSPACE_DEFAULTS,\n      smoothScroll: false,\n    }));\n\n    expect(legacy.has('smoothScroll')).toBe(false);\n    expect(workspace.has('smoothScroll')).toBe(false);\n    expect(workspaceLegacyFallback.get('smoothScroll')).toBe('0');\n  });",
 )
+
+# This identity test intentionally derives the workspace object from the legacy
+# object. Smooth scrolling is now the one deliberate workspace-default override.
+replace_once(
+    "tests/unit/multichatCatalog.test.ts",
+    "  it('derives the workspace defaults from the generator defaults', () => {\n    const { platformIcons, ...shared } = LEGACY;\n    /* Every field but the swapped one comes straight from the legacy object. */\n    expect(D).toEqual({ ...shared, sourceTag: 'icon' });\n    expect(platformIcons).toBe(true);\n    expect('platformIcons' in D).toBe(false);\n  });",
+    "  it('derives the workspace defaults from the generator defaults', () => {\n    const { platformIcons, ...shared } = LEGACY;\n    /* sourceTag replaces platformIcons, and smooth scrolling is the intentional\n       modern workspace default while the pinned legacy object stays unchanged. */\n    expect(D).toEqual({ ...shared, smoothScroll: true, sourceTag: 'icon' });\n    expect(platformIcons).toBe(true);\n    expect('platformIcons' in D).toBe(false);\n  });",
+)
+
+# The workflow's fixed git-add list predates this compatibility-test update.
+# Stage it here so the successful migration commit includes the regression lock.
+subprocess.run(["git", "add", "tests/unit/multichatCatalog.test.ts"], check=True)

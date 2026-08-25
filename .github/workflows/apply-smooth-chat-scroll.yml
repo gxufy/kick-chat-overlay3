@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/apply-smooth-chat-scroll.yml
       - .github/scripts/apply-smooth-chat.py
+      - .github/scripts/fix-smooth-defaults.py
 
 permissions:
   contents: write
@@ -25,7 +26,9 @@ jobs:
           cache: npm
 
       - name: Apply bChat-style smooth message handling
-        run: python3 .github/scripts/apply-smooth-chat.py
+        run: |
+          python3 .github/scripts/apply-smooth-chat.py
+          python3 .github/scripts/fix-smooth-defaults.py
 
       - name: Install dependencies
         run: npm ci

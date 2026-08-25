@@ -6,4 +6,4 @@ Copyright (C) 2026 Fish (Fiszh)
 
 Those portions were modified for this project on 2026-08-01. The applicable license is preserved in the repository root `LICENSE` file.
 
-The Geist font is distributed under the SIL Open Font License 1.1. Its license text is retained at `public/fonts/Geist-OFL.txt`.
+The Geist font is distributed under the SIL Open Font License 1.1. Its license text is retained at `app/public/fonts/Geist-OFL.txt`.

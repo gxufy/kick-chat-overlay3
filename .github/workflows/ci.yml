@@ -5,7 +5,6 @@ on:
   push:
     branches: [main]
 
-# Lets a newer push cancel an in-flight run on the same ref.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -32,3 +31,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Check process config
+        run: node -e "require('./.github/infra/ecosystem.config.js')"

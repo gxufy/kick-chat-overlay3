@@ -1,19 +1,12 @@
 /* The Viewer Counter, now that it shares a page with MultiChat.
  *
  * The counter used to have a route and a shell to itself. It is now a panel in
- * the Classic generator, beside 24 chat settings, a Twitch connection, OAuth
- * drafts, runtime gating, and URL fragments — none of which are the counter's,
- * and none of which the counter has any way to notice. This file is the guard for
- * that, and the move made it more necessary rather than less: proximity is how
- * machinery leaks.
- *
- * It asserts absence, which is exactly what the counter's own feature tests
- * cannot do — they assert presence of counter behaviour and would still pass if a
- * connection control or a fragment appeared in the counter panel.
- *
- * The load-bearing claim is byte identity: a counter URL built by this page must
- * equal one built by lib/viewerCounterConfig's own serializer, because that is
- * what /counter parses and what is already in OBS scenes.
+ * the Classic generator, beside chat settings, Twitch connection machinery,
+ * OAuth drafts, runtime gating, and URL fragments — none of which are the
+ * counter's. The load-bearing URL claim remains byte identity: the URL built by
+ * this page must equal lib/viewerCounterConfig's serializer because /counter is
+ * what users put in OBS. The in-page live preview now consumes that exact URL as
+ * configuration without navigating a nested /counter iframe.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
@@ -36,9 +29,16 @@ vi.mock('next/link', () => ({
     <a href={href}>{children}</a>
   ),
 }));
+vi.mock('@/components/workspace/LiveCounterPreview', () => ({
+  default: ({ url, height }: { url: string; height: number }) => (
+    <div
+      data-testid="counter-live-preview"
+      data-overlay-url={url}
+      data-preview-height={String(height)}
+    />
+  ),
+}));
 
-/* The generator reads window.location.origin for its base URL, and jsdom's
-   default origin is what the expected URLs below are built from. */
 const BASE = 'http://localhost:3000';
 
 const expectedUrl = (
@@ -59,14 +59,14 @@ const counterUrl = () =>
     'Generated viewer counter URL',
   ).textContent ?? '';
 
-const counterIframeSrc = () =>
+const livePreviewUrl = () =>
   document
-    .querySelector('iframe[title="Live viewer counter preview"]')
-    ?.getAttribute('src') ?? '';
+    .querySelector('[data-testid="counter-live-preview"]')
+    ?.getAttribute('data-overlay-url') ?? '';
 
-const settle = () => act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
+const settle = () =>
+  act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
 
-/** Channel fields by id: per-platform setting labels make label lookup ambiguous. */
 const typeChannel = (platform: string, value: string) =>
   fireEvent.change(document.getElementById(`channel-${platform}`)!, {
     target: { value },
@@ -105,8 +105,6 @@ describe('descriptor declares none of the MultiChat machinery', () => {
 });
 
 describe('the rendered counter panels show no connection surface', () => {
-  /* Scoped to the counter's two panels. The page as a whole does have a Twitch
-     connection — it belongs to chat, and that is the point of the scoping. */
   const counterText = () =>
     `${panel('.panel-counter-output').textContent ?? ''} ${
       panel('.panel-counter-settings').textContent ?? ''
@@ -139,9 +137,6 @@ describe('the rendered counter panels show no connection surface', () => {
   it('renders exactly the six catalog settings and no more', () => {
     mount();
     const settings = panel('.panel-counter-settings');
-    /* Counted by setting, not by input: a segmented choice is a radio group, so
-       three alignments are three inputs for one setting. `.classic-field` is the
-       per-setting wrapper either presentation renders. */
     expect(settings.querySelectorAll('.classic-field')).toHaveLength(
       COUNTER_CATALOG.length,
     );
@@ -151,8 +146,6 @@ describe('the rendered counter panels show no connection surface', () => {
         `vc-${String(setting.key)} is missing`,
       ).not.toBeNull();
     }
-    /* And every input present belongs to one of them — nothing else has crept
-       into the panel. */
     for (const input of Array.from(settings.querySelectorAll('select, input'))) {
       expect(input.closest('.classic-field')).not.toBeNull();
     }
@@ -196,47 +189,45 @@ describe('URL identity with the overlay serializer', () => {
     expect(counterUrl()).not.toContain('#');
   });
 
-  it('loads that exact URL in the preview frame', () => {
+  it('hands that exact URL to the native live preview', () => {
     mount();
     typeChannel('twitch', 'somechannel');
     settle();
-    expect(counterIframeSrc()).toBe(expectedUrl({ twitch: 'somechannel' }));
+    expect(livePreviewUrl()).toBe(expectedUrl({ twitch: 'somechannel' }));
   });
 
-  it('points the preview at /counter, never /multichat', () => {
+  it('keeps /counter as the generated OBS route without navigating it in-page', () => {
     mount();
     typeChannel('kick', 'somechannel');
     settle();
-    const src = counterIframeSrc();
-    expect(src.startsWith(`${BASE}/counter?`)).toBe(true);
-    expect(src).not.toContain('/multichat');
+    const url = livePreviewUrl();
+    expect(url.startsWith(`${BASE}/counter?`)).toBe(true);
+    expect(url).not.toContain('/multichat');
+    expect(document.querySelector('iframe[src*="/counter"]')).toBeNull();
   });
 
   it('serializes no chat parameter, however chat is styled', () => {
     mount();
     typeChannel('kick', 'somechannel');
-    fireEvent.change(document.getElementById('mc-font')!, { target: { value: 'roboto' } });
+    fireEvent.change(document.getElementById('mc-font')!, {
+      target: { value: 'roboto' },
+    });
     fireEvent.click(document.getElementById('mc-msgBold')!);
     expect(counterUrl()).toBe(expectedUrl({ kick: 'somechannel' }));
   });
 });
 
 describe('draft persistence stays scoped to its own tool', () => {
-  /* Both tools' drafts are written before an OAuth navigation, so the counter's
-     settings survive a round trip the chat side started. Two keys, two style
-     objects: what must not happen is one key holding the other's style. */
   it('writes the counter style under the counter key only', () => {
     mount();
     typeChannel('twitch', 'somechannel');
     fireEvent.click(document.getElementById('vc-combined')!);
-    // The Connect link is the only thing that persists a draft.
     fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));
 
     const raw = window.sessionStorage.getItem(workspaceDraftKey(counterTool.id));
     expect(raw, 'no counter draft was written').not.toBeNull();
     const draft = JSON.parse(raw!) as { style: Record<string, unknown> };
     expect(draft.style.combined).toBe(!DEFAULT_STYLE.combined);
-    // No MultiChat field reached the counter's draft.
     expect(draft.style).not.toHaveProperty('font');
     expect(draft.style).not.toHaveProperty('msgBold');
     expect(Object.keys(draft.style).sort()).toEqual(Object.keys(DEFAULT_STYLE).sort());
@@ -244,13 +235,6 @@ describe('draft persistence stays scoped to its own tool', () => {
 });
 
 describe('the counter starts no pin polling', () => {
-  /* "Declares no runtime" above implies this, but only implies it. The failure
-     that would matter is a network request, so the request layer is what is
-     asserted: a counter panel must never call POST /api/twitch/pins, which is the
-     only thing the poller ever calls. Configuring a Twitch channel is the state
-     most likely to tempt a shared page into starting pin polling — and the chat
-     panel next door is a real poller waiting for a connection. */
-
   const pinCalls = (fetchSpy: ReturnType<typeof vi.fn>) =>
     fetchSpy.mock.calls.filter(([url]) => String(url).includes('/api/twitch/pins'));
 
@@ -265,7 +249,6 @@ describe('the counter starts no pin polling', () => {
     const { unmount } = mount();
     typeChannel('twitch', 'somechannel');
     settle();
-    // Well past the poller's 5s floor, so a started poll would have fired.
     act(() => void vi.advanceTimersByTime(30_000));
     expect(pinCalls(fetchSpy)).toEqual([]);
 
@@ -277,7 +260,6 @@ describe('the counter starts no pin polling', () => {
   });
 
   it('renders no pin setting for a poller to be gated on', () => {
-    // The MultiChat catalog's twitch pin option is what starts polling there.
     const keys = COUNTER_CATALOG.map((setting) => String(setting.key));
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.filter((key) => /pin/i.test(key))).toEqual([]);

@@ -1,8 +1,8 @@
 /* OverlayPreviewFrame debounce and teardown, with fake timers.
  *
- * These are the properties that keep the preview from ever loading a
- * channel-less overlay URL, from reloading on every keystroke, and from
- * leaving a pending navigation behind after unmount.
+ * Chat URLs still navigate a real iframe. Counter URLs deliberately do not:
+ * they are handed to LiveCounterPreview after the same debounce so content
+ * blockers cannot suppress a nested /counter navigation.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
@@ -10,22 +10,39 @@ import OverlayPreviewFrame, {
   PREVIEW_DEBOUNCE_MS,
 } from '@/components/workspace/OverlayPreviewFrame';
 
-const TITLE = 'Live viewer counter preview';
+vi.mock('@/components/workspace/LiveCounterPreview', () => ({
+  default: ({ url, height }: { url: string; height: number }) => (
+    <div
+      data-testid="mock-live-counter"
+      data-overlay-url={url}
+      data-preview-height={String(height)}
+    />
+  ),
+}));
 
-function renderFrame(url: string, configured: boolean) {
+const CHAT_TITLE = 'Live chat overlay preview';
+const COUNTER_TITLE = 'Live viewer counter preview';
+
+function renderFrame(
+  url: string,
+  configured: boolean,
+  title = COUNTER_TITLE,
+  height = 80,
+) {
   return render(
     <OverlayPreviewFrame
       url={url}
       configured={configured}
-      title={TITLE}
-      height={80}
+      title={title}
+      height={height}
     />,
   );
 }
 
-const frame = () => document.querySelector('iframe');
+const iframe = () => document.querySelector('iframe');
+const nativeCounter = () =>
+  document.querySelector('[data-testid="mock-live-counter"]');
 
-/** Advance past the debounce inside act, so state updates are flushed. */
 function settle(ms = PREVIEW_DEBOUNCE_MS) {
   act(() => {
     vi.advanceTimersByTime(ms);
@@ -42,187 +59,233 @@ afterEach(() => {
 });
 
 describe('unconfigured', () => {
-  it('renders no iframe at all', () => {
+  it('renders no live preview at all', () => {
     renderFrame('http://localhost/counter?combined=true', false);
-    expect(frame()).toBeNull();
+    expect(iframe()).toBeNull();
+    expect(nativeCounter()).toBeNull();
   });
 
   it('still renders nothing after the debounce elapses', () => {
     renderFrame('http://localhost/counter?combined=true', false);
     settle(PREVIEW_DEBOUNCE_MS * 4);
-    expect(frame()).toBeNull();
+    expect(iframe()).toBeNull();
+    expect(nativeCounter()).toBeNull();
   });
 });
 
-describe('debounce', () => {
-  it('waits the full debounce before mounting the first URL', () => {
-    renderFrame('http://localhost/counter?twitch=a', true);
-    expect(frame()).toBeNull();
+describe('counter routing', () => {
+  it('waits the full debounce before mounting the native Counter preview', () => {
+    const url = 'http://localhost/counter?twitch=a';
+    renderFrame(url, true);
+    expect(nativeCounter()).toBeNull();
 
     settle(PREVIEW_DEBOUNCE_MS - 1);
-    expect(frame()).toBeNull();
+    expect(nativeCounter()).toBeNull();
 
     settle(1);
-    expect(frame()?.getAttribute('src')).toBe('http://localhost/counter?twitch=a');
+    expect(nativeCounter()?.getAttribute('data-overlay-url')).toBe(url);
+    expect(iframe()).toBeNull();
   });
 
-  it('rapid changes cancel earlier pending URLs, so only the last one loads', () => {
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a', true);
+  it('rapid changes cancel earlier pending Counter URLs', () => {
+    const { rerender } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
 
     for (const name of ['ab', 'abc', 'abcd']) {
       settle(PREVIEW_DEBOUNCE_MS - 50);
-      expect(frame()).toBeNull();
+      expect(nativeCounter()).toBeNull();
       rerender(
         <OverlayPreviewFrame
           url={`http://localhost/counter?twitch=${name}`}
           configured
-          title={TITLE}
+          title={COUNTER_TITLE}
           height={80}
         />,
       );
     }
 
     settle();
-    expect(frame()?.getAttribute('src')).toBe(
+    expect(nativeCounter()?.getAttribute('data-overlay-url')).toBe(
       'http://localhost/counter?twitch=abcd',
     );
   });
 
-  it('navigates to the new URL when an appearance change settles', () => {
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a&bg=true', true);
+  it('passes an appearance change to the native preview after debounce', () => {
+    const { rerender } = renderFrame(
+      'http://localhost/counter?twitch=a&bg=true',
+      true,
+    );
     settle();
-    expect(frame()?.getAttribute('src')).toContain('bg=true');
+    expect(nativeCounter()?.getAttribute('data-overlay-url')).toContain('bg=true');
 
     rerender(
       <OverlayPreviewFrame
         url="http://localhost/counter?twitch=a&bg=false"
         configured
-        title={TITLE}
+        title={COUNTER_TITLE}
         height={80}
       />,
     );
     settle();
-    expect(frame()?.getAttribute('src')).toContain('bg=false');
+    expect(nativeCounter()?.getAttribute('data-overlay-url')).toContain('bg=false');
+  });
+
+  it('passes the requested height without creating a remote iframe', () => {
+    renderFrame('http://localhost/counter?twitch=a', true, COUNTER_TITLE, 80);
+    settle();
+    expect(nativeCounter()?.getAttribute('data-preview-height')).toBe('80');
+    expect(iframe()).toBeNull();
+  });
+});
+
+describe('chat routing', () => {
+  it('keeps the exact generated chat URL in a real iframe', () => {
+    const url = 'http://localhost/multichat?twitch=a';
+    renderFrame(url, true, CHAT_TITLE, 280);
+    settle();
+
+    expect(iframe()?.getAttribute('src')).toBe(url);
+    expect(nativeCounter()).toBeNull();
+  });
+
+  it('keeps the chat iframe transparent, borderless and at the requested height', () => {
+    renderFrame(
+      'http://localhost/multichat?twitch=a',
+      true,
+      CHAT_TITLE,
+      280,
+    );
+    settle();
+
+    const frame = iframe() as HTMLIFrameElement;
+    const inline = frame.getAttribute('style') ?? '';
+    expect(frame.getAttribute('title')).toBe(CHAT_TITLE);
+    expect(frame.getAttribute('scrolling')).toBe('no');
+    expect(inline).toContain('background: transparent');
+    expect(inline).toContain('overflow: hidden');
+    expect(frame.style.height).toBe('280px');
+    expect(frame.style.display).toBe('block');
+  });
+
+  it('uses no polling interval of its own for chat', () => {
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const randomSpy = vi.spyOn(Math, 'random');
+
+    const { rerender } = renderFrame(
+      'http://localhost/multichat?twitch=a',
+      true,
+      CHAT_TITLE,
+    );
+    settle();
+
+    rerender(
+      <OverlayPreviewFrame
+        url="http://localhost/multichat?twitch=ab"
+        configured
+        title={CHAT_TITLE}
+        height={80}
+      />,
+    );
+    settle();
+
+    expect(intervalSpy).not.toHaveBeenCalled();
+    expect(randomSpy).not.toHaveBeenCalled();
   });
 });
 
 describe('clearing configuration', () => {
-  it('removes the iframe immediately, without waiting for the debounce', () => {
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a', true);
+  it('removes a native Counter preview immediately', () => {
+    const { rerender } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     settle();
-    expect(frame()).not.toBeNull();
+    expect(nativeCounter()).not.toBeNull();
 
     rerender(
       <OverlayPreviewFrame
         url="http://localhost/counter?combined=true"
         configured={false}
-        title={TITLE}
+        title={COUNTER_TITLE}
         height={80}
       />,
     );
-    expect(frame()).toBeNull();
+
+    expect(nativeCounter()).toBeNull();
   });
 
-  it('no delayed timeout restores a cleared iframe', () => {
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a', true);
+  it('no delayed timeout restores a cleared preview', () => {
+    const { rerender } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     settle();
 
     rerender(
       <OverlayPreviewFrame
         url="http://localhost/counter?combined=true"
         configured={false}
-        title={TITLE}
+        title={COUNTER_TITLE}
         height={80}
       />,
     );
     settle(PREVIEW_DEBOUNCE_MS * 5);
-    expect(frame()).toBeNull();
+    expect(nativeCounter()).toBeNull();
   });
 
-  it('never mounts a channel-less URL when configuration flips mid-debounce', () => {
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a', true);
+  it('never mounts a channel-less preview when configuration flips mid-debounce', () => {
+    const { rerender } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     settle(PREVIEW_DEBOUNCE_MS - 10);
 
     rerender(
       <OverlayPreviewFrame
         url="http://localhost/counter?combined=true"
         configured={false}
-        title={TITLE}
+        title={COUNTER_TITLE}
         height={80}
       />,
     );
     settle(PREVIEW_DEBOUNCE_MS * 3);
-    expect(frame()).toBeNull();
+    expect(nativeCounter()).toBeNull();
   });
 });
 
 describe('teardown', () => {
   it('clears the pending timeout on unmount', () => {
     const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
-    const { unmount } = renderFrame('http://localhost/counter?twitch=a', true);
+    const { unmount } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     unmount();
     expect(clearSpy).toHaveBeenCalled();
   });
 
-  it('leaves no iframe behind after unmount', () => {
-    const { unmount } = renderFrame('http://localhost/counter?twitch=a', true);
+  it('leaves no preview behind after unmount', () => {
+    const { unmount } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     settle();
-    expect(frame()).not.toBeNull();
+    expect(nativeCounter()).not.toBeNull();
     unmount();
-    expect(frame()).toBeNull();
+    expect(nativeCounter()).toBeNull();
   });
 
   it('does not mount after unmount even if the timer would have fired', () => {
-    const { unmount } = renderFrame('http://localhost/counter?twitch=a', true);
+    const { unmount } = renderFrame(
+      'http://localhost/counter?twitch=a',
+      true,
+    );
     unmount();
     act(() => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 3);
     });
-    expect(frame()).toBeNull();
-  });
-});
-
-describe('iframe attributes', () => {
-  it('carries the accessible title and disables scrolling', () => {
-    renderFrame('http://localhost/counter?twitch=a', true);
-    settle();
-    const iframe = frame();
-    expect(iframe?.getAttribute('title')).toBe(TITLE);
-    expect(iframe?.getAttribute('scrolling')).toBe('no');
-  });
-
-  it('is transparent and borderless at the requested height', () => {
-    renderFrame('http://localhost/counter?twitch=a', true);
-    settle();
-    const iframe = frame() as HTMLIFrameElement;
-    const inline = iframe.getAttribute('style') ?? '';
-    expect(inline).toContain('background: transparent');
-    expect(inline).toContain('overflow: hidden');
-    expect(iframe.style.height).toBe('80px');
-    expect(iframe.style.display).toBe('block');
-    /* `border: none` is asserted through the frameBorder-equivalent visual
-       check in the browser, not here: jsdom's CSS parser silently drops the
-       `border` shorthand when its value is the `none` keyword, so neither
-       style.border nor the serialized attribute retains it under jsdom. */
-  });
-});
-
-describe('no synthetic data', () => {
-  it('uses no interval timers and no randomness', () => {
-    const intervalSpy = vi.spyOn(globalThis, 'setInterval');
-    const randomSpy = vi.spyOn(Math, 'random');
-    const { rerender } = renderFrame('http://localhost/counter?twitch=a', true);
-    settle();
-    rerender(
-      <OverlayPreviewFrame
-        url="http://localhost/counter?twitch=ab"
-        configured
-        title={TITLE}
-        height={80}
-      />,
-    );
-    settle();
-    expect(intervalSpy).not.toHaveBeenCalled();
-    expect(randomSpy).not.toHaveBeenCalled();
+    expect(nativeCounter()).toBeNull();
   });
 });

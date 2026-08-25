@@ -755,10 +755,10 @@ describe('the two authoritative URLs', () => {
         ?.getAttribute('src'),
     ).toBe(chatUrl());
     expect(
-      document
-        .querySelector('iframe[title="Live viewer counter preview"]')
-        ?.getAttribute('src'),
-    ).toBe(counterUrl());
+    document
+      .querySelector('[data-testid="counter-live-preview"]')
+      ?.getAttribute('data-overlay-url'),
+  ).toBe(counterUrl());
   });
 
   it('respects manual Preview Data until every channel clears, then permits a new auto-switch', () => {
@@ -780,10 +780,14 @@ describe('the two authoritative URLs', () => {
     typeChannel('kick', 'somechannel');
     fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
     settle();
-    const height = (title: string) =>
-      (document.querySelector(`iframe[title="${title}"]`) as HTMLElement).style.height;
-    expect(height('Live chat overlay preview')).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
-    expect(height('Live viewer counter preview')).toBe(`${counterTool.obs.height}px`);
+    const chatHeight = (
+    document.querySelector('iframe[title="Live chat overlay preview"]') as HTMLElement
+  ).style.height;
+  const counterHeight = document
+    .querySelector('[data-testid="counter-live-preview"]')
+    ?.getAttribute('data-preview-height');
+  expect(chatHeight).toBe(`${MULTICHAT_OBS_SIZE.height}px`);
+  expect(counterHeight).toBe(String(counterTool.obs.height));
   });
 });
 
@@ -1286,25 +1290,32 @@ describe('the Demo interface is gone', () => {
     }
   });
 
-  it('renders configured previews through real overlay iframes when selected', () => {
-    /* The claim is that nothing here is a mock-up: what a preview shows a
-       configured channel is the overlay itself, at its own URL, not a picture of
-       one. Two frames, both loading from this origin — one per tool, with no
-       third frame layered behind either of them. The exact count matters: a
-       revision that kept a sample preview mounted underneath the live counter is
-       what this asserts is gone. */
-    mount();
-    typeChannel('kick', 'somechannel');
-    fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
-    settle();
-    const frames = Array.from(document.querySelectorAll('iframe'));
-    expect(frames).toHaveLength(2);
-    for (const frame of frames) {
-      expect(frame.getAttribute('src')?.startsWith(BASE)).toBe(true);
-    }
-  });
+  it('renders configured previews through their live production paths when selected', () => {
+  /* Chat keeps the exact generated overlay iframe. The Counter keeps the
+     production renderer but polls in the parent document and renders into a
+     local isolated frame, so no nested /counter navigation can be blocked. */
+  mount();
+  typeChannel('kick', 'somechannel');
+  fireEvent.click(screen.getByRole('tab', { name: 'Live Overlay' }));
+  settle();
 
-  it('labels the built-in chat samples as preview data', () => {
+  const chatFrame = document.querySelector<HTMLIFrameElement>(
+    'iframe[title="Live chat overlay preview"]',
+  );
+  const counterLive = document.querySelector<HTMLElement>(
+    '[data-testid="counter-live-preview"]',
+  );
+  const counterFrame = document.querySelector<HTMLIFrameElement>(
+    'iframe[title="Live viewer counter preview"]',
+  );
+
+  expect(chatFrame?.getAttribute('src')?.startsWith(BASE)).toBe(true);
+  expect(counterLive?.getAttribute('data-overlay-url')).toBe(counterUrl());
+  expect(counterFrame?.getAttribute('src')).toBeNull();
+  expect(document.querySelectorAll('iframe')).toHaveLength(2);
+});
+
+it('labels the built-in chat samples as preview data', () => {
     /* This assertion replaced one requiring the chat panel to say "Enter a
        channel above". That empty state was honest but useless: it showed nothing
        about styling, which is the only reason to be on this page. Fixtures are

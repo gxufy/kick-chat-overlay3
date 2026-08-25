@@ -214,7 +214,7 @@ function MultichatOverlay() {
 
   // Mutable state that doesn't trigger rerenders
   const stateRef = useRef<{
-    emotes: { kick: SevenTVEmote[]; twitch: SevenTVEmote[] };
+    emotes: { kick: SevenTVEmote[]; twitch: SevenTVEmote[]; youtube: SevenTVEmote[] };
     badges: SevenTVBadge[];
     paints: SevenTVPaint[];
     entitlements: Entitlements;
@@ -222,7 +222,7 @@ function MultichatOverlay() {
     channel: KickChannel | null;
     config: OverlayConfig | null;
   }>({
-    emotes: { kick: [], twitch: [] },
+    emotes: { kick: [], twitch: [], youtube: [] },
     badges: [],
     paints: [],
     entitlements: {},
@@ -287,6 +287,7 @@ function MultichatOverlay() {
     const connectors: Connector[] = [];
     const cleanups: (() => void)[] = [];
     let twitchRoomId: string | null = null; // for !multichat refresh emotes
+    let youtubeChannelId: string | null = null;
 
     /* GQL cosmetics fetcher (UChat approach) — deterministic per-chatter
        lookups; EventAPI stays on for live deltas. When cosmetics land,
@@ -577,6 +578,22 @@ function MultichatOverlay() {
         onMessage: addMessage,
         onDelete: o => removeMessages('youtube', o),
         onPin: handlePin,
+        onChannelInfo: async ({ channelId }) => {
+          youtubeChannelId = channelId;
+          if (!cfg.sevenTVEmotesEnabled) return;
+          const global = await getSevenTVGlobalEmotes();
+          const { emotes: channelEmotes } = await getSevenTVChannelEmotes(channelId, 'youtube');
+          const merged = new Map(global.map((emote) => [emote.name, emote]));
+          for (const emote of channelEmotes) merged.set(emote.name, emote);
+          s.emotes.youtube = [...merged.values()];
+          let touched = false;
+          s.messages = s.messages.map((message) => {
+            if (message.platform !== 'youtube' || !message.raw) return message;
+            touched = true;
+            return { ...buildParsed(message.raw as UnifiedMessage), id: message.id, timestamp: message.timestamp };
+          });
+          if (touched) markDirty();
+        },
         onStatus: (status, detail) => {
           if (status !== 'connecting') settle('youtube');
           if (status === 'error' && platformCount === 1) setError(detail ?? 'YouTube connection error');
@@ -711,8 +728,13 @@ function MultichatOverlay() {
           for (const emote of channelEmotes) kick.set(emote.name, emote);
         }
         const twitch = twitchRoomId ? await loadTwitchEmotes(twitchRoomId) : [];
-        // Replace both complete catalogs atomically after every provider settles.
-        s.emotes = { kick: [...kick.values()], twitch };
+        const youtube = new Map(global.map((emote) => [emote.name, emote]));
+        if (youtubeChannelId) {
+          const { emotes: channelEmotes } = await getSevenTVChannelEmotes(youtubeChannelId, 'youtube');
+          for (const emote of channelEmotes) youtube.set(emote.name, emote);
+        }
+        // Replace complete provider catalogs atomically after every source settles.
+        s.emotes = { kick: [...kick.values()], twitch, youtube: [...youtube.values()] };
         s.messages = s.messages.map((message) => ({
           ...buildParsed(message.raw as UnifiedMessage),
           id: message.id,
@@ -724,6 +746,7 @@ function MultichatOverlay() {
         if (!name) return null;
         return s.emotes.kick.find((emote) => emote.name === name)?.image
           ?? s.emotes.twitch.find((emote) => emote.name === name)?.image
+          ?? s.emotes.youtube.find((emote) => emote.name === name)?.image
           ?? null;
       },
       speak(t) {

@@ -64,6 +64,8 @@ export interface ParsedMessage {
   avatar?: string;
   /** Twitch Shared Chat source streamer, distinct from the author. */
   sourceChannel?: TwitchSourceChannel;
+  /** Provider-native reply preview. */
+  reply?: { username: string; text: string; messageId?: string; senderId?: string };
   /** original UnifiedMessage — kept so late-arriving 7TV cosmetics can rebuild the rendered line */
   raw?: unknown;
   /** system events (gifts, subs, superchats) render without name colon */
@@ -131,17 +133,22 @@ export function parseKickChannel(value: unknown): KickChannel | null {
 }
 
 export async function getKickChannel(channel: string, signal?: AbortSignal): Promise<KickChannel | null> {
-  try {
-    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(channel)}`, {
-      headers: { 'Accept': 'application/json' },
-      signal,
-    });
-    if (!res.ok) return null;
-    return parseKickChannel(await res.json());
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return null;
+  const clean = channel.replace(/^@/, '').trim();
+  const urls = [
+    `/api/kick/channel?channel=${encodeURIComponent(clean)}`,
+    `https://kick.com/api/v2/channels/${encodeURIComponent(clean)}`,
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' }, signal, cache: 'no-store' });
+      if (!res.ok) continue;
+      const parsed = parseKickChannel(await res.json());
+      if (parsed) return parsed;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    }
   }
+  return null;
 }
 
 /* One 7TV ActiveEmote → our SevenTVEmote. Shared by every set source
@@ -215,9 +222,11 @@ export async function getSevenTVEmoteSet(setId: string): Promise<SevenTVEmote[]>
   return outcome.status === 'ok' ? outcome.emotes : [];
 }
 
-export async function getSevenTVChannelEmotes(userId: string, platform: 'kick' | 'twitch' = 'kick'): Promise<{ emotes: SevenTVEmote[]; setId: string | null; stvUserId: string | null }> {
+export async function getSevenTVChannelEmotes(userId: string, platform: 'kick' | 'twitch' | 'youtube' = 'kick'): Promise<{ emotes: SevenTVEmote[]; setId: string | null; stvUserId: string | null }> {
   try {
-    const res = await fetch(`https://7tv.io/v3/users/${platform}/${userId}`);
+    // 7TV's public platform name for YouTube accounts is GOOGLE.
+    const endpointPlatform = platform === 'youtube' ? 'google' : platform;
+    const res = await fetch(`https://7tv.io/v3/users/${endpointPlatform}/${userId}`);
     if (!res.ok) return { emotes: [], setId: null, stvUserId: null };
     const data = await res.json();
     // NOTE: root `id` is the PLATFORM connection id; the actual 7TV

@@ -33,6 +33,15 @@ export interface UnifiedBadge {
   url?: string;
 }
 
+export interface UnifiedReply {
+  /** Provider message id of the parent, when available. */
+  messageId?: string;
+  /** Provider user id of the parent author, when available. */
+  senderId?: string;
+  username: string;
+  text: string;
+}
+
 export interface TwitchSourceChannel {
   /** Canonical source-room-id from Twitch IRC Shared Chat. */
   roomId: string;
@@ -62,6 +71,8 @@ export interface UnifiedMessage {
   redeem?: boolean | string;
   /** avatar URL — yt/tiktok only (StreamNook: other platforms don't carry one) */
   avatar?: string;
+  /** Provider-native reply preview (currently Kick). */
+  reply?: UnifiedReply;
   /** Twitch source streamer identity used when Shared Chat display is enabled. */
   sourceChannel?: TwitchSourceChannel;
   /** True only when this message originated in a partner room via Twitch Shared Chat. */

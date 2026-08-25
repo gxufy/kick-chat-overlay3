@@ -297,8 +297,11 @@ describe('the emote rules the overlay emits', () => {
     const px = (s: string, prop: string) =>
       Number(new RegExp(`(?:^|;)\\s*${prop}:\\s*(\\d+(?:\\.\\d+)?)px`).exec(s)?.[1]);
     expect(px(badge, 'height')).not.toBe(px(emote, 'height'));
-    /* Badges keep their own spacing rather than the emote compaction margin. */
-    expect(px(badge, 'margin-right')).toBeGreaterThan(0);
+    /* Badge spacing now belongs to the centered inline-flex wrapper rather
+       than each image, while emotes keep their own negative compaction. */
+    const badgeRow = block(css, '.ck-bw {');
+    expect(px(badgeRow, 'gap')).toBeGreaterThan(0);
+    expect(badge).toMatch(/margin:\s*0\s*!important/);
     expect(emote).toMatch(/margin-right:\s*-/);
   });
 });

@@ -48,6 +48,7 @@ describe('preview multi-provider badge pipeline', () => {
       const url = String(input);
       if (url.startsWith('/api/twitch/badges?')) return response(twitchBody);
       if (url === 'https://7tv.io/v3/gql') return response(sevenTVBody);
+      if (url === '/api/kick/channel?channel=kick-channel') return response(kickBody);
       if (url === 'https://kick.com/api/v2/channels/kick-channel') return response(kickBody);
       if (url === 'https://api.frankerfacez.com/v1/_room/id/42') {
         return response({ room: { moderator_badge: true, vip_badge: true } });

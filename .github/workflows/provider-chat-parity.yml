@@ -1,0 +1,45 @@
+name: Provider chat parity
+
+on:
+  push:
+    branches: [feat/streamnook-provider-chat-parity]
+    paths:
+      - .github/scripts/apply-provider-chat-parity.py
+      - .github/workflows/provider-chat-parity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/streamnook-provider-chat-parity
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply provider chat parity changes
+        run: python3 .github/scripts/apply-provider-chat-parity.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit"
+          else
+            git commit -m "Add Kick and YouTube provider chat parity"
+            git push origin HEAD:feat/streamnook-provider-chat-parity
+          fi

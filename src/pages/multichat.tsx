@@ -359,9 +359,11 @@ function MultichatOverlay() {
     const shouldDisplay = buildMessageFilter(cfg);
 
     /* Message flush policy.
-       Legacy URLs keep the old chatis 200ms batch cadence. New generator URLs
-       opt into bChat-style smooth scrolling, where store changes are coalesced
-       to one React commit per animation frame instead of arriving in 200ms chunks. */
+       Smooth handling normally coalesces store changes to one React commit per
+       animation frame. ChatIS Slide is the exception by design: the upstream
+       implementation consumes one aggregate batch every 200ms, then opens that
+       batch's height over 150ms. Keep that cadence whenever Slide is selected. */
+    const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
     let dirty = false;
     let flushFrame: number | null = null;
 
@@ -373,14 +375,14 @@ function MultichatOverlay() {
 
     function markDirty() {
       dirty = true;
-      if (!cfg.smoothScroll || flushFrame !== null) return;
+      if (!smoothRuntime || flushFrame !== null) return;
       flushFrame = requestAnimationFrame(() => {
         flushFrame = null;
         flushMessages();
       });
     }
 
-    const flushInterval: ReturnType<typeof setInterval> | null = cfg.smoothScroll
+    const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime
       ? null
       : setInterval(flushMessages, 200);
 

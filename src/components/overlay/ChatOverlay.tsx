@@ -197,6 +197,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
   const fontCss    = overlayFontCss(cfg.font);
+  /* ChatIS Slide is a complete entrance mode, not a smooth-scroll variant.
+     When Slide is selected, preserve ChatIS's original bottom-anchored layout
+     and height-ghost motion even though smooth handling is the site default. */
+  const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
   const loaderPhase: StartupLoaderPhase = showLoader === true
     ? 'visible'
     : showLoader === false
@@ -220,12 +224,13 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     ? cfg.sourceTag
     : (multiPlatform || youtubeOnly ? 'icon' : 'none'));
 
-  /* bChat smooth message handling: observe structural row changes, coalesce
-     them to one frame, and smooth-scroll to the newest row. If messages arrive
-     within 100ms, jump immediately so browser smooth-scroll animations never queue. */
+  /* bChat smooth message handling for non-Slide modes: observe structural row
+     changes, coalesce them to one frame, and smooth-scroll to the newest row.
+     ChatIS Slide deliberately bypasses this observer so its own height animation
+     remains visually identical to the source implementation. */
   const chatContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!cfg.smoothScroll) return;
+    if (!smoothRuntime) return;
     const el = chatContainerRef.current;
     if (!el || typeof MutationObserver === 'undefined') return;
     let raf = 0;
@@ -249,7 +254,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       cancelAnimationFrame(raf);
       observer.disconnect();
     };
-  }, [cfg.smoothScroll]);
+  }, [smoothRuntime]);
 
   /* Batching — chatis has ONE 200ms update loop (script.js update()).
      pages/index.tsx owns that loop now and flushes messages at most
@@ -305,7 +310,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       // jQuery fadeOut: opacity 1→0 over 400ms, exact chatis behaviour
       opacity: fadingIds.has(msg.id) ? 0 : 1,
       transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',
-      ...(cfg.smoothScroll && filterVal ? { filter: filterVal } : {}),
+      ...(smoothRuntime && filterVal ? { filter: filterVal } : {}),
 
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
@@ -565,10 +570,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         padding:    '10px',
         position:   'absolute',
         bottom:     0,
-        maxHeight:  cfg.smoothScroll ? 'calc(100vh - 20px)' : undefined,
-        display:    cfg.smoothScroll ? 'flex' : undefined,
-        flexDirection: cfg.smoothScroll ? 'column' : undefined,
-        willChange: cfg.smoothScroll ? 'scroll-position' : undefined,
+        maxHeight:  smoothRuntime ? 'calc(100vh - 20px)' : undefined,
+        display:    smoothRuntime ? 'flex' : undefined,
+        flexDirection: smoothRuntime ? 'column' : undefined,
+        willChange: smoothRuntime ? 'scroll-position' : undefined,
         overflow:   'hidden',
         background: 'transparent',
         color:      cfg.fontColor || 'white',
@@ -577,7 +582,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
-                ...(!cfg.smoothScroll && filterVal ? { filter:filterVal } : {}),
+                ...(!smoothRuntime && filterVal ? { filter:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
         {batches.map(({ id, messageIds }) => {
@@ -585,7 +590,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .map((messageId) => messagesById.get(messageId))
             .filter((message): message is ParsedMessage => Boolean(message))
             .map(renderMsg);
-          if (cfg.animation==='slide' && !cfg.smoothScroll) return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
+          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
           if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
         })}

@@ -26,11 +26,20 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('src/components/classic/ClassicGenerator.tsx')
           text = p.read_text()
           text = text.replace(
               '<code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above. These\n          commands apply to the chat overlay only; the viewer counter has none.',
               '<code>{MULTICHAT_COMMAND_TRIGGER}</code> everywhere above.\n          These commands apply to the chat overlay only; the viewer counter has none.',
+          )
+          p.write_text(text)
+
+          p = Path('src/pages/multichat.tsx')
+          text = p.read_text()
+          text = text.replace(
+              "    setConfig(cfg);\n    stateRef.current.config = cfg;\n    setLoaderPhase('visible');",
+              "    setConfig(cfg);\n    setError(null);\n    stateRef.current.config = cfg;\n    setLoaderPhase('visible');",
           )
           p.write_text(text)
           PY

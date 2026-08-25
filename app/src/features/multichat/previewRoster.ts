@@ -9,7 +9,6 @@ export type PreviewRosterEntry = {
   readonly login: string;
   readonly displayName: string;
   readonly fallbackText: string;
-  readonly badgeDescriptors: readonly string[];
 };
 
 export const PREVIEW_MESSAGES = [
@@ -24,13 +23,14 @@ export const PREVIEW_MESSAGES = [
 ] as const;
 
 export const PREVIEW_ROSTER = [
-  { login: 'gxufy', displayName: 'gxufy', fallbackText: PREVIEW_MESSAGES[0], badgeDescriptors: ['broadcaster/1', 'subscriber/0', 'bits/100'] },
-  { login: 'feelssunnyman', displayName: 'feelssunnyman', fallbackText: PREVIEW_MESSAGES[1], badgeDescriptors: ['moderator/1', 'subscriber/3', 'sub-gift-leader/3'] },
-  { login: 'uniidev', displayName: 'uniiDev', fallbackText: PREVIEW_MESSAGES[2], badgeDescriptors: ['vip/1', 'subscriber/6', 'bits/1000'] },
-  { login: 'xslash58', displayName: 'Xslash58', fallbackText: PREVIEW_MESSAGES[3], badgeDescriptors: ['subscriber/12', 'sub-gifter/5', 'bits-leader/1'] },
-  { login: 'wyydogg', displayName: 'wyydogg', fallbackText: PREVIEW_MESSAGES[4], badgeDescriptors: ['subscriber/24', 'sub-gift-leader/2', 'bits/5000'] },
-  { login: 'jaykayrah', displayName: 'JAYKAYRAH', fallbackText: PREVIEW_MESSAGES[5], badgeDescriptors: ['subscriber/36', 'sub-gifter/10', 'premium/1'] },
-  { login: 'slaiqe', displayName: 'slaiqe', fallbackText: PREVIEW_MESSAGES[6], badgeDescriptors: ['subscriber/48', 'bits/10000', 'glhf-pledge/1'] },
+  { login: 'gxufy', displayName: 'gxufy', fallbackText: PREVIEW_MESSAGES[0] },
+  { login: 'blu01_', displayName: 'blu01_', fallbackText: PREVIEW_MESSAGES[1] },
+  { login: 'uniidev', displayName: 'uniiDev', fallbackText: PREVIEW_MESSAGES[2] },
+  { login: 'xslash58', displayName: 'Xslash58', fallbackText: PREVIEW_MESSAGES[3] },
+  { login: 'moltobenne_', displayName: 'moltobenne_', fallbackText: PREVIEW_MESSAGES[4] },
+  { login: 'said', displayName: 'Said', fallbackText: PREVIEW_MESSAGES[5] },
+  { login: 'slaiqe', displayName: 'slaiqe', fallbackText: PREVIEW_MESSAGES[6] },
+  { login: 'wtwfrxsty', displayName: 'wtwfrxsty', fallbackText: PREVIEW_MESSAGES[7] },
 ] as const satisfies readonly PreviewRosterEntry[];
 
 export const PREVIEW_ROSTER_CONCURRENCY = 3;
@@ -53,40 +53,32 @@ function badgeFromDescriptor(descriptor: string, image: string): UnifiedBadge {
 }
 
 export function curatedBadges(
-  entry: PreviewRosterEntry,
+  _entry: PreviewRosterEntry,
   response: PreviewIdentityResponse | undefined,
-  page: number,
+  _page: number,
 ): UnifiedBadge[] {
   if (!response) return [];
+
   const artwork = mergePreviewIdentityBadgeMaps(response.providers);
-  const catalog = Object.keys(artwork).sort();
-  const showcase = catalog.length
-    ? Array.from({ length: Math.min(3, catalog.length) }, (_, offset) =>
-        catalog[(page * 3 + offset) % catalog.length]!,
-      )
-    : [];
-  const ordered = [...entry.badgeDescriptors, ...showcase];
-  const seenIdentity = new Set<string>();
   const seenUrl = new Set<string>();
   const badges: UnifiedBadge[] = [];
-  for (const descriptor of ordered) {
-    const image = artwork[descriptor];
-    if (!image || seenIdentity.has(descriptor) || seenUrl.has(image)) continue;
-    seenIdentity.add(descriptor);
+
+  for (const [descriptor, image] of Object.entries(artwork)) {
+    if (!descriptor.startsWith('community:') || seenUrl.has(image)) continue;
     seenUrl.add(image);
     badges.push(badgeFromDescriptor(descriptor, image));
   }
+
   const owned = [
     ...(response.providers.BTTV?.resources.ownedBadges ?? []),
     ...(response.providers.FFZ?.resources.ownedBadges ?? []),
   ];
   for (const badge of owned) {
-    const identity = `third-party/${badge.id}`;
-    if (seenIdentity.has(identity) || seenUrl.has(badge.image)) continue;
-    seenIdentity.add(identity);
+    if (seenUrl.has(badge.image)) continue;
     seenUrl.add(badge.image);
     badges.push({ type: badge.id, url: badge.image });
   }
+
   return badges;
 }
 
@@ -103,7 +95,7 @@ function template(
     platform: 'twitch',
     displayPlatform: visualPlatform(index, page),
     senderId: response?.identity.userId ?? `preview-roster-${entry.login}`,
-    username: entry.displayName,
+    username: response?.identity.displayName ?? entry.displayName,
     color: '#a970ff',
     badges: curatedBadges(entry, response, page),
     text,

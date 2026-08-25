@@ -21,7 +21,7 @@ import {
   type CommandHost,
 } from '@/lib/multichatCommandRuntime';
 import { MULTICHAT_COMMANDS } from '@/lib/multichatCommands';
-import type { Connector, UnifiedMessage } from '@/lib/types';
+import type { Connector, Platform, UnifiedMessage } from '@/lib/types';
 
 /* ── Fake Pusher, for the Kick connector ── */
 
@@ -103,6 +103,9 @@ type Recorded = {
   mounted: { slot: number; el: HTMLElement; timeoutMs: number }[];
   removeAll: number;
   visible: boolean[];
+  platformVisible: { platform: Platform; visible: boolean }[];
+  sharedVisible: boolean[];
+  counterBackground: boolean[];
   reloads: number;
   refreshes: number;
   spoken: string[];
@@ -116,6 +119,9 @@ function createHost(overrides: Partial<CommandHost> = {}) {
     mounted: [],
     removeAll: 0,
     visible: [],
+    platformVisible: [],
+    sharedVisible: [],
+    counterBackground: [],
     reloads: 0,
     refreshes: 0,
     spoken: [],
@@ -132,6 +138,9 @@ function createHost(overrides: Partial<CommandHost> = {}) {
     mountFloat: (slot, el, timeoutMs) => log.mounted.push({ slot, el, timeoutMs }),
     createElement: (tag) => document.createElement(tag),
     setChatVisible: (visible) => log.visible.push(visible),
+    setPlatformChatVisible: (platform, visible) => log.platformVisible.push({ platform, visible }),
+    setSharedChatVisible: (visible) => log.sharedVisible.push(visible),
+    setCounterBackground: (visible) => log.counterBackground.push(visible),
     reload: () => { log.reloads += 1; },
     refreshEmotes: async () => { log.refreshes += 1; },
     findEmoteUrl: (name) =>
@@ -402,6 +411,29 @@ describe('ingestion actually reaches the dispatcher', () => {
       expect(levels).toEqual([1000, 500, 0]);
     });
   }
+});
+
+describe('runtime visibility controls', () => {
+  it('maps platform, Shared Chat, and counter background commands onto their host controls', () => {
+    const { runner, log } = createHost();
+    const base: UnifiedMessage = {
+      platform: 'twitch', id: 'ctl-0', senderId: '9', username: 'somemod', color: '',
+      badges: [{ type: 'moderator' }], text: '', emotes: [], timestamp: 1, kind: 'chat',
+    };
+    const commands = [
+      'kickoff', 'kickon', 'twitchoff', 'twitchon', 'youtubeoff', 'youtubeon',
+      'tiktokoff', 'tiktokon', 'sharedoff', 'sharedon', 'counterbgoff', 'counterbgon',
+    ];
+    commands.forEach((name, index) => runner.handle({ ...base, id: `ctl-${index}`, text: `!multichat ${name}` }));
+    expect(log.platformVisible).toEqual([
+      { platform: 'kick', visible: false }, { platform: 'kick', visible: true },
+      { platform: 'twitch', visible: false }, { platform: 'twitch', visible: true },
+      { platform: 'youtube', visible: false }, { platform: 'youtube', visible: true },
+      { platform: 'tiktok', visible: false }, { platform: 'tiktok', visible: true },
+    ]);
+    expect(log.sharedVisible).toEqual([false, true]);
+    expect(log.counterBackground).toEqual([false, true]);
+  });
 });
 
 describe('every command runs from every platform', () => {

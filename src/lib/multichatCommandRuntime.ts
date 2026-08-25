@@ -184,8 +184,14 @@ export type CommandHost = {
   mountFloat(slot: number, el: HTMLElement, timeoutMs: number): void;
   /** Create a detached element. Separate from mounting so tests need no document. */
   createElement(tag: string): HTMLElement;
-  /** Show or hide the chat container. */
+  /** Show or hide the whole chat container. */
   setChatVisible(visible: boolean): void;
+  /** Show or suppress one platform's chat rows without disconnecting it. */
+  setPlatformChatVisible(platform: Platform, visible: boolean): void;
+  /** Include or suppress Twitch partner Shared Chat rows. */
+  setSharedChatVisible(visible: boolean): void;
+  /** Override the viewer counter's pill background in the matching counter source. */
+  setCounterBackground(visible: boolean): void;
   /** Reload the browser source. */
   reload(): void;
   /** Re-fetch every emote provider. Resolves when done, rejects on failure. */
@@ -368,6 +374,54 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
           /* Visibility only. Messages keep buffering behind it, so `show`
              restores a live chat rather than an empty container. */
           host.setChatVisible(false);
+          break;
+        case 'kickon':
+          host.setPlatformChatVisible('kick', true);
+          host.showFloat(FLOAT_NOTICE, 'Kick chat ON', 2500);
+          break;
+        case 'kickoff':
+          host.setPlatformChatVisible('kick', false);
+          host.showFloat(FLOAT_NOTICE, 'Kick chat OFF', 2500);
+          break;
+        case 'twitchon':
+          host.setPlatformChatVisible('twitch', true);
+          host.showFloat(FLOAT_NOTICE, 'Twitch chat ON', 2500);
+          break;
+        case 'twitchoff':
+          host.setPlatformChatVisible('twitch', false);
+          host.showFloat(FLOAT_NOTICE, 'Twitch chat OFF', 2500);
+          break;
+        case 'youtubeon':
+          host.setPlatformChatVisible('youtube', true);
+          host.showFloat(FLOAT_NOTICE, 'YouTube chat ON', 2500);
+          break;
+        case 'youtubeoff':
+          host.setPlatformChatVisible('youtube', false);
+          host.showFloat(FLOAT_NOTICE, 'YouTube chat OFF', 2500);
+          break;
+        case 'tiktokon':
+          host.setPlatformChatVisible('tiktok', true);
+          host.showFloat(FLOAT_NOTICE, 'TikTok chat ON', 2500);
+          break;
+        case 'tiktokoff':
+          host.setPlatformChatVisible('tiktok', false);
+          host.showFloat(FLOAT_NOTICE, 'TikTok chat OFF', 2500);
+          break;
+        case 'sharedon':
+          host.setSharedChatVisible(true);
+          host.showFloat(FLOAT_NOTICE, 'Twitch Shared Chat ON', 2500);
+          break;
+        case 'sharedoff':
+          host.setSharedChatVisible(false);
+          host.showFloat(FLOAT_NOTICE, 'Twitch Shared Chat OFF', 2500);
+          break;
+        case 'counterbgon':
+          host.setCounterBackground(true);
+          host.showFloat(FLOAT_NOTICE, 'Counter background ON', 2500);
+          break;
+        case 'counterbgoff':
+          host.setCounterBackground(false);
+          host.showFloat(FLOAT_NOTICE, 'Counter background OFF', 2500);
           break;
         case 'refresh':
           runRefresh(command);

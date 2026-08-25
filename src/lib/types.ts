@@ -62,8 +62,10 @@ export interface UnifiedMessage {
   redeem?: boolean | string;
   /** avatar URL — yt/tiktok only (StreamNook: other platforms don't carry one) */
   avatar?: string;
-  /** Shared Chat source streamer; distinct from the message author. */
+  /** Twitch source streamer identity used when Shared Chat display is enabled. */
   sourceChannel?: TwitchSourceChannel;
+  /** True only when this message originated in a partner room via Twitch Shared Chat. */
+  sharedChat?: boolean;
 }
 
 export interface UnifiedPin {

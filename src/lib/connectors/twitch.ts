@@ -162,6 +162,8 @@ export interface TwitchConnectorOpts extends ConnectorCallbacks {
   onRoomId?(roomId: string): void;
   /** Badge art changed after messages may already have been delivered. */
   onBadgeMap?(badgeMap: Readonly<Record<string, string>>): void;
+  /** Runtime gate for source-streamer profile enrichment. */
+  shouldEnrichSourceChannel?(): boolean;
 }
 
 export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
@@ -209,6 +211,12 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   function enrichSharedMessage(message: UnifiedMessage): void {
     const roomId = message.sourceChannel?.roomId;
     if (!roomId) return;
+    /* The room id stays on every Twitch row so Shared Chat can be enabled at
+       runtime, but profile traffic is skipped while the feature is off. A
+       local !multichat sharedon command flips the gate during onMessage, before
+       deliver() reaches this enrichment step, so that very message can receive
+       its source avatar without reconnecting. */
+    if (opts.shouldEnrichSourceChannel?.() === false) return;
     const ownedGeneration = generation;
     void fetchTwitchProfile(roomId).then(profile => {
       if (stopped || generation !== ownedGeneration || !profile) return;
@@ -239,6 +247,8 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     const login = (p.prefix ?? '').split('!')[0] || tags['login'] || 'unknown';
     const sourceRoomId = tags['source-room-id'];
     const localRoomId = tags['room-id'];
+    const effectiveSourceRoomId = sourceRoomId || localRoomId;
+    const sharedChat = Boolean(sourceRoomId && sourceRoomId !== localRoomId);
     const message: UnifiedMessage = {
       platform: 'twitch',
       id: tags['id'] || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -251,7 +261,8 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
       timestamp: parseInt(tags['tmi-sent-ts']) || Date.now(),
       kind,
       category,
-      ...(sourceRoomId && sourceRoomId !== localRoomId ? { sourceChannel: { roomId: sourceRoomId } } : {}),
+      ...(effectiveSourceRoomId ? { sourceChannel: { roomId: effectiveSourceRoomId } } : {}),
+      ...(sharedChat ? { sharedChat: true } : {}),
     };
     return message;
   }

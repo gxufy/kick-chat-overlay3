@@ -39,6 +39,8 @@ interface Props {
   sourceTagOverride?: SourceTagMode;
   hypeTrain?: TwitchHypeTrainState | null;
   hypeTrainEnding?: boolean;
+  /** Runtime Shared Chat state; omitted callers use config.sharedChatEnabled. */
+  sharedChatEnabled?: boolean;
 }
 
 /**
@@ -184,10 +186,11 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
 
-export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false }: Props) {
+export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false, sharedChatEnabled }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
      read below, so no intersection or cast is needed. */
   const cfg = config;
+  const showSharedSource = sharedChatEnabled ?? cfg.sharedChatEnabled;
 
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
@@ -316,7 +319,8 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={cfg.hideNames??false}
         tagMode={tagMode}
-        showAvatar={cfg.showAvatars ?? false} />
+        showAvatar={cfg.showAvatars ?? false}
+        showSharedSource={showSharedSource} />
     </div>
   );
 
@@ -498,11 +502,8 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           }
           .ck-startup-loader[data-phase='fading'] { opacity: 0; }
           .ck-startup-card {
-            display: grid;
-            grid-template-columns: minmax(64px, 104px) minmax(0, auto);
-            align-items: center;
-            gap: clamp(12px, 3vw, 24px);
-            max-width: min(560px, 100%);
+            display: block;
+            max-width: min(420px, 100%);
             padding: clamp(12px, 3vw, 20px) clamp(16px, 4vw, 26px);
             border: 1px solid rgba(255,255,255,.14);
             border-radius: 18px;
@@ -511,15 +512,11 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             box-shadow: 0 12px 36px rgba(0,0,0,.34);
             backdrop-filter: blur(8px);
           }
-          .ck-startup-logo { display:block; width:100%; height:auto; max-height:104px; object-fit:contain; }
           .ck-startup-copy { min-width:0; font-family:'Open Sans',Arial,system-ui,sans-serif; }
           .ck-startup-title { margin:0; font-size:clamp(20px,4.2vw,32px); line-height:1.1; font-weight:800; letter-spacing:-.025em; }
           .ck-startup-byline { margin:4px 0 10px; color:#a9c4ff; font-size:clamp(12px,2vw,15px); font-weight:700; }
           .ck-startup-status { display:flex; align-items:center; gap:9px; margin:0; color:rgba(255,255,255,.82); font-size:clamp(12px,2vw,15px); font-weight:700; }
           .ck-startup-spinner { width:16px; height:16px; flex:0 0 auto; border:2px solid rgba(255,255,255,.25); border-top-color:#6d9dff; border-radius:50%; animation:ckSpin .8s linear infinite; }
-          @media (max-width: 460px) {
-            .ck-startup-card { grid-template-columns:72px minmax(0,1fr); gap:12px; }
-          }
           @media (prefers-reduced-motion: reduce) {
             .ck-startup-loader { transition: none; }
             .ck-startup-spinner { animation: none; border-top-color:#6d9dff; }
@@ -531,7 +528,6 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {loaderPhase !== 'hidden' && (
         <div className="ck-startup-loader" data-phase={loaderPhase} data-testid="chat-startup-loader">
           <div className="ck-startup-card">
-            <img className="ck-startup-logo" src="/tpl.gif" alt="" width={104} height={104} />
             <div className="ck-startup-copy">
               <p className="ck-startup-title">Multi-Chat Overlay</p>
               <p className="ck-startup-byline">made by @Gxufy</p>
@@ -694,7 +690,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       </div>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={false} />
+        tagMode={tagMode} showAvatar={false} showSharedSource={false} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}
@@ -712,11 +708,11 @@ const CATEGORY_ICON: Record<string, string> = {
   milestone: '🔥', follow: '❤️', announcement: '📣',
 };
 
-function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar }: {
+function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource }: {
   msg: ParsedMessage; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; stroke:string;
   hideNames:boolean;
-  tagMode:SourceTagMode; showAvatar:boolean;
+  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean;
 }) {
   const isPaint = !!msg.identity.background;
   const pill = msg.identity.namePill?.split('|');
@@ -749,15 +745,12 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
                display:'inline-block' }}
       onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
   ) : null;
-  const sourceChannel = msg.sourceChannel ? (
-    <span data-testid="twitch-shared-source" title={msg.sourceChannel.displayName ? `Shared from ${msg.sourceChannel.displayName}` : 'Twitch Shared Chat'}
-      style={{ display:'inline-flex', alignItems:'center', gap:'0.22em', marginRight:'0.35em', verticalAlign:'middle', fontSize:'0.65em', opacity:0.9 }}>
-      {msg.sourceChannel.profileImageUrl && (
-        <img src={msg.sourceChannel.profileImageUrl} alt="" loading="lazy" referrerPolicy="no-referrer"
-          style={{ width:'1.45em', height:'1.45em', borderRadius:9999, objectFit:'cover' }}
-          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      )}
-      {msg.sourceChannel.displayName && <span>{msg.sourceChannel.displayName}</span>}
+  const sourceChannel = showSharedSource && msg.sourceChannel?.profileImageUrl ? (
+    <span data-testid="twitch-shared-source" title="Twitch Shared Chat"
+      style={{ display:'inline-flex', alignItems:'center', marginRight:'0.35em', verticalAlign:'middle', opacity:0.9 }}>
+      <img src={msg.sourceChannel.profileImageUrl} alt="" loading="lazy" referrerPolicy="no-referrer"
+        style={{ width:'1.45em', height:'1.45em', borderRadius:9999, objectFit:'cover' }}
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
     </span>
   ) : null;
 

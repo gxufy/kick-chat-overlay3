@@ -203,6 +203,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.smoothScroll,
   },
   {
+    key: 'sharedChatEnabled',
+    param: 'sharedChatEnabled',
+    type: 'toggle',
+    label: 'Twitch Shared Chat',
+    description: 'Off ignores partner Shared Chat messages. On includes them and identifies each Twitch source streamer by profile picture only.',
+    default: D.sharedChatEnabled,
+  },
+  {
     key: 'modAction',
     param: 'modAction',
     type: 'toggle',

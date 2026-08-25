@@ -181,6 +181,8 @@ export const MultichatQuerySchema = z.object({
   msgSlideIn: z.string().optional().transform(v => v === '1' || v === 'true'),
   /* bChat smooth-scroll is opt-in for existing overlay URLs; new generator URLs enable it. */
   smoothScroll: z.string().optional().transform(v => v === '1' || v === 'true'),
+  /* Twitch Shared Chat partner messages + source-streamer avatars. Default OFF. */
+  sharedChatEnabled: z.string().optional().transform(v => v === '1' || v === 'true'),
   fontColor: z.string().optional().transform(v =>
     /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
   paintShadows: z.string().optional().transform(v => v !== 'false'),
@@ -308,6 +310,8 @@ export type MultichatGeneratorStyle = {
   msgSlideIn: boolean;
   /** Smoothly scroll the message stack as new rows arrive. */
   smoothScroll: boolean;
+  /** Include Twitch Shared Chat partner rows and show source-streamer avatars. */
+  sharedChatEnabled: boolean;
   modAction: boolean;
   paintShadows: boolean;
   /** '' means unset. A leading '#' is stripped when emitted. */
@@ -350,6 +354,7 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   msgCaps: false,
   msgSlideIn: false,
   smoothScroll: false,
+  sharedChatEnabled: false,
   modAction: true,
   paintShadows: true,
   fontColor: '',
@@ -458,7 +463,7 @@ export function buildMultichatQuery(
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     textSize, font, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, modAction,
+    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, modAction,
     paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
     botNames, userBL, prefixBL,
   } = style;
@@ -494,6 +499,7 @@ export function buildMultichatQuery(
     ...(workspaceStyle
       ? (smoothScroll ? {} : { smoothScroll: '0' })
       : (smoothScroll ? { smoothScroll: '1' } : {})),
+    ...(sharedChatEnabled ? { sharedChatEnabled: '1' } : {}),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),

@@ -1,0 +1,35 @@
+name: Apply OBS burst, Twitch reply, and icon shadow patch
+
+on:
+  push:
+    branches:
+      - perf/obs-burst-replies-icon-shadows
+    paths:
+      - .github/scripts/apply-obs-burst-replies-icon-shadows.py
+      - .github/workflows/apply-obs-burst-replies-icon-shadows.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/obs-burst-replies-icon-shadows
+      - name: Apply burst, reply, and shadow patch
+        run: python .github/scripts/apply-obs-burst-replies-icon-shadows.py
+      - name: Remove one-shot patch files
+        run: rm .github/scripts/apply-obs-burst-replies-icon-shadows.py .github/workflows/apply-obs-burst-replies-icon-shadows.yml
+      - name: Commit result
+        run: |
+          git config user.name "gxufy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Frame-pace slide chat and add Twitch reply parity"
+          git push

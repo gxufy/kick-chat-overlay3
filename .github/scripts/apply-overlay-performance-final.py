@@ -63,6 +63,11 @@ slide_css_new = slide_css_anchor + '''
             visibility: hidden;
             animation: gxSlideGroupReveal 150ms step-end forwards;
           }
+          .gx-slide-group .gx-message-slide-in {
+            /* The measured ghost used to remount the visible row after 150ms,
+               so preserve that exact visible start time without ghost DOM. */
+            animation-delay: 150ms;
+          }
           @keyframes gxFadeGroupIn {
             from { opacity: 0; }
             to   { opacity: 1; }
@@ -87,7 +92,7 @@ chat = replace_once(
 )
 
 # Move the large dynamic CSS template into useMemo. Message arrival/repaint
-# renders should not rebuild the same ~10KB string over and over.
+# renders should not rebuild the same stylesheet string over and over.
 style_marker = '<style>{`${LOCAL_OVERLAY_FONT_CSS}'
 style_start = chat.index(style_marker)
 literal_start = style_start + len('<style>{')
@@ -100,9 +105,8 @@ chat = chat[:style_start] + '<style>{overlayCss}</style>' + chat[style_end + len
 render_msg_marker = '  const renderMsg = (msg: ParsedMessage) => ('
 render_msg_start = chat.index(render_msg_marker)
 return_pos = chat.index('\n  return (', render_msg_start)
-memo_block = f'''\n  /* Visual configuration is static for the lifetime of a browser-source mount.
-     Memoizing this template prevents message traffic from reconstructing a large
-     CSS string while preserving the exact same stylesheet and renderer. */
+memo_block = f'''\n  /* Visual configuration is static between settings changes. Memoizing this
+     prevents message traffic from reconstructing the same large CSS string. */
   const overlayCss = useMemo(() => {style_literal}, [cfg, sz, emoteMaxW, emoteMaxH]);\n'''
 chat = chat[:return_pos] + memo_block + chat[return_pos:]
 chat_path.write_text(chat)
@@ -137,8 +141,8 @@ function emotesByName(emotes: SevenTVEmote[]): Map<string, SevenTVEmote> {
 render = replace_once(render, lookup_anchor, lookup_block, '7TV lookup cache insertion')
 render = replace_once(
     render,
-    "  const nodes: React.ReactNode[] = [];\n  const words = segment.split(' ');",
-    "  const nodes: React.ReactNode[] = [];\n  const words = segment.split(' ');\n  const lookup = emotesByName(emotes);",
+    "function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {\n  const nodes: React.ReactNode[] = [];\n  const words = segment.split(' ');",
+    "function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {\n  const nodes: React.ReactNode[] = [];\n  const words = segment.split(' ');\n  const lookup = emotesByName(emotes);",
     '7TV segment lookup init',
 )
 render = replace_once(render, '    const emote = emotes.find(e => e.name === word);', '    const emote = lookup.get(word);', '7TV base lookup')
@@ -187,8 +191,8 @@ model_path.write_text(model)
 
 
 # ---------------------------------------------------------------------------
-# Regression tests: entrance batches stay one renderer/batch and the old
-# offscreen measurement path cannot creep back; compositor hint stays absent.
+# Regression tests: entrance batches stay one renderer/batch; no offscreen
+# measurement path can creep back; visual Slide timing remains 150ms + 250ms.
 # ---------------------------------------------------------------------------
 entrance_path = Path('app/tests/unit/chatOverlayEntranceQueue.test.tsx')
 entrance_path.write_text('''import { cleanup, render } from '@testing-library/react';
@@ -260,7 +264,7 @@ perf = perf_path.read_text()
 perf_insert = '''
 
   it('does not keep the scrolling subtree permanently promoted', () => {
-    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', smoothScroll: true });
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', smoothScroll: 'true' });
     const { container } = render(
       <ChatOverlay
         config={config}
@@ -318,6 +322,39 @@ describe('render hot-path caches', () => {
   });
 });
 ''')
+
+smooth_path = Path('app/tests/unit/smoothScroll.test.tsx')
+smooth = smooth_path.read_text()
+smooth = replace_once(
+    smooth,
+    "import { cleanup, render, waitFor } from '@testing-library/react';",
+    "import { cleanup, render } from '@testing-library/react';",
+    'smoothScroll testing-library import',
+)
+old_smooth_test = '''  it('keeps the height ghost when Slide is selected', async () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
+    const raw = SAMPLE_MESSAGES[0].message;
+    const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
+    const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
+    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).toBeNull());
+    expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
+  });'''
+new_smooth_test = '''  it('keeps the same Slide timing without an offscreen height ghost', () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
+    const raw = SAMPLE_MESSAGES[0].message;
+    const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
+    const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
+    expect(container.querySelector('.gx-slide-group')).not.toBeNull();
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+    expect(container.innerHTML).not.toContain('-9999px');
+    expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
+    const css = Array.from(container.querySelectorAll('style')).map((node) => node.textContent ?? '').join('\\n');
+    expect(css).toContain('.gx-slide-group .gx-message-slide-in');
+    expect(css).toContain('animation-delay: 150ms');
+  });'''
+smooth = replace_once(smooth, old_smooth_test, new_smooth_test, 'legacy slide ghost regression')
+smooth_path.write_text(smooth)
 
 # This is a one-shot verified migration. Remove its machinery from the final tree
 # so production carries only the optimized runtime and regression tests.

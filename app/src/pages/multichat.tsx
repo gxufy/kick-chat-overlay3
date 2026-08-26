@@ -53,6 +53,7 @@ import ChatOverlay, {
   type StartupLoaderPhase,
 } from '../components/overlay/ChatOverlay';
 import { SunsetBanner } from '../components/SunsetBanner';
+import { BURST_PRESENT_INTERVAL_MS, drainBurstPresentationQueue } from '../lib/chatBurstPresentation';
 
 /* The generator is a large editing UI that OBS never renders. Keep the overlay
  * renderer in the main /multichat bundle so its startup appearance is unchanged,
@@ -90,10 +91,6 @@ const TWITCH_PIN_STALE_AFTER_MS = 60_000;
 export const STARTUP_LOADER_MIN_MS = 700;
 export const STARTUP_LOADER_MAX_MS = 8_000;
 export const STARTUP_LOADER_FADE_MS = 250;
-
-/** Present connector bursts at a steady cadence without touching ChatOverlay rendering. */
-const BURST_PRESENT_INTERVAL_MS = 200;
-const BURST_PRESENT_MAX_BATCH = 4;
 
 /** True when *value* looks like a Twitch connection id. */
 function isTwitchConnectionId(value: string): boolean {
@@ -443,7 +440,7 @@ function MultichatOverlay() {
       burstTimerRef.current = null;
       const liveIds = new Set(s.messages.map((message) => message.id));
       pendingMessagesRef.current = pendingMessagesRef.current.filter((message) => liveIds.has(message.id));
-      const batch = pendingMessagesRef.current.splice(0, BURST_PRESENT_MAX_BATCH);
+      const batch = drainBurstPresentationQueue(pendingMessagesRef.current);
 
       if (batch.length) {
         const byId = new Map(s.messages.map((message) => [message.id, message] as const));

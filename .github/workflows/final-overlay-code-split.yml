@@ -1,0 +1,85 @@
+name: Apply overlay-only bundle split
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/final-overlay-code-split.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Split generator out of overlay startup bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/src/pages/multichat.tsx')
+          s = p.read_text()
+
+          def once(old: str, new: str, label: str):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              s = s.replace(old, new, 1)
+
+          once(
+              "import Head from 'next/head';\n",
+              "import Head from 'next/head';\nimport dynamic from 'next/dynamic';\n",
+              'next dynamic import',
+          )
+          once(
+              "import ClassicGenerator from '../components/classic/ClassicGenerator';\n",
+              '',
+              'static ClassicGenerator import',
+          )
+          once(
+              "import { SunsetBanner } from '../components/SunsetBanner';\n",
+              "import { SunsetBanner } from '../components/SunsetBanner';\n\n/* The generator is a large editing UI that OBS never renders. Keep the overlay\n * renderer in the main /multichat bundle so its startup appearance is unchanged,\n * but load the generator chunk only when the channel-less generator branch is\n * actually rendered. This removes generator controls/previews/simulators from\n * the browser-source parse/evaluation path without creating a second renderer. */\nconst ClassicGenerator = dynamic(() => import('../components/classic/ClassicGenerator'));\n",
+              'generator dynamic declaration',
+          )
+          p.write_text(s)
+          PY
+
+      - name: Remove one-shot workflow from final tree
+        run: rm .github/workflows/final-overlay-code-split.yml
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check process config
+        run: node -e "require('./.github/infra/ecosystem.config.js')"
+
+      - name: Commit verified split
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Isaac"
+          git config user.email "unstoppableboy99@gmail.com"
+          git add -A
+          git commit -m "Split generator from overlay startup bundle"
+          git push origin HEAD:main

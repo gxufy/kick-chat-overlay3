@@ -122,29 +122,24 @@ jobs:
               "  const leave = () =>\n    fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));",
               "  const leave = () => {\n    enablePins();\n    fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));\n  };",
           )
-          replace_in_test(
-              classic,
+          for title in [
               'sends the visitor to the canonical generator, not a retired route',
-              "    mount();\n",
-              "    mount();\n    enablePins();\n",
-          )
+              'places the connection controls in Chat settings, by the pin platforms',
+              'orders the connection after the pin platform control in reading order',
+              'keeps Connect reachable before Twitch is a selected pin platform',
+              'gives Connect an accurate accessible name and associated help',
+              'reuses the authoritative OAuth start URL, not a second implementation',
+              'shows the connected login and a Disconnect action once connected',
+              'warns and offers a one-click fix when the channel does not match',
+              'drops the warning once the channel matches the connected account',
+              'disconnects, returning to the Connect control',
+          ]:
+              replace_in_test(classic, title, "    mount();\n", "    mount();\n    enablePins();\n")
           replace_in_test(
               classic,
               'restores both tools on the way back',
               "    const expected = [chatUrl(), counterUrl()];",
               "    enablePins();\n    const expected = [chatUrl(), counterUrl()];",
-          )
-          replace_in_test(
-              classic,
-              'places the connection controls in Chat settings, by the pin platforms',
-              "    mount();\n",
-              "    mount();\n    enablePins();\n",
-          )
-          replace_in_test(
-              classic,
-              'orders the connection after the pin platform control in reading order',
-              "    mount();\n",
-              "    mount();\n    enablePins();\n",
           )
           replace_once(
               classic,
@@ -152,34 +147,59 @@ jobs:
               "  it('reveals the connection controls only while pins are on', () => {\n    mount();\n    expect(settings().querySelector('.classic-conn')).toBeNull();\n    enablePins();\n    expect(settings().querySelector('.classic-conn')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(settings().querySelector('.classic-conn')).toBeNull();\n  });",
           )
 
-          for title in [
-              "keeps Connect reachable before Twitch is a selected pin platform",
-              "gives Connect an accurate accessible name and associated help",
-              "reuses the authoritative OAuth start URL, not a second implementation",
-              "shows the connected login and a Disconnect action once connected",
-              "warns and offers a one-click fix when the channel does not match",
-              "drops the warning once the channel matches the connected account",
-          ]:
-              replace_in_test(classic, title, "    mount();\n", "    mount();\n    enablePins();\n")
-
+          preview = 'app/tests/unit/multichatPreview.test.tsx'
           replace_in_test(
-              classic,
-              'disconnects, returning to the Connect control',
+              preview,
+              'renders every library fixture too, when a caller asks for the full catalog',
+              "    /* One shorter than the catalog: the pin renders in its own card above the list\n       rather than inside it. */\n    expect(bodies()).toHaveLength(SAMPLE_ALL_MESSAGES.length - 1);",
+              "    /* Pins are disabled in a fresh workspace, so the pin fixture remains a normal\n       row until the user opts in. */\n    expect(bodies()).toHaveLength(SAMPLE_ALL_MESSAGES.length);",
+          )
+          replace_in_test(
+              preview,
+              'renders the pin card with its attribution',
+              "    mountAll();\n",
+              "    mountAll({ showPinEnabled: true });\n",
+          )
+          replace_in_test(
+              preview,
+              'draws the pinned banner badges through the same badge resolver',
+              "    mountAll();\n",
+              "    mountAll({ showPinEnabled: true });\n",
+          )
+
+          containment = 'app/tests/unit/previewContainment.test.tsx'
+          replace_in_test(
+              containment,
+              'keeps the pinned fixture and its attribution inside the chat frame',
+              "    mountChat();\n",
+              "    mountChat({ showPinEnabled: true });\n",
+          )
+          replace_in_test(
+              containment,
+              "clears the pin banner's timers rather than leaving them armed",
+              "    const view = mountChat();\n",
+              "    const view = mountChat({ showPinEnabled: true });\n",
+          )
+
+          scale = 'app/tests/unit/previewScale.test.tsx'
+          replace_in_test(
+              scale,
+              'scales the pin card and the event cards with the messages',
+              "    mountAll(65);\n",
+              "    mountAll(65, { showPinEnabled: true });\n",
+          )
+
+          counter = 'app/tests/unit/counterRegression.test.tsx'
+          replace_in_test(
+              counter,
+              'writes the counter style under the counter key only',
               "    mount();\n",
-              "    mount();\n    enablePins();\n",
+              "    mount();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n",
           )
           PY
 
       - name: Install
         run: npm ci
-
-      - name: Run focused tests
-        run: |
-          cd app
-          npx vitest --config vitest.config.ts run \
-            tests/unit/multichatCatalog.test.ts \
-            tests/unit/overlayUrlStrings.test.ts \
-            tests/unit/classicGenerator.test.tsx
 
       - name: Run typecheck
         run: npm run typecheck
@@ -192,6 +212,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/fix-pr30-tests.yml
-          git add app/tests/unit/multichatCatalog.test.ts app/tests/unit/overlayUrlStrings.test.ts app/tests/unit/classicGenerator.test.tsx
+          git add \
+            app/tests/unit/multichatCatalog.test.ts \
+            app/tests/unit/overlayUrlStrings.test.ts \
+            app/tests/unit/classicGenerator.test.tsx \
+            app/tests/unit/multichatPreview.test.tsx \
+            app/tests/unit/previewContainment.test.tsx \
+            app/tests/unit/previewScale.test.tsx \
+            app/tests/unit/counterRegression.test.tsx
           git commit -m "Update tests for pins-off workspace default"
           git push origin HEAD:perf/chat-burst-batching-pins-off

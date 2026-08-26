@@ -25,14 +25,23 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           def replace_once(path: str, old: str, new: str) -> None:
               p = Path(path)
               text = p.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}')
+                  raise SystemExit(f'{path}: exact replacement expected 1 match, found {count}')
               p.write_text(text.replace(old, new, 1))
+
+          def sub_once(path: str, pattern: str, replacement: str, flags=0) -> None:
+              p = Path(path)
+              text = p.read_text()
+              next_text, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: regex replacement expected 1 match, found {count}: {pattern[:80]}')
+              p.write_text(next_text)
 
           Path('app/src/lib/chatBurstPresentation.ts').write_text('''/**
            * Presentation cadence used by the overlay ingress queue.
@@ -61,71 +70,24 @@ jobs:
           replace_once(
               'app/src/pages/multichat.tsx',
               "import { BURST_PRESENT_INTERVAL_MS, drainBurstPresentationQueue } from '../lib/chatBurstPresentation';",
-              "import { BURST_PRESENT_INTERVAL_MS, drainBurstPresentationQueue, startBurstPresentationTicker } from '../lib/chatBurstPresentation';",
+              "import { drainBurstPresentationQueue, startBurstPresentationTicker } from '../lib/chatBurstPresentation';",
           )
 
-          replace_once(
+          sub_once(
               'app/src/pages/multichat.tsx',
-              '''  /** Messages already handed to ChatOverlay. New arrivals wait in the capped burst queue. */
-          const presentedMessagesRef = useRef<ParsedMessage[]>([]);
-          const pendingMessagesRef = useRef<ParsedMessage[]>([]);
-          const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);''',
-              '''  /** Messages already handed to ChatOverlay. New arrivals wait for the next fixed ChatIS tick. */
-          const presentedMessagesRef = useRef<ParsedMessage[]>([]);
-          const pendingMessagesRef = useRef<ParsedMessage[]>([]);''',
+              r"  /\*\* Messages already handed to ChatOverlay\.[^\n]*\n  const presentedMessagesRef = useRef<ParsedMessage\[\]>\(\[\]\);\n  const pendingMessagesRef = useRef<ParsedMessage\[\]>\(\[\]\);\n  const burstTimerRef = useRef<ReturnType<typeof setTimeout> \| null>\(null\);",
+              "  /** Messages already handed to ChatOverlay. New arrivals wait for the next fixed ChatIS tick. */\n  const presentedMessagesRef = useRef<ParsedMessage[]>([]);\n  const pendingMessagesRef = useRef<ParsedMessage[]>([]);",
           )
 
-          replace_once(
+          sub_once(
               'app/src/pages/multichat.tsx',
-              '''    /* Frame pacing is independent of the entrance animation. Connector arrivals
-                 are presented upstream in capped 200 ms batches; repaint-only mutations
-                 (cosmetics, moderation, emote refreshes, fades) retain the OBS-safe frame
-                 path and never cause queued messages to jump the line. */''',
-              '''    /* Match ChatIS's phase-locked presentation clock: one 200 ms interval runs
-                 continuously for the lifetime of the overlay, and each tick commits whatever
-                 connector messages are waiting. Repaint-only mutations keep their existing
-                 OBS-safe frame path and never reveal queued arrivals ahead of that clock. */''',
+              r"    /\* Frame pacing is independent of the entrance animation\. Connector arrivals\n       are presented upstream in capped 200 ms batches; repaint-only mutations\n       \(cosmetics, moderation, emote refreshes, fades\) retain the OBS-safe frame\n       path and never cause queued messages to jump the line\. \*/",
+              "    /* Match ChatIS's phase-locked presentation clock: one 200 ms interval runs\n       continuously for the lifetime of the overlay, and each tick commits whatever\n       connector messages are waiting. Repaint-only mutations keep their existing\n       OBS-safe frame path and never reveal queued arrivals ahead of that clock. */",
           )
 
-          replace_once(
+          sub_once(
               'app/src/pages/multichat.tsx',
-              '''    function scheduleBurstPresentation() {
-              if (burstTimerRef.current !== null || pendingMessagesRef.current.length === 0) return;
-              burstTimerRef.current = setTimeout(flushBurstPresentation, BURST_PRESENT_INTERVAL_MS);
-            }
-
-            function flushBurstPresentation() {
-              burstTimerRef.current = null;
-              const liveIds = new Set(s.messages.map((message) => message.id));
-              pendingMessagesRef.current = pendingMessagesRef.current.filter((message) => liveIds.has(message.id));
-              const batch = drainBurstPresentationQueue(pendingMessagesRef.current);
-
-              if (batch.length) {
-                const byId = new Map(s.messages.map((message) => [message.id, message] as const));
-                const current = latestPresentedMessages();
-                const currentIds = new Set(current.map((message) => message.id));
-                for (const message of batch) {
-                  const latest = byId.get(message.id);
-                  if (!latest || currentIds.has(message.id)) continue;
-                  current.push(latest);
-                  currentIds.add(message.id);
-                }
-                publishMessages(current.slice(-100));
-              }
-
-              if (pendingMessagesRef.current.length) scheduleBurstPresentation();
-            }
-
-            function enqueueBurstPresentation(message: ParsedMessage) {
-              if (
-                presentedMessagesRef.current.some((presented) => presented.id === message.id)
-                || pendingMessagesRef.current.some((pending) => pending.id === message.id)
-              ) return;
-              pendingMessagesRef.current.push(message);
-              scheduleBurstPresentation();
-            }
-
-            const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime''',
+              r"    function scheduleBurstPresentation\(\) \{.*?\n    const flushInterval: ReturnType<typeof setInterval> \| null = smoothRuntime",
               '''    function flushBurstPresentation() {
               const liveIds = new Set(s.messages.map((message) => message.id));
               pendingMessagesRef.current = pendingMessagesRef.current.filter((message) => liveIds.has(message.id));
@@ -156,17 +118,13 @@ jobs:
             const stopBurstPresentationTicker = startBurstPresentationTicker(flushBurstPresentation);
 
             const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime''',
+              flags=re.S,
           )
 
-          replace_once(
+          sub_once(
               'app/src/pages/multichat.tsx',
-              '''      if (burstTimerRef.current !== null) {
-                clearTimeout(burstTimerRef.current);
-                burstTimerRef.current = null;
-              }
-              fadeScheduler?.stop();''',
-              '''      stopBurstPresentationTicker();
-              fadeScheduler?.stop();''',
+              r"      if \(burstTimerRef\.current !== null\) \{\n        clearTimeout\(burstTimerRef\.current\);\n        burstTimerRef\.current = null;\n      \}\n      fadeScheduler\?\.stop\(\);",
+              "      stopBurstPresentationTicker();\n      fadeScheduler?.stop();",
           )
 
           replace_once(
@@ -175,20 +133,9 @@ jobs:
               "import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';",
           )
 
-          replace_once(
+          sub_once(
               'app/src/components/overlay/ChatOverlay.tsx',
-              '''function SlideGroup({ children }: { children: React.ReactNode }) {
-            /* CSS grid can interpolate 0fr -> 1fr against intrinsic content height.
-               That gives the same 150ms empty-space opening before content is revealed,
-               without mounting an offscreen copy, forcing getBoundingClientRect(), or
-               coordinating React state with animation frames. The batch node stays
-               mounted, so a late repaint/deletion cannot replay the entrance. */
-            return (
-              <div className="gx-slide-group">
-                <div className="gx-slide-content">{children}</div>
-              </div>
-            );
-          }''',
+              r"function SlideGroup\(\{ children \}: \{ children: React\.ReactNode \}\) \{.*?\n\}\n\nfunction FadeGroup",
               '''const CHATIS_SLIDE_DURATION_MS = 150;
           const CHATIS_JQUERY_TICK_MS = 13;
           const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -264,35 +211,15 @@ jobs:
                 </div>
               </div>
             );
-          }''',
+          }
+
+          function FadeGroup''',
+              flags=re.S,
           )
 
-          replace_once(
+          sub_once(
               'app/src/components/overlay/ChatOverlay.tsx',
-              '''          @keyframes gxSlideGroupOpen {
-                    from { grid-template-rows: 0fr; }
-                    to   { grid-template-rows: 1fr; }
-                  }
-                  @keyframes gxSlideGroupReveal {
-                    from { visibility: hidden; }
-                    to   { visibility: visible; }
-                  }
-                  .gx-slide-group {
-                    display: grid;
-                    grid-template-rows: 0fr;
-                    animation: gxSlideGroupOpen 150ms ease-in-out forwards;
-                  }
-                  .gx-slide-content {
-                    min-height: 0;
-                    overflow: hidden;
-                    visibility: hidden;
-                    animation: gxSlideGroupReveal 150ms step-end forwards;
-                  }
-                  .gx-slide-group .gx-message-slide-in {
-                    /* The measured ghost used to remount the visible row after 150ms,
-                       so preserve that exact visible start time without ghost DOM. */
-                    animation-delay: 150ms;
-                  }''',
+              r"          @keyframes gxSlideGroupOpen \{.*?          @keyframes gxFadeGroupIn \{",
               '''          .gx-slide-group {
                     position: relative;
                     width: 100%;
@@ -304,7 +231,9 @@ jobs:
                     right: 0;
                     visibility: hidden;
                     pointer-events: none;
-                  }''',
+                  }
+                  @keyframes gxFadeGroupIn {''',
+              flags=re.S,
           )
 
           Path('app/tests/unit/chatBurstPresentation.test.ts').write_text('''import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -341,7 +270,6 @@ jobs:
             it('commits every message accumulated in one bucket at once', () => {
               const pending = Array.from({ length: 20 }, (_, index) => `message-${index}`);
               const batch = drainBurstPresentationQueue(pending);
-
               expect(batch).toHaveLength(20);
               expect(batch[0]).toBe('message-0');
               expect(batch[19]).toBe('message-19');
@@ -351,7 +279,6 @@ jobs:
             it('keeps later arrivals for the next independent bucket', () => {
               const pending = ['a', 'b', 'c'];
               expect(drainBurstPresentationQueue(pending)).toEqual(['a', 'b', 'c']);
-
               pending.push('d', 'e');
               expect(drainBurstPresentationQueue(pending)).toEqual(['d', 'e']);
               expect(pending).toEqual([]);
@@ -464,30 +391,20 @@ jobs:
           });
           ''')
 
-          replace_once(
+          sub_once(
               'app/tests/unit/smoothScroll.test.tsx',
-              '''  it('keeps the same Slide timing without an offscreen height ghost', () => {
-              const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
-              const raw = SAMPLE_MESSAGES[0].message;
-              const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
-              const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
-              expect(container.querySelector('.gx-slide-group')).not.toBeNull();
-              expect(container.querySelector('[data-slide-ghost]')).toBeNull();
-              expect(container.innerHTML).not.toContain('-9999px');
-              expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
-            });''',
+              r"  it\('keeps the same Slide timing without an offscreen height ghost', \(\) => \{.*?\n  \}\);",
               '''  it('keeps Slide off the smooth-scroll follower while using the measured ChatIS spacer', () => {
               const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
               const raw = SAMPLE_MESSAGES[0].message;
               const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
               const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
-              /* jsdom reports zero layout height, so the spacer immediately resolves to
-                 the real row; the absence of the scrolling flex layout is the key invariant. */
               const chat = container.querySelector('#chat_container') as HTMLElement;
               expect(chat.style.display).toBe('');
               expect(chat.style.maxHeight).toBe('');
               expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
             });''',
+              flags=re.S,
           )
           PY
 

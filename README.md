@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./app/public/tpl.webp" alt="TPL" width="120" />
+  <img src="./app/public/tpl.webp" alt="TPL" width="420" />
 </p>
 
 <h1 align="center">MultiChat | Custom Multi-Platform Chat Overlay</h1>
@@ -50,15 +50,16 @@ The generator's **Commands & help** section uses the same command registry as th
 
 ## Supported Services
 
-| Service | Support |
+<!-- prettier-ignore-start -->
+| Service | Features |
 | :--- | :--- |
-| **Twitch** | Native emotes and badges, moderation, pinned messages and Shared Chat |
-| **Kick** | Native emotes and badges, moderation and live chat |
-| **YouTube** | Channel emoji, owner/mod/verified/member badges, Super Chats, Super Stickers, memberships and gifted memberships |
-| **TikTok** | Live chat integration alongside the other connected platforms |
-| **7TV** | Global/channel/personal sets, auto updates, zero-width emotes, paints and badges |
-| **BTTV** | Global/channel emotes and auto updates |
-| **FFZ** | Global/channel emotes and badges |
+| <img src="https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png" width="20" /> **[Twitch](https://www.twitch.tv/)** | **Emotes:** Global, Channel, Follow, Sub, Bit<br>**Badges:** Sub Badges, Bit Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
+| <img src="https://kick.com/favicon.ico" width="20" /> **[Kick](https://kick.com/)** | **Emotes:** Global, Channel, Sub<br>**Badges:** Sub Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
+| <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" width="20" /> **[YouTube](https://www.youtube.com/)** | **Emotes:** Native Unicode and YouTube channel emoji<br>**Badges:** Owner, Moderator, Verified, Membership<br>**Events:** Super Chats, Super Stickers, Memberships, Gifted Memberships<br>**Moderation:** Message and Author Deletions |
+| <img src="https://7tv.app/favicon.svg" width="20" /> **[7TV](https://7tv.app/)** | **Emotes:** Global, Channel, Personal/Special Sets, Auto Set Updates, Zero-Width<br>**User Customization:** Paints, Badges, Personal/Special Emote Sets |
+| <img src="https://betterttv.com/favicon.png" width="20" /> **[BTTV](https://betterttv.com/)** | **Emotes:** Global, Channel, Auto Set Updates |
+| <img src="https://www.frankerfacez.com/static/images/favicon-32.png" width="20" /> **[FFZ](https://www.frankerfacez.com/)** | **Emotes:** Global, Channel<br>**User Customization:** Global + Channel Badges |
+<!-- prettier-ignore-end -->
 
 ## OBS Setup
 

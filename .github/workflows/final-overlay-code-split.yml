@@ -56,6 +56,55 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Make route tests await the split generator chunk
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/tests/unit/multichatPageRoute.test.tsx')
+          s = p.read_text()
+
+          def once(old: str, new: str, label: str):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              s = s.replace(old, new, 1)
+
+          once(
+              "  it('renders the generator for a bare visit', () => {\n    render(<MultichatPage />);\n    expect(screen.getByTestId('classic-generator')).toBeTruthy();\n  });",
+              "  it('renders the generator for a bare visit', async () => {\n    render(<MultichatPage />);\n    expect(await screen.findByTestId('classic-generator')).toBeTruthy();\n  });",
+              'bare generator route test',
+          )
+          once(
+              "  it('renders the generator for an empty channel value', () => {\n    query = { kick: '' };\n    render(<MultichatPage />);\n    expect(screen.getByTestId('classic-generator')).toBeTruthy();\n    expect(replace).not.toHaveBeenCalled();\n  });",
+              "  it('renders the generator for an empty channel value', async () => {\n    query = { kick: '' };\n    render(<MultichatPage />);\n    expect(await screen.findByTestId('classic-generator')).toBeTruthy();\n    expect(replace).not.toHaveBeenCalled();\n  });",
+              'empty channel generator route test',
+          )
+          once(
+              "  it('renders one generator under StrictMode double-invocation', () => {\n    render(\n      <StrictMode>\n        <MultichatPage />\n      </StrictMode>,\n    );\n    expect(screen.getAllByTestId('classic-generator')).toHaveLength(1);\n    expect(replace).not.toHaveBeenCalled();\n  });",
+              "  it('renders one generator under StrictMode double-invocation', async () => {\n    render(\n      <StrictMode>\n        <MultichatPage />\n      </StrictMode>,\n    );\n    expect(await screen.findAllByTestId('classic-generator')).toHaveLength(1);\n    expect(replace).not.toHaveBeenCalled();\n  });",
+              'strict generator route test',
+          )
+          once(
+              "  const focusCounter = () =>\n    screen.getByTestId('classic-generator').getAttribute('data-focus-counter');",
+              "  const focusCounter = async () =>\n    (await screen.findByTestId('classic-generator')).getAttribute('data-focus-counter');",
+              'async focusCounter helper',
+          )
+          for label, setup, expected in [
+              ('anchor', "    setHash('#viewer-counter');\n", 'true'),
+              ('legacy tab query', "    query = { tab: 'counter' };\n", 'true'),
+              ('bare visit', '', 'false'),
+              ('connection fragment', "    setHash(`#twitchConnectionId=${TEST_ID}&twitch=someone`);\n", 'false'),
+          ]:
+              old = f"  it('{'focuses the counter for the anchor' if label == 'anchor' else 'focuses the counter for the legacy tab query' if label == 'legacy tab query' else 'does not focus the counter for a bare visit' if label == 'bare visit' else 'does not focus the counter for a connection fragment'}', () => {{\n{setup}    render(<MultichatPage />);\n    expect(focusCounter()).toBe('{expected}');\n  }});"
+              new = old.replace("', () => {", "', async () => {").replace("expect(focusCounter())", "expect(await focusCounter())")
+              once(old, new, f'{label} focus route test')
+
+          p.write_text(s)
+          PY
+
       - name: Remove one-shot workflow from final tree
         run: rm .github/workflows/final-overlay-code-split.yml
 

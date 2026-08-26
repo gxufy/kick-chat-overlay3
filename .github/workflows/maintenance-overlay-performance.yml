@@ -22,7 +22,7 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Fix one-shot matcher
+      - name: Fix one-shot matcher and query fixture
         shell: bash
         run: |
           python - <<'PY'
@@ -43,11 +43,72 @@ jobs:
           )'''
           if old not in s:
               raise SystemExit('matcher block not found')
-          p.write_text(s.replace(old, new, 1))
+          s = s.replace(old, new, 1)
+          old_fixture = "smoothScroll: true });"
+          if s.count(old_fixture) != 1:
+              raise SystemExit(f'expected one smoothScroll fixture, found {s.count(old_fixture)}')
+          s = s.replace(old_fixture, "smoothScroll: 'true' });", 1)
+          p.write_text(s)
           PY
 
       - name: Apply final hot-path patch
         run: python .github/scripts/apply-overlay-performance-final.py
+
+      - name: Preserve exact visible slide timing and update regression
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          overlay = Path('app/src/components/overlay/ChatOverlay.tsx')
+          s = overlay.read_text()
+          anchor = '''          .gx-slide-content {
+            min-height: 0;
+            overflow: hidden;
+            visibility: hidden;
+            animation: gxSlideGroupReveal 150ms step-end forwards;
+          }
+'''
+          replacement = anchor + '''          .gx-slide-group .gx-message-slide-in {
+            /* The old measured ghost remounted the row after 150ms, so the
+               250ms row slide began at reveal time. Delay it by the same 150ms
+               to preserve that exact visible timing without the ghost DOM. */
+            animation-delay: 150ms;
+          }
+'''
+          if s.count(anchor) != 1:
+              raise SystemExit(f'expected one slide-content CSS anchor, found {s.count(anchor)}')
+          overlay.write_text(s.replace(anchor, replacement, 1))
+
+          test = Path('app/tests/unit/smoothScroll.test.tsx')
+          t = test.read_text()
+          t = t.replace("import { cleanup, render, waitFor } from '@testing-library/react';", "import { cleanup, render } from '@testing-library/react';", 1)
+          old = '''  it('keeps the height ghost when Slide is selected', async () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
+    const raw = SAMPLE_MESSAGES[0].message;
+    const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
+    const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
+    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).toBeNull());
+    expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
+  });'''
+          new = '''  it('keeps the same Slide timing without an offscreen height ghost', () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
+    const raw = SAMPLE_MESSAGES[0].message;
+    const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
+    const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
+    expect(container.querySelector('.gx-slide-group')).not.toBeNull();
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+    expect(container.innerHTML).not.toContain('-9999px');
+    expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
+    const css = Array.from(container.querySelectorAll('style')).map((node) => node.textContent ?? '').join('\n');
+    expect(css).toContain('.gx-slide-group .gx-message-slide-in');
+    expect(css).toContain('animation-delay: 150ms');
+  });'''
+          if t.count(old) != 1:
+              raise SystemExit(f'expected one legacy slide ghost test, found {t.count(old)}')
+          test.write_text(t.replace(old, new, 1))
+          PY
 
       - name: Install dependencies
         run: npm ci

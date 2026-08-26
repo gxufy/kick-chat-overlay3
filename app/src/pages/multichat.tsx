@@ -3,6 +3,7 @@
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import dynamic from 'next/dynamic';
 import {
   hasConfiguredMultichatChannel,
   multichatKickChannel,
@@ -33,6 +34,7 @@ import { buildMessageFilter, buildParsedMessage } from '../lib/multichatMessageM
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { clearSevenTVEmoteSetCache } from '../lib/sevenTVEmoteSetCache';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
+import { createMessageFadeScheduler } from '../lib/messageFadeScheduler';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
 import { startTwitchHypeTrainPoller } from '../lib/twitchHypeTrainPoller';
@@ -50,8 +52,14 @@ import ChatOverlay, {
   type PinnedState,
   type StartupLoaderPhase,
 } from '../components/overlay/ChatOverlay';
-import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
+
+/* The generator is a large editing UI that OBS never renders. Keep the overlay
+ * renderer in the main /multichat bundle so its startup appearance is unchanged,
+ * but load the generator chunk only when the channel-less generator branch is
+ * actually rendered. This removes generator controls/previews/simulators from
+ * the browser-source parse/evaluation path without creating a second renderer. */
+const ClassicGenerator = dynamic(() => import('../components/classic/ClassicGenerator'));
 
 /* Twitch pin polling: the generator appends an opaque connection id as a
  * URL fragment. Validated here, never rewritten, never logged. */
@@ -383,7 +391,11 @@ function MultichatOverlay() {
     let sharedChatRuntime = cfg.sharedChatEnabled;
 
     
-    const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
+    /* Frame pacing is independent of the entrance animation. The old slide
+       exclusion routed the default animation through a 200 ms publication
+       timer, so bursts could only become visible at ~5 cadence points/sec.
+       A dirty frame is still scheduled only on demand, never while idle. */
+    const smoothRuntime = cfg.smoothScroll;
     let dirty = false;
     let flushFrame: number | null = null;
 
@@ -405,6 +417,7 @@ function MultichatOverlay() {
     const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime
       ? null
       : setInterval(flushMessages, 200);
+    let fadeScheduler: ReturnType<typeof createMessageFadeScheduler> | null = null;
 
     function setPlatformChatVisible(platform: Platform, visible: boolean) {
       if (visible) {
@@ -447,6 +460,7 @@ function MultichatOverlay() {
       s.messages.push(buildParsed(um));
       if (s.messages.length > 100) s.messages.shift();
       markDirty();
+      fadeScheduler?.wake();
       dismissLoaderWhenEligible();
     }
 
@@ -918,25 +932,20 @@ function MultichatOverlay() {
 
     connectors.forEach(c => c.start());
 
-    let fadeInterval: ReturnType<typeof setInterval> | null = null;
     if (cfg.fade !== false) {
-      const fadeMs = (cfg.fade as number) * 1000;
-      const fadingSet = new Set<string>();
-      fadeInterval = setInterval(() => {
-        const cutoff = Date.now() - fadeMs;
-        const expired = s.messages.find(
-          m => (m.timestamp ?? 0) <= cutoff && !fadingSet.has(m.id)
-        );
-        if (!expired) return;
-        fadingSet.add(expired.id);
-        setFadingIds(new Set(fadingSet));
-        setTimeout(() => {
-          fadingSet.delete(expired.id);
-          s.messages = s.messages.filter(m => m.id !== expired.id);
+      fadeScheduler = createMessageFadeScheduler({
+        getMessages: () => s.messages,
+        fadeMs: (cfg.fade as number) * 1000,
+        onFadingChange: setFadingIds,
+        onRemove: (id) => {
+          s.messages = s.messages.filter((message) => message.id !== id);
           markDirty(); // removal uses the active flush policy
-          setFadingIds(new Set(fadingSet));
-        }, 400);
-      }, 200);
+        },
+      });
+      // A connector may synchronously seed messages during start(). Arm the
+      // first deadline once here even when addMessage ran before the scheduler
+      // existed; later arrivals call wake() themselves.
+      fadeScheduler.wake();
     }
 
     return () => {
@@ -945,7 +954,7 @@ function MultichatOverlay() {
       if (loaderMaximumTimer) clearTimeout(loaderMaximumTimer);
       if (flushInterval) clearInterval(flushInterval);
       if (flushFrame !== null) cancelAnimationFrame(flushFrame);
-      if (fadeInterval) clearInterval(fadeInterval);
+      fadeScheduler?.stop();
       connectors.forEach(c => c.stop());
       cleanups.forEach(fn => fn());
     };

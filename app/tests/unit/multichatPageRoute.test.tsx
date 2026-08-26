@@ -161,9 +161,9 @@ describe('overlay visits', () => {
 });
 
 describe('generator visits', () => {
-  it('renders the generator for a bare visit', () => {
+  it('renders the generator for a bare visit', async () => {
     render(<MultichatPage />);
-    expect(screen.getByTestId('classic-generator')).toBeTruthy();
+    expect(await screen.findByTestId('classic-generator')).toBeTruthy();
   });
 
   /* The whole point of the correction: this path no longer forwards anywhere. */
@@ -172,10 +172,10 @@ describe('generator visits', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('renders the generator for an empty channel value', () => {
+  it('renders the generator for an empty channel value', async () => {
     query = { kick: '' };
     render(<MultichatPage />);
-    expect(screen.getByTestId('classic-generator')).toBeTruthy();
+    expect(await screen.findByTestId('classic-generator')).toBeTruthy();
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -191,13 +191,13 @@ describe('generator visits', () => {
     expect(startPoller).not.toHaveBeenCalled();
   });
 
-  it('renders one generator under StrictMode double-invocation', () => {
+  it('renders one generator under StrictMode double-invocation', async () => {
     render(
       <StrictMode>
         <MultichatPage />
       </StrictMode>,
     );
-    expect(screen.getAllByTestId('classic-generator')).toHaveLength(1);
+    expect(await screen.findAllByTestId('classic-generator')).toHaveLength(1);
     expect(replace).not.toHaveBeenCalled();
   });
 });
@@ -205,31 +205,31 @@ describe('generator visits', () => {
 /* Where the generator starts. `/tools/counter` redirects to the counter anchor,
    and old bookmarks carry ?tab=counter — both must land on the counter panel. */
 describe('starting at the counter', () => {
-  const focusCounter = () =>
-    screen.getByTestId('classic-generator').getAttribute('data-focus-counter');
+  const focusCounter = async () =>
+    (await screen.findByTestId('classic-generator')).getAttribute('data-focus-counter');
 
-  it('focuses the counter for the anchor', () => {
+  it('focuses the counter for the anchor', async () => {
     setHash('#viewer-counter');
     render(<MultichatPage />);
-    expect(focusCounter()).toBe('true');
+    expect(await focusCounter()).toBe('true');
   });
 
-  it('focuses the counter for the legacy tab query', () => {
+  it('focuses the counter for the legacy tab query', async () => {
     query = { tab: 'counter' };
     render(<MultichatPage />);
-    expect(focusCounter()).toBe('true');
+    expect(await focusCounter()).toBe('true');
   });
 
-  it('does not focus the counter for a bare visit', () => {
+  it('does not focus the counter for a bare visit', async () => {
     render(<MultichatPage />);
-    expect(focusCounter()).toBe('false');
+    expect(await focusCounter()).toBe('false');
   });
 
   /* An OAuth return is not a request to jump to the counter. */
-  it('does not focus the counter for a connection fragment', () => {
+  it('does not focus the counter for a connection fragment', async () => {
     setHash(`#twitchConnectionId=${TEST_ID}&twitch=someone`);
     render(<MultichatPage />);
-    expect(focusCounter()).toBe('false');
+    expect(await focusCounter()).toBe('false');
   });
 });
 

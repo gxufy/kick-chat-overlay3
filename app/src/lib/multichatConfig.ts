@@ -427,6 +427,9 @@ export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {
   const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;
   return {
     ...shared,
+    // New website/Pogly widgets begin with pin rendering disabled. Existing
+    // overlay URLs keep their explicit showPinEnabled value unchanged.
+    showPinEnabled: false,
     smoothScroll: true,
     sourceTag: platformIcons ? 'icon' : 'none',
   };

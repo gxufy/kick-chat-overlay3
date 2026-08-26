@@ -8,6 +8,7 @@ import { sourceTag, PROVIDERS, type SourceTagMode } from '../../lib/render';
 import type { Platform } from '../../lib/types';
 import type { TwitchHypeTrainState } from '../../lib/twitchHypeTrainClient';
 import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
+import { createSmoothScrollFollower } from '../../lib/smoothScrollFollower';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -100,6 +101,14 @@ function getShadowFilter(s: string) {
   return '';
 }
 
+/* The pre-optimization renderer used CSS drop-shadow around the complete
+   rendered username. Keep that exact color/shadow treatment on the small name
+   span, while the rest of each message uses the cheaper text-shadow path. */
+function getDropShadowFilter(s: string) {
+  const shadow = getShadowFilter(s);
+  return shadow ? `drop-shadow(${shadow})` : '';
+}
+
 
 function getStroke(s: string) {
   const m: Record<string,string> = { thin:'1px black', medium:'2px black', thick:'3px black', thicker:'4px black' };
@@ -127,10 +136,10 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
 }
 
 const MessageRow = memo(function MessageRow({
-  msg, fading, msgSlideIn, smoothRuntime, shadowVal, sz, emoteMaxH, emoteMaxW,
+  msg, fading, msgSlideIn, smoothRuntime, shadowVal, visualShadowFilter, paintVisualShadowFilter, sz, emoteMaxH, emoteMaxW,
   strokeVal, hideNames, tagMode, showAvatar, showSharedSource,
 }: {
-  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string;
+  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string; visualShadowFilter: string; paintVisualShadowFilter: string;
   sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string; strokeVal: string;
   hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
 }) {
@@ -143,7 +152,8 @@ const MessageRow = memo(function MessageRow({
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource}
+        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
     </div>
   );
 });
@@ -157,6 +167,11 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
   const filterVal  = getShadowFilter(cfg.textShadow);
+  const visualShadowFilter = getDropShadowFilter(cfg.textShadow);
+  /* paintShadows is an explicit promise that painted usernames can shed all
+     drop-shadow work while keeping the paint itself. Restore the old general
+     username shadow only when that paint-shadow switch is enabled. */
+  const paintVisualShadowFilter = cfg.paintShadows === false ? '' : visualShadowFilter;
   const strokeVal  = getStroke(cfg.stroke ?? 'none');
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'opensans'] ?? FONT_FAMILIES.opensans;
   /* Naming a family does not load it. Only the selected face is requested, and
@@ -193,26 +208,18 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     if (!smoothRuntime) return;
     const el = chatContainerRef.current;
     if (!el || typeof MutationObserver === 'undefined') return;
-    let raf = 0;
-    let lastScrollAt = 0;
-    const scrollNewestIntoView = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const now = Date.now();
-        const burst = now - lastScrollAt < 100;
-        lastScrollAt = now;
-        try {
-          el.scrollTo({ top: el.scrollHeight, behavior: burst ? 'auto' : 'smooth' });
-        } catch {
-          el.scrollTop = el.scrollHeight;
-        }
-      });
-    };
-    const observer = new MutationObserver(scrollNewestIntoView);
+
+    /* One continuously moving rAF target gives burst chat a stable frame cadence.
+       Native smooth scrolling restarts its easing curve on every mutation, while
+       the old burst fallback snapped to `auto`; both are visible as uneven speed
+       when messages arrive faster than the animation can settle. */
+    const follower = createSmoothScrollFollower(el);
+    const observer = new MutationObserver(() => follower.wake());
     observer.observe(el, { childList: true });
+    follower.wake();
     return () => {
-      cancelAnimationFrame(raf);
       observer.disconnect();
+      follower.stop();
     };
   }, [smoothRuntime]);
 
@@ -277,6 +284,8 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       msgSlideIn={cfg.msgSlideIn ?? false}
       smoothRuntime={smoothRuntime}
       shadowVal={filterVal}
+      visualShadowFilter={visualShadowFilter}
+      paintVisualShadowFilter={paintVisualShadowFilter}
       sz={sz}
       emoteMaxH={emoteMaxH}
       emoteMaxW={emoteMaxW}
@@ -317,6 +326,8 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             animation: gxMessageSlideIn 250ms ease-out;
             backface-visibility: hidden;
           }
+          /* Only hint scrolling while the rAF follower is actually moving. */
+          .gx-scroll-active { will-change: scroll-position; }
 
           @keyframes gxSlideGroupOpen {
             from { grid-template-rows: 0fr; }
@@ -543,7 +554,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-          fontFamily={fontFamily} filterVal={filterVal} strokeVal={strokeVal}
+          fontFamily={fontFamily} filterVal={filterVal} visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} strokeVal={strokeVal}
           hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
@@ -616,10 +627,10 @@ function HypeTrainBar({ state, ending, fontFamily }: {
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames, tagMode }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, paintVisualShadowFilter, strokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
-  filterVal:string; strokeVal:string;
+  filterVal:string; visualShadowFilter:string; paintVisualShadowFilter:string; strokeVal:string;
   hideNames:boolean;
   /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
      leaves no marker here either. */
@@ -677,7 +688,8 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       </div>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={false} showSharedSource={false} />
+        tagMode={tagMode} showAvatar={false} showSharedSource={false}
+        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}
@@ -693,17 +705,18 @@ const CATEGORY_ICON: Record<string, string> = {
   milestone: '🔥', follow: '❤️', announcement: '📣',
 };
 
-function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource }: {
+function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource, visualShadowFilter, paintVisualShadowFilter }: {
   msg: ParsedMessage; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; stroke:string;
   hideNames:boolean;
-  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean;
+  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean; visualShadowFilter:string; paintVisualShadowFilter:string;
 }) {
   const isPaint = !!msg.identity.background;
   const pill = msg.identity.namePill?.split('|');
+  const oldNameShadow = visualShadowFilter || undefined;
   const nameStyle: React.CSSProperties = pill
     ? { background:pill[0], color:pill[1], borderRadius:'0.4em', padding:'0 0.35em',
-        WebkitTextStroke:'0px', textShadow:'none',
+        WebkitTextStroke:'0px', textShadow:'none', filter:oldNameShadow,
         }    : isPaint
     /* backgroundImage, not the background shorthand: the shorthand resets
        backgroundSize, so the paint only sized correctly because React happened
@@ -712,12 +725,14 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
        stretches it across the name the way 7TV serves it. Gradients are
        unaffected either way. The name carries no text-shadow: the paint's own
        drop-shadow filter is the shadow, and an inherited one muddies it. */
-    ? { backgroundImage:msg.identity.background, filter:msg.identity.filter,
+    ? { backgroundImage:msg.identity.background,
+        filter:[msg.identity.filter, paintVisualShadowFilter].filter(Boolean).join(' ') || undefined,
         WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
         backgroundClip:'text', backgroundSize:'100% 100%',
         backgroundRepeat:'no-repeat',
         WebkitTextStroke:'0px', textShadow:'none' }
-    : { color:msg.identity.color, };
+    : { color:msg.identity.color,
+        ...(oldNameShadow ? { filter:oldNameShadow, textShadow:'none' } : {}) };
 
   const visualPlatform = msg.displayPlatform ?? msg.platform;
   const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;

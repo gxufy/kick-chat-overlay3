@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 
 import Head from 'next/head';
@@ -116,15 +116,79 @@ function getStroke(s: string) {
 }
 
 
+const CHATIS_SLIDE_DURATION_MS = 150;
+const CHATIS_JQUERY_TICK_MS = 13;
+const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/** jQuery 1.8.2's default `swing` easing, used by ChatIS's height spacer. */
+export function chatisSwing(progress: number): number {
+  return 0.5 - Math.cos(progress * Math.PI) / 2;
+}
+
 function SlideGroup({ children }: { children: React.ReactNode }) {
-  /* CSS grid can interpolate 0fr -> 1fr against intrinsic content height.
-     That gives the same 150ms empty-space opening before content is revealed,
-     without mounting an offscreen copy, forcing getBoundingClientRect(), or
-     coordinating React state with animation frames. The batch node stays
-     mounted, so a late repaint/deletion cannot replay the entrance. */
+  /* ChatIS does not animate the actual rows. It measures the complete hidden
+     bucket, opens an empty spacer to that exact height over 150ms with
+     jQuery's 13ms `swing` timer, then swaps the spacer for the real rows in
+     one atomic commit. Keep that literal sequence while letting the rows
+     themselves remain our React renderer. */
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
+  const [spacerHeight, setSpacerHeight] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+
+  useBrowserLayoutEffect(() => {
+    if (revealed || measuredHeight !== null) return;
+    const measure = measureRef.current;
+    if (!measure) return;
+
+    if (typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setRevealed(true);
+      return;
+    }
+
+    const measured = measure.getBoundingClientRect().height || measure.scrollHeight;
+    if (measured <= 0) {
+      /* jsdom has no layout, and zero-height real buckets need no spacer. */
+      setRevealed(true);
+      return;
+    }
+    setMeasuredHeight(measured);
+  }, [measuredHeight, revealed]);
+
+  useEffect(() => {
+    if (measuredHeight === null || revealed) return;
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const tick = () => {
+      const progress = Math.min(1, (Date.now() - startedAt) / CHATIS_SLIDE_DURATION_MS);
+      setSpacerHeight(measuredHeight * chatisSwing(progress));
+      if (progress >= 1) {
+        if (timer !== null) clearInterval(timer);
+        timer = null;
+        setRevealed(true);
+      }
+    };
+
+    timer = setInterval(tick, CHATIS_JQUERY_TICK_MS);
+    tick();
+    return () => {
+      if (timer !== null) clearInterval(timer);
+    };
+  }, [measuredHeight, revealed]);
+
+  /* Once revealed there is no permanent batch wrapper, just like ChatIS's
+     direct append of .chat_line nodes into #chat_container. */
+  if (revealed) return <>{children}</>;
+
   return (
-    <div className="gx-slide-group">
-      <div className="gx-slide-content">{children}</div>
+    <div className="gx-slide-group" data-slide-phase={measuredHeight === null ? 'measure' : 'opening'}
+      style={{ height: `${spacerHeight}px`, overflow: 'hidden' }}>
+      <div ref={measureRef} className="gx-slide-measure" data-slide-ghost aria-hidden="true">
+        {children}
+      </div>
     </div>
   );
 }
@@ -329,31 +393,19 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           /* Only hint scrolling while the rAF follower is actually moving. */
           .gx-scroll-active { will-change: scroll-position; }
 
-          @keyframes gxSlideGroupOpen {
-            from { grid-template-rows: 0fr; }
-            to   { grid-template-rows: 1fr; }
-          }
-          @keyframes gxSlideGroupReveal {
-            from { visibility: hidden; }
-            to   { visibility: visible; }
-          }
           .gx-slide-group {
-            display: grid;
-            grid-template-rows: 0fr;
-            animation: gxSlideGroupOpen 150ms ease-in-out forwards;
-          }
-          .gx-slide-content {
-            min-height: 0;
-            overflow: hidden;
-            visibility: hidden;
-            animation: gxSlideGroupReveal 150ms step-end forwards;
-          }
-          .gx-slide-group .gx-message-slide-in {
-            /* The measured ghost used to remount the visible row after 150ms,
-               so preserve that exact visible start time without ghost DOM. */
-            animation-delay: 150ms;
-          }
-          @keyframes gxFadeGroupIn {
+          position: relative;
+          width: 100%;
+        }
+        .gx-slide-measure {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+        @keyframes gxFadeGroupIn {
             from { opacity: 0; }
             to   { opacity: 1; }
           }

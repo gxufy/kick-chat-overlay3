@@ -1,6 +1,6 @@
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import ChatOverlay from '@/components/overlay/ChatOverlay';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import ChatOverlay, { chatisSwing } from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';
 import type { Platform } from '@/lib/types';
@@ -21,34 +21,75 @@ const props = (animation: 'slide' | 'fade' | 'none', platform: Platform = 'twitc
   sourceTagExplicit: true,
 });
 
-afterEach(cleanup);
+const rect = (height: number): DOMRect => ({
+  x: 0, y: 0, width: 600, height, top: 0, right: 600, bottom: height, left: 0,
+  toJSON: () => ({}),
+} as DOMRect);
 
-describe('shared batch entrance', () => {
-  it.each(['twitch', 'kick', 'tiktok'] as const)('uses one CSS-only SlideGroup for one %s flush', (platform) => {
-    const messages = [parsed(platform, 'one'), parsed(platform, 'two'), parsed(platform, 'three')];
-    const { container } = render(<ChatOverlay {...props('slide', platform)} messages={messages} />);
-    const groups = container.querySelectorAll('.gx-slide-group');
-    expect(groups).toHaveLength(1);
-    expect(groups[0].querySelectorAll('.ck-body')).toHaveLength(3);
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
-    expect(container.innerHTML).not.toContain('-9999px');
+function mockSlideMeasure(height: number) {
+  return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    return (this as HTMLElement).classList.contains('gx-slide-measure') ? rect(height) : rect(0);
+  });
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('literal ChatIS batch entrance', () => {
+  it('uses jQuery 1.8.2 swing easing', () => {
+    expect(chatisSwing(0)).toBeCloseTo(0);
+    expect(chatisSwing(0.5)).toBeCloseTo(0.5);
+    expect(chatisSwing(1)).toBeCloseTo(1);
   });
 
-  it('repaints a same-ID row without adding another entrance batch', () => {
+  it.each(['twitch', 'kick', 'tiktok'] as const)('measures one hidden %s bucket, opens empty space, then commits rows atomically', (platform) => {
+    vi.useFakeTimers();
+    mockSlideMeasure(165);
+    const messages = [parsed(platform, 'one'), parsed(platform, 'two'), parsed(platform, 'three')];
+    const { container } = render(<ChatOverlay {...props('slide', platform)} messages={messages} />);
+
+    const opening = container.querySelector('.gx-slide-group') as HTMLElement;
+    expect(opening).not.toBeNull();
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(1);
+    expect(opening.style.height).toBe('0px');
+
+    act(() => vi.advanceTimersByTime(78));
+    const midHeight = parseFloat((container.querySelector('.gx-slide-group') as HTMLElement).style.height);
+    expect(midHeight).toBeGreaterThan(0);
+    expect(midHeight).toBeLessThan(165);
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(1);
+
+    act(() => vi.advanceTimersByTime(100));
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+    expect(container.querySelectorAll('.gx-slide-group')).toHaveLength(0);
+    expect(container.querySelectorAll('.ck-body')).toHaveLength(3);
+  });
+
+  it('repaints a same-ID row without replaying the spacer entrance', () => {
+    vi.useFakeTimers();
+    mockSlideMeasure(55);
     const before = parsed('twitch', 'stable', 'before');
     const { container, rerender } = render(<ChatOverlay {...props('slide')} messages={[before]} />);
-    expect(container.querySelectorAll('.gx-slide-group')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(170));
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+
     rerender(<ChatOverlay {...props('slide')} messages={[parsed('twitch', 'stable', 'after')]} />);
-    expect(container.querySelectorAll('.gx-slide-group')).toHaveLength(1);
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
     expect(container.textContent).toContain('after');
   });
 
-  it('removes a deleted member without replaying or duplicating the surviving batch', () => {
+  it('removes a deleted member without replaying the surviving batch', () => {
+    vi.useFakeTimers();
+    mockSlideMeasure(110);
     const one = parsed('twitch', 'one');
     const two = parsed('twitch', 'two');
     const { container, rerender } = render(<ChatOverlay {...props('slide')} messages={[one, two]} />);
+    act(() => vi.advanceTimersByTime(170));
     rerender(<ChatOverlay {...props('slide')} messages={[one]} />);
-    expect(container.querySelectorAll('.gx-slide-group')).toHaveLength(1);
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
     expect(container.textContent).toContain('one');
     expect(container.textContent).not.toContain('two');
   });

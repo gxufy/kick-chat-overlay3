@@ -35,14 +35,14 @@ describe('smooth message handling', () => {
     expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);
   });
 
-  it('keeps the same Slide timing without an offscreen height ghost', () => {
+  it('keeps Slide off the smooth-scroll follower while using the measured ChatIS spacer', () => {
     const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
     const raw = SAMPLE_MESSAGES[0].message;
     const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
     const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
-    expect(container.querySelector('.gx-slide-group')).not.toBeNull();
-    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
-    expect(container.innerHTML).not.toContain('-9999px');
+    const chat = container.querySelector('#chat_container') as HTMLElement;
+    expect(chat.style.display).toBe('');
+    expect(chat.style.maxHeight).toBe('');
     expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
   });
 });

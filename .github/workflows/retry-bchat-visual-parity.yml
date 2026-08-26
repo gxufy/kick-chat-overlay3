@@ -1,0 +1,108 @@
+name: Retry bChat visual parity
+
+on:
+  push:
+    branches: [perf/chatis-literal-breaks]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/chatis-literal-breaks
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply prepared visual patch
+        shell: bash
+        run: |
+          awk '/python - <<'\''PY'\''/{flag=1;next} flag && /^[[:space:]]*PY[[:space:]]*$/{exit} flag{sub(/^          /,""); print}' .github/workflows/apply-bchat-visual-parity.yml > /tmp/apply.py
+          python /tmp/apply.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/tests/unit/chatOverlayPerformance.test.tsx')
+          text = p.read_text()
+          old = '''  it('uses text-shadow instead of filtering the entire animated chat subtree', () => {
+            const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', textShadow: 'large' });
+            const { container } = render(
+              <ChatOverlay
+                config={config}
+                messages={[message]}
+                fadingIds={new Set()}
+                pinnedMessage={null}
+                showLoader={false}
+              />,
+            );
+            const chat = container.querySelector('#chat_container') as HTMLElement;
+            expect(chat.style.filter).toBe('');
+            expect(chat.style.textShadow).toContain('black');
+          });'''
+          new = '''  it('keeps bChat shadowing on each row instead of filtering the animated chat container', () => {
+            const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', textShadow: 'large' });
+            const { container } = render(
+              <ChatOverlay
+                config={config}
+                messages={[message]}
+                fadingIds={new Set()}
+                pinnedMessage={null}
+                showLoader={false}
+              />,
+            );
+            const chat = container.querySelector('#chat_container') as HTMLElement;
+            const row = container.querySelector('.gx-message-row') as HTMLElement;
+            expect(chat.style.filter).toBe('');
+            expect(chat.style.textShadow).toBe('');
+            expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 1))');
+          });'''
+          if text.count(old) != 1:
+              raise SystemExit('chatOverlayPerformance: expected one old performance test')
+          p.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -q "getBChatMessageShadow" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "drop-shadow(2px 2px 3px rgba(0, 0, 0" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "gx-message-row" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "WebkitTextStroke:paintStroke" app/src/components/overlay/ChatOverlay.tsx
+          ! grep -q "getDropShadowFilter\|paintVisualShadowFilter\|visualShadowFilter" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "CHATIS_SLIDE_DURATION_MS = 150" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "CHATIS_JQUERY_TICK_MS = 13" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "startBurstPresentationTicker" app/src/pages/multichat.tsx
+          grep -q "instead of filtering the animated chat container" app/tests/unit/chatOverlayPerformance.test.tsx
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Focused visual and chat-break regression tests
+        run: cd app && npx vitest --config vitest.config.ts run tests/unit/shadowVisualParity.test.tsx tests/unit/rendererParity.test.tsx tests/unit/renderHotPathPerformance.test.tsx tests/unit/chatOverlayPerformance.test.tsx tests/unit/chatOverlayEntranceQueue.test.tsx tests/unit/chatBurstPresentation.test.ts tests/unit/smoothScroll.test.tsx
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Check process config
+        run: node -e "require('./.github/infra/ecosystem.config.js')"
+
+      - name: Commit implementation and remove temporary workflows
+        shell: bash
+        run: |
+          git config user.name "gxufy"
+          git config user.email "150199274+gxufy@users.noreply.github.com"
+          git rm .github/workflows/apply-bchat-visual-parity.yml .github/workflows/retry-bchat-visual-parity.yml
+          git add app/src/components/overlay/ChatOverlay.tsx app/tests/unit/shadowVisualParity.test.tsx app/tests/unit/chatOverlayPerformance.test.tsx
+          git commit -m "Match bChat shadow and paint composition"
+          git push origin HEAD:perf/chatis-literal-breaks

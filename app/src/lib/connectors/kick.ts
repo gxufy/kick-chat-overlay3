@@ -27,22 +27,35 @@ function safeImage(value: unknown): string | undefined {
   }
 }
 
+/** Count Unicode code points without allocating the array that Array.from creates. */
+function codePointLength(value: string): number {
+  let length = 0;
+  for (const _ of value) length++;
+  return length;
+}
+
 /** Replace Kick's native emote tokens while recording codepoint offsets. */
 export function parseKickEmotes(content: string): { text: string; emotes: UnifiedEmote[] } {
   const emotes: UnifiedEmote[] = [];
   let text = '';
   let last = 0;
+  let textCodePoints = 0;
   for (const match of content.matchAll(KICK_EMOTE_RE)) {
-    text += content.slice(last, match.index);
+    const prefix = content.slice(last, match.index);
+    text += prefix;
+    textCodePoints += codePointLength(prefix);
+
     const name = match[2] || 'emote';
-    const begin = Array.from(text).length;
+    const nameCodePoints = codePointLength(name);
+    const begin = textCodePoints;
     emotes.push({
       begin,
-      end: begin + Array.from(name).length,
+      end: begin + nameCodePoints,
       text: name,
       url: `https://files.kick.com/emotes/${match[1]}/fullsize`,
     });
     text += name;
+    textCodePoints += nameCodePoints;
     last = match.index! + match[0].length;
   }
   text += content.slice(last);

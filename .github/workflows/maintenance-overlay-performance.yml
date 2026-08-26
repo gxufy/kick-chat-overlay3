@@ -22,6 +22,30 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Fix one-shot matcher
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply-overlay-performance-final.py')
+          s = p.read_text()
+          old = '''render = replace_once(
+              render,
+              "  const nodes: React.ReactNode[] = [];\\n  const words = segment.split(' ');",
+              "  const nodes: React.ReactNode[] = [];\\n  const words = segment.split(' ');\\n  const lookup = emotesByName(emotes);",
+              '7TV segment lookup init',
+          )'''
+          new = '''render = replace_once(
+              render,
+              "function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {\\n  const nodes: React.ReactNode[] = [];\\n  const words = segment.split(' ');",
+              "function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {\\n  const nodes: React.ReactNode[] = [];\\n  const words = segment.split(' ');\\n  const lookup = emotesByName(emotes);",
+              '7TV segment lookup init',
+          )'''
+          if old not in s:
+              raise SystemExit('matcher block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Apply final hot-path patch
         run: python .github/scripts/apply-overlay-performance-final.py
 

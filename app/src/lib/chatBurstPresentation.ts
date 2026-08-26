@@ -12,7 +12,11 @@ export function drainBurstPresentationQueue<T>(pending: T[]): T[] {
   return pending.splice(0);
 }
 
-/** Start the same fixed presentation metronome ChatIS uses. */
+/**
+ * Start the same fixed presentation metronome ChatIS uses.
+ * The ticker intentionally keeps running with an empty queue so arrival
+ * latency stays phase-relative instead of restarting from each first message.
+ */
 export function startBurstPresentationTicker(
   flush: () => void,
   intervalMs = BURST_PRESENT_INTERVAL_MS,

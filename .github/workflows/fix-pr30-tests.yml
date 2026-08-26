@@ -1,0 +1,87 @@
+name: Fix PR 30 test expectations
+
+on:
+  push:
+    branches: [perf/chat-burst-batching-pins-off]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/chat-burst-batching-pins-off
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Update intended pins-off expectations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one marker, found {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'app/tests/unit/multichatCatalog.test.ts',
+              "const workspaceNone = buildMultichatQuery(noChannels, { ...D, sourceTag: 'none' });",
+              "const workspaceNone = buildMultichatQuery(noChannels, {\n      ...D,\n      showPinEnabled: LEGACY.showPinEnabled,\n      sourceTag: 'none',\n    });",
+          )
+          replace_once(
+              'app/tests/unit/multichatCatalog.test.ts',
+              "expect(D).toEqual({ ...shared, smoothScroll: true, sourceTag: 'icon' });",
+              "expect(D).toEqual({\n      ...shared,\n      showPinEnabled: false,\n      smoothScroll: true,\n      sourceTag: 'icon',\n    });",
+          )
+
+          replace_once(
+              'app/tests/unit/overlayUrlStrings.test.ts',
+              "&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';",
+              "&showPinEnabled=false&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';",
+          )
+          replace_once(
+              'app/tests/unit/overlayUrlStrings.test.ts',
+              "'&showPinEnabled=true&hideNames=false',",
+              "'&showPinEnabled=false&hideNames=false',",
+          )
+
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n",
+              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n    // Pins intentionally start off now; enable them so the conditional platform\n    // selector is included in this reachability check.\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n",
+              "    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n",
+          )
+          PY
+
+      - name: Run focused tests
+        run: |
+          npm ci
+          cd app
+          npx vitest --config vitest.config.ts run \
+            tests/unit/multichatCatalog.test.ts \
+            tests/unit/overlayUrlStrings.test.ts \
+            tests/unit/classicGenerator.test.tsx
+
+      - name: Commit fixes and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-pr30-tests.yml
+          git add app/tests/unit/multichatCatalog.test.ts app/tests/unit/overlayUrlStrings.test.ts app/tests/unit/classicGenerator.test.tsx
+          git commit -m "Update tests for pins-off workspace default"
+          git push origin HEAD:perf/chat-burst-batching-pins-off

@@ -94,25 +94,34 @@ const SIZE = {
 type SzKey = keyof typeof SIZE;
 
 
-function getShadowFilter(s: string) {
-  if (s === 'small')  return '2px 2px 0.2rem black';
-  if (s === 'medium') return '2px 2px 0.35rem black';
-  if (s === 'large')  return '2px 2px 0.5rem black';
-  return '';
+/* bChat/UChat applies one composite drop-shadow to each chat row rather
+   than separate text shadows to the body and username. Keep our four
+   legacy strength labels, but map them onto bChat's 0-10 opacity model;
+   `large` is the exact bChat default: 2px 2px 3px at full opacity. */
+function getBChatMessageShadow(s: string) {
+  const alpha: Record<string, number> = { small: 0.4, medium: 0.7, large: 1 };
+  const opacity = alpha[s] ?? 0;
+  return opacity ? `drop-shadow(2px 2px 3px rgba(0, 0, 0, ${opacity}))` : '';
 }
 
-/* The pre-optimization renderer used CSS drop-shadow around the complete
-   rendered username. Keep that exact color/shadow treatment on the small name
-   span, while the rest of each message uses the cheaper text-shadow path. */
-function getDropShadowFilter(s: string) {
-  const shadow = getShadowFilter(s);
-  return shadow ? `drop-shadow(${shadow})` : '';
+/* bChat's font stroke is four diagonal black text-shadows, not
+   -webkit-text-stroke. Scale the offsets for our existing thickness
+   choices so old URLs keep their useful thin/medium/thick vocabulary. */
+function getBChatStroke(s: string) {
+  const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+  const px = width[s] ?? 0;
+  return px
+    ? `${px}px ${px}px 0 black, -${px}px ${px}px 0 black, ${px}px -${px}px 0 black, -${px}px -${px}px 0 black`
+    : '';
 }
 
-
-function getStroke(s: string) {
-  const m: Record<string,string> = { thin:'1px black', medium:'2px black', thick:'3px black', thicker:'4px black' };
-  return m[s] ?? '';
+/* Painted names clear inherited text-shadow in bChat. When paint
+   shadows are disabled, bChat restores a WebKit stroke directly on
+   the painted glyphs; use the selected legacy width for parity. */
+function getBChatPaintStroke(s: string) {
+  const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+  const px = width[s] ?? 0;
+  return px ? `${px}px black` : '';
 }
 
 
@@ -200,24 +209,23 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
 }
 
 const MessageRow = memo(function MessageRow({
-  msg, fading, msgSlideIn, smoothRuntime, shadowVal, visualShadowFilter, paintVisualShadowFilter, sz, emoteMaxH, emoteMaxW,
-  strokeVal, hideNames, tagMode, showAvatar, showSharedSource,
+  msg, fading, msgSlideIn, messageShadowFilter, paintStrokeVal, sz, emoteMaxH, emoteMaxW,
+  hideNames, tagMode, showAvatar, showSharedSource,
 }: {
-  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string; visualShadowFilter: string; paintVisualShadowFilter: string;
-  sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string; strokeVal: string;
+  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; messageShadowFilter: string; paintStrokeVal: string;
+  sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string;
   hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
 }) {
   return (
-    <div className={msgSlideIn ? 'gx-message-slide-in' : undefined} style={{
+    <div className={['gx-message-row', msgSlideIn ? 'gx-message-slide-in' : ''].filter(Boolean).join(' ')} style={{
       margin: '0 10px',
       opacity: fading ? 0 : 1,
       transition: fading ? 'opacity 400ms linear' : 'none',
-      ...(smoothRuntime && shadowVal ? { textShadow: shadowVal } : {}),
+      ...(messageShadowFilter ? { filter: messageShadowFilter } : {}),
     }}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource}
-        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
+        paintStroke={paintStrokeVal} hideNames={hideNames}
+        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
     </div>
   );
 });
@@ -230,13 +238,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
 
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
-  const filterVal  = getShadowFilter(cfg.textShadow);
-  const visualShadowFilter = getDropShadowFilter(cfg.textShadow);
-  /* paintShadows is an explicit promise that painted usernames can shed all
-     drop-shadow work while keeping the paint itself. Restore the old general
-     username shadow only when that paint-shadow switch is enabled. */
-  const paintVisualShadowFilter = cfg.paintShadows === false ? '' : visualShadowFilter;
-  const strokeVal  = getStroke(cfg.stroke ?? 'none');
+  const messageShadowFilter = getBChatMessageShadow(cfg.textShadow);
+  const strokeVal = getBChatStroke(cfg.stroke ?? 'none');
+  const paintStrokeVal = cfg.paintShadows === false ? getBChatPaintStroke(cfg.stroke ?? 'none') : '';
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'opensans'] ?? FONT_FAMILIES.opensans;
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
@@ -346,14 +350,11 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       msg={msg}
       fading={fadingIds.has(msg.id)}
       msgSlideIn={cfg.msgSlideIn ?? false}
-      smoothRuntime={smoothRuntime}
-      shadowVal={filterVal}
-      visualShadowFilter={visualShadowFilter}
-      paintVisualShadowFilter={paintVisualShadowFilter}
+      messageShadowFilter={messageShadowFilter}
+      paintStrokeVal={paintStrokeVal}
       sz={sz}
       emoteMaxH={emoteMaxH}
       emoteMaxW={emoteMaxW}
-      strokeVal={strokeVal}
       hideNames={cfg.hideNames ?? false}
       tagMode={tagMode}
       showAvatar={cfg.showAvatars ?? false}
@@ -606,7 +607,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-          fontFamily={fontFamily} filterVal={filterVal} visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} strokeVal={strokeVal}
+          fontFamily={fontFamily} messageShadowFilter={messageShadowFilter} strokeVal={strokeVal} paintStrokeVal={paintStrokeVal}
           hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
@@ -628,8 +629,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
-        ...(!smoothRuntime && filterVal ? { textShadow:filterVal } : {}),
-        ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
+        ...(strokeVal ? { textShadow:strokeVal } : {}),
       }}>
         {batches.map(({ id, messageIds }) => {
           const content = messageIds
@@ -679,10 +679,10 @@ function HypeTrainBar({ state, ending, fontFamily }: {
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, paintVisualShadowFilter, strokeVal, hideNames, tagMode }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, messageShadowFilter, strokeVal, paintStrokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
-  filterVal:string; visualShadowFilter:string; paintVisualShadowFilter:string; strokeVal:string;
+  messageShadowFilter:string; strokeVal:string; paintStrokeVal:string;
   hideNames:boolean;
   /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
      leaves no marker here either. */
@@ -727,8 +727,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, vi
     overflow:'hidden',
     opacity,
     transition:'opacity 400ms ease-in-out',
-    ...(filterVal ? { textShadow:filterVal } : {}),
-    ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
+    ...(strokeVal ? { textShadow:strokeVal } : {}),
   };
 
   if (!mounted) return null;
@@ -738,10 +737,11 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, vi
       <div style={{ display:'flex', alignItems:'center', gap:4, paddingBottom:4, opacity:0.6, fontSize:'0.7em' }}>
         <PinSVG /> <span style={{ fontWeight:700 }}>Pinned Message</span>
       </div>
+      <div className="gx-message-row" style={messageShadowFilter ? { filter:messageShadowFilter } : undefined}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={false} showSharedSource={false}
-        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
+        paintStroke={paintStrokeVal} hideNames={hideNames}
+        tagMode={tagMode} showAvatar={false} showSharedSource={false} />
+    </div>
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}
@@ -757,34 +757,32 @@ const CATEGORY_ICON: Record<string, string> = {
   milestone: '🔥', follow: '❤️', announcement: '📣',
 };
 
-function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource, visualShadowFilter, paintVisualShadowFilter }: {
+function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, paintStroke, hideNames, tagMode, showAvatar, showSharedSource }: {
   msg: ParsedMessage; sz: typeof SIZE[SzKey];
-  emoteMaxH:string; emoteMaxW:string; stroke:string;
+  emoteMaxH:string; emoteMaxW:string; paintStroke:string;
   hideNames:boolean;
-  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean; visualShadowFilter:string; paintVisualShadowFilter:string;
+  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean;
 }) {
   const isPaint = !!msg.identity.background;
   const pill = msg.identity.namePill?.split('|');
-  const oldNameShadow = visualShadowFilter || undefined;
   const nameStyle: React.CSSProperties = pill
     ? { background:pill[0], color:pill[1], borderRadius:'0.4em', padding:'0 0.35em',
-        WebkitTextStroke:'0px', textShadow:'none', filter:oldNameShadow,
-        }    : isPaint
-    /* backgroundImage, not the background shorthand: the shorthand resets
-       backgroundSize, so the paint only sized correctly because React happened
-       to emit the two in declaration order. 100% 100% rather than cover
-       matters for image paints — cover crops the art to the glyph box, this
-       stretches it across the name the way 7TV serves it. Gradients are
-       unaffected either way. The name carries no text-shadow: the paint's own
-       drop-shadow filter is the shadow, and an inherited one muddies it. */
+        WebkitTextStroke:'0px', textShadow:'none' }
+    : isPaint
+    /* bChat's paint branch is deliberately isolated from the ordinary
+       font stroke: the gradient clips to transparent glyphs, its own
+       7TV shadow filter stays on the name, and inherited text-shadow is
+       cleared. If paint shadows are disabled, bChat restores a direct
+       WebKit stroke on the painted glyph instead. The row-level black
+       drop-shadow remains outside this span, so it composes with the
+       paint exactly once. */
     ? { backgroundImage:msg.identity.background,
-        filter:[msg.identity.filter, paintVisualShadowFilter].filter(Boolean).join(' ') || undefined,
+        filter:msg.identity.filter || undefined,
         WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
         backgroundClip:'text', backgroundSize:'100% 100%',
         backgroundRepeat:'no-repeat',
-        WebkitTextStroke:'0px', textShadow:'none' }
-    : { color:msg.identity.color,
-        ...(oldNameShadow ? { filter:oldNameShadow, textShadow:'none' } : {}) };
+        WebkitTextStroke:paintStroke || '0px', textShadow:'none' }
+    : { color:msg.identity.color };
 
   const visualPlatform = msg.displayPlatform ?? msg.platform;
   const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;

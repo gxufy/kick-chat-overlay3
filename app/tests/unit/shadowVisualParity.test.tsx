@@ -7,6 +7,7 @@ import type { ParsedMessage } from '@/lib/kick';
 const config = MultichatQuerySchema.parse({
   twitch: 'gxufy',
   textShadow: 'medium',
+  stroke: 'thin',
   smoothScroll: '1',
 });
 
@@ -29,9 +30,9 @@ function message(overrides: Partial<ParsedMessage['identity']> = {}): ParsedMess
 
 afterEach(cleanup);
 
-describe('pre-optimization username shadow parity', () => {
-  it('keeps the old drop-shadow treatment on normal colored usernames', () => {
-    render(
+describe('bChat shadow, stroke, and paint composition', () => {
+  it('uses bChat row drop-shadow geometry and diagonal text-shadow stroke', () => {
+    const { container } = render(
       <ChatOverlay
         config={config}
         messages={[message()]}
@@ -42,13 +43,18 @@ describe('pre-optimization username shadow parity', () => {
     );
 
     const name = screen.getByText('ColorUser');
-    expect(name.style.filter).toBe('drop-shadow(2px 2px 0.35rem black)');
-    expect(name.style.textShadow).toBe('none');
+    const row = name.closest('.gx-message-row') as HTMLElement;
+    const chat = container.querySelector('#chat_container') as HTMLElement;
+
+    expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.7))');
+    expect(chat.style.textShadow).toBe('1px 1px 0 black, -1px 1px 0 black, 1px -1px 0 black, -1px -1px 0 black');
+    expect(chat.style.webkitTextStroke).toBe('');
+    expect(name.style.filter).toBe('');
     expect(name.style.color).toBe('rgb(255, 79, 139)');
   });
 
-  it('adds the old black shadow after a 7TV paint own filter instead of replacing it', () => {
-    render(
+  it('keeps 7TV paint shadow on the painted name and the bChat black shadow on the row', () => {
+    const { container } = render(
       <ChatOverlay
         config={config}
         messages={[message({
@@ -62,12 +68,15 @@ describe('pre-optimization username shadow parity', () => {
     );
 
     const name = screen.getByText('ColorUser');
-    expect(name.style.filter).toContain('drop-shadow(0px 0px 2px rgba(255,0,85,0.8))');
-    expect(name.style.filter).toContain('drop-shadow(2px 2px 0.35rem black)');
+    const row = name.closest('.gx-message-row') as HTMLElement;
+    expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.7))');
+    expect(name.style.filter).toBe('drop-shadow(0px 0px 2px rgba(255,0,85,0.8))');
+    expect(name.style.filter).not.toContain('2px 2px 3px');
     expect(name.style.textShadow).toBe('none');
+    expect(container.querySelector('#chat_container')).not.toBeNull();
   });
 
-  it('keeps the paint but removes every painted-name drop-shadow when paintShadows is off', () => {
+  it('uses a direct paint stroke when paint shadows are off, just like bChat', () => {
     render(
       <ChatOverlay
         config={{ ...config, paintShadows: false }}
@@ -85,5 +94,32 @@ describe('pre-optimization username shadow parity', () => {
     expect(name.style.filter).toBe('');
     expect(name.style.backgroundImage).toContain('linear-gradient');
     expect(name.style.textShadow).toBe('none');
+    expect(name.style.webkitTextStroke).toBe('1px black');
+  });
+
+  it('maps large shadow to bChat full-opacity default and none to no filter', () => {
+    const large = render(
+      <ChatOverlay
+        config={{ ...config, textShadow: 'large' }}
+        messages={[message()]}
+        fadingIds={new Set()}
+        pinnedMessage={null}
+        showLoader={false}
+      />,
+    );
+    expect((large.container.querySelector('.gx-message-row') as HTMLElement).style.filter)
+      .toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 1))');
+    cleanup();
+
+    const none = render(
+      <ChatOverlay
+        config={{ ...config, textShadow: 'none' }}
+        messages={[message()]}
+        fadingIds={new Set()}
+        pinnedMessage={null}
+        showLoader={false}
+      />,
+    );
+    expect((none.container.querySelector('.gx-message-row') as HTMLElement).style.filter).toBe('');
   });
 });

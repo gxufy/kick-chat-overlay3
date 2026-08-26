@@ -15,21 +15,23 @@ const message: ParsedMessage = {
 afterEach(cleanup);
 
 describe('chat overlay compositor-friendly rendering', () => {
-  it('uses text-shadow instead of filtering the entire animated chat subtree', () => {
-    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', textShadow: 'large' });
-    const { container } = render(
-      <ChatOverlay
-        config={config}
-        messages={[message]}
-        fadingIds={new Set()}
-        pinnedMessage={null}
-        showLoader={false}
-      />,
-    );
-    const chat = container.querySelector('#chat_container') as HTMLElement;
-    expect(chat.style.filter).toBe('');
-    expect(chat.style.textShadow).toContain('black');
-  });
+  it('keeps bChat shadowing on each row instead of filtering the animated chat container', () => {
+  const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', textShadow: 'large' });
+  const { container } = render(
+    <ChatOverlay
+      config={config}
+      messages={[message]}
+      fadingIds={new Set()}
+      pinnedMessage={null}
+      showLoader={false}
+    />,
+  );
+  const chat = container.querySelector('#chat_container') as HTMLElement;
+  const row = container.querySelector('.gx-message-row') as HTMLElement;
+  expect(chat.style.filter).toBe('');
+  expect(chat.style.textShadow).toBe('');
+  expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 1))');
+});
 
   it('does not keep the scrolling subtree permanently promoted', () => {
     const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', smoothScroll: 'true' });

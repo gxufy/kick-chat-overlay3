@@ -10,6 +10,7 @@ permissions:
 jobs:
   fix:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,10 +19,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
 
       - name: Update intended pins-off expectations
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -34,6 +36,8 @@ jobs:
                   raise SystemExit(f"{path}: expected one marker, found {count}: {old!r}")
               p.write_text(text.replace(old, new, 1))
 
+          # Workspace defaults intentionally differ from legacy generator defaults only
+          # for pins, smooth scrolling, and source-tag representation.
           replace_once(
               'app/tests/unit/multichatCatalog.test.ts',
               "const workspaceNone = buildMultichatQuery(noChannels, { ...D, sourceTag: 'none' });",
@@ -45,6 +49,7 @@ jobs:
               "expect(D).toEqual({\n      ...shared,\n      showPinEnabled: false,\n      smoothScroll: true,\n      sourceTag: 'icon',\n    });",
           )
 
+          # Literal workspace-generated URLs now correctly carry pins off.
           replace_once(
               'app/tests/unit/overlayUrlStrings.test.ts',
               "&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';",
@@ -56,26 +61,102 @@ jobs:
               "'&showPinEnabled=false&hideNames=false',",
           )
 
+          # Classic generator tests must explicitly opt into conditional pin/Twitch
+          # controls now that fresh workspace widgets start with pins disabled.
           replace_once(
               'app/tests/unit/classicGenerator.test.tsx',
-              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n",
-              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n    // Pins intentionally start off now; enable them so the conditional platform\n    // selector is included in this reachability check.\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n",
+              "const mount = (props: { focusCounter?: boolean } = {}) =>\n  render(<ClassicGenerator {...props} />);",
+              "const mount = (props: { focusCounter?: boolean } = {}) =>\n  render(<ClassicGenerator {...props} />);\n\nconst enablePins = () => {\n  const control = document.getElementById('mc-showPinEnabled') as HTMLInputElement;\n  if (!control.checked) fireEvent.click(control);\n};",
           )
           replace_once(
               'app/tests/unit/classicGenerator.test.tsx',
-              "    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n",
-              "    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n",
+              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n    /* A multiselect is a group of checkboxes, so it has no single control id —\n       it is present when its first option is. Both conditional settings (the\n       fade duration and the pin platform set) are on by default, so a default\n       render must already show all 31. */",
+              "    expect(MULTICHAT_CATALOG).toHaveLength(31);\n    // Pin platforms are conditional and fresh workspace widgets now start with\n    // pins disabled, so opt in before checking reachability of every setting.\n    enablePins();\n    /* A multiselect is a group of checkboxes, so it has no single control id —\n       it is present when its first option is. */",
           )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  it('reveals the pin platform set only while pins are on', () => {\n    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n  });",
+              "  it('reveals the pin platform set only while pins are on', () => {\n    mount();\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n    enablePins();\n    expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();\n  });",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  const leave = () =>\n    fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));",
+              "  const leave = () => {\n    enablePins();\n    fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));\n  };",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  it('sends the visitor to the canonical generator, not a retired route', () => {\n    mount();\n    const href = within(panel('.classic-conn')).getByText('Connect').getAttribute('href') ?? '';",
+              "  it('sends the visitor to the canonical generator, not a retired route', () => {\n    mount();\n    enablePins();\n    const href = within(panel('.classic-conn')).getByText('Connect').getAttribute('href') ?? '';",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  it('places the connection controls in Chat settings, by the pin platforms', () => {\n    mount();\n    // The single connection panel now lives in Chat settings.",
+              "  it('places the connection controls in Chat settings, by the pin platforms', () => {\n    mount();\n    enablePins();\n    // The single connection panel now lives in Chat settings.",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  it('orders the connection after the pin platform control in reading order', () => {\n    /* jsdom computes no layout, so DOM order is the assertion — it is what a\n       screen reader and a phone follow. The connection sits after the pins. */\n    mount();",
+              "  it('orders the connection after the pin platform control in reading order', () => {\n    /* jsdom computes no layout, so DOM order is the assertion — it is what a\n       screen reader and a phone follow. The connection sits after the pins. */\n    mount();\n    enablePins();",
+          )
+          replace_once(
+              'app/tests/unit/classicGenerator.test.tsx',
+              "  it('reveals the connection controls only while pins are on', () => {\n    mount();\n    // Pins default on, so the connection is present.\n    expect(settings().querySelector('.classic-conn')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(settings().querySelector('.classic-conn')).toBeNull();\n  });",
+              "  it('reveals the connection controls only while pins are on', () => {\n    mount();\n    expect(settings().querySelector('.classic-conn')).toBeNull();\n    enablePins();\n    expect(settings().querySelector('.classic-conn')).not.toBeNull();\n    fireEvent.click(document.getElementById('mc-showPinEnabled')!);\n    expect(settings().querySelector('.classic-conn')).toBeNull();\n  });",
+          )
+
+          for title in [
+              "keeps Connect reachable before Twitch is a selected pin platform",
+              "gives Connect an accurate accessible name and associated help",
+              "reuses the authoritative OAuth start URL, not a second implementation",
+              "shows the connected login and a Disconnect action once connected",
+              "warns and offers a one-click fix when the channel does not match",
+              "drops the warning once the channel matches the connected account",
+          ]:
+              old = f"  it('{title}', () => {{\n"
+              # Add after the first mount() within this one test only.
+              p = Path('app/tests/unit/classicGenerator.test.tsx')
+              text = p.read_text()
+              start = text.find(old)
+              if start < 0:
+                  raise SystemExit(f"classicGenerator: missing test {title!r}")
+              mount_at = text.find("    mount();\n", start)
+              end = text.find("\n  });", start)
+              if mount_at < 0 or mount_at > end:
+                  raise SystemExit(f"classicGenerator: no mount in test {title!r}")
+              text = text[:mount_at] + "    mount();\n    enablePins();\n" + text[mount_at + len("    mount();\n"):]
+              p.write_text(text)
+
+          # Async disconnect test needs the same opt-in.
+          p = Path('app/tests/unit/classicGenerator.test.tsx')
+          text = p.read_text()
+          title = "  it('disconnects, returning to the Connect control', async () => {\n"
+          start = text.find(title)
+          if start < 0:
+              raise SystemExit('classicGenerator: missing disconnect test')
+          mount_at = text.find("    mount();\n", start)
+          end = text.find("\n  });", start)
+          if mount_at < 0 or mount_at > end:
+              raise SystemExit('classicGenerator: no mount in disconnect test')
+          text = text[:mount_at] + "    mount();\n    enablePins();\n" + text[mount_at + len("    mount();\n"):]
+          p.write_text(text)
           PY
+
+      - name: Install
+        run: npm ci
 
       - name: Run focused tests
         run: |
-          npm ci
           cd app
           npx vitest --config vitest.config.ts run \
             tests/unit/multichatCatalog.test.ts \
             tests/unit/overlayUrlStrings.test.ts \
             tests/unit/classicGenerator.test.tsx
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Run full unit suite
+        run: npm test
 
       - name: Commit fixes and remove temporary workflow
         run: |

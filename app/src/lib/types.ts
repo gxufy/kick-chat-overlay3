@@ -24,6 +24,8 @@ export interface UnifiedBadge {
   count?: number;
   /** pre-resolved image URL (youtube member badges, kick badges_v2) */
   url?: string;
+  /** Provider-defined tile/background color for transparent badge art (notably FFZ). */
+  backgroundColor?: string;
 }
 
 export interface UnifiedReply {
@@ -62,6 +64,8 @@ export interface UnifiedMessage {
   category?: EventCategory;
   /** channel-point redeem / highlighted message (twitch tags, kick reward event) */
   redeem?: boolean | string;
+  /** Provider says this is the chatter's first message (currently Twitch first-msg). */
+  firstMessage?: boolean;
   
   avatar?: string;
   /** Provider-native reply preview (currently Kick). */

@@ -345,7 +345,7 @@ describe('catalog integrity', () => {
     expect(keys).not.toContain('channel');
   });
 
-  it('contains none of the four unread compatibility-only parameters', () => {
+  it('contains none of the unread compatibility-only parameters', () => {
     const params = MULTICHAT_CATALOG.map((setting) => setting.param);
     for (const unread of MULTICHAT_UNREAD_PARAMS) {
       expect(keys).not.toContain(unread);
@@ -354,9 +354,9 @@ describe('catalog integrity', () => {
     expect([...MULTICHAT_UNREAD_PARAMS]).toEqual([
       'ttsEnabled',
       'showAvatars',
-      'showSystemMsgs',
-      'showRedeems',
     ]);
+    expect(params).toContain('showSystemMsgs');
+    expect(params).toContain('showRedeems');
   });
 
   it('takes every default from MULTICHAT_GENERATOR_DEFAULTS', () => {
@@ -517,6 +517,10 @@ describe('normalization', () => {
       sevenTVEmotesEnabled: false,
       sevenTVCosmeticsEnabled: false,
       sharedChatEnabled: true,
+      showSystemMsgs: false,
+      showHypeTrains: false,
+      showFirstMessages: false,
+      showRedeems: false,
       fadeEnabled: false,
       fade: '12',
       msgBold: false,
@@ -735,6 +739,10 @@ describe('serializer byte identity', () => {
       sevenTVEmotesEnabled: [true, false],
       sevenTVCosmeticsEnabled: [true, false],
       sharedChatEnabled: [true, false],
+      showSystemMsgs: [true, false],
+      showHypeTrains: [true, false],
+      showFirstMessages: [true, false],
+      showRedeems: [true, false],
       fadeEnabled: [true, false],
       fade: ['', '0', '30', '999'],
       msgBold: [true, false],

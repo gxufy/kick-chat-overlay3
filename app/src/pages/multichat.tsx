@@ -360,6 +360,22 @@ function MultichatOverlay() {
        apply the identical predicate to respond to the filter settings at all. */
     const shouldDisplay = buildMessageFilter(cfg);
 
+    /* Twitch supplies a real first-message flag. Other providers do not, so
+       their equivalent is the first live message observed from each chatter
+       during this browser-source session. Backlog rows are excluded by time. */
+    const sessionStartedAt = Date.now();
+    const sessionFirstSeen = new Set<string>();
+    function withSessionFirstMessage(message: UnifiedMessage): UnifiedMessage {
+      if (message.platform === 'twitch' || message.kind !== 'chat') return message;
+      if ((message.timestamp ?? 0) < sessionStartedAt - 2_000) return message;
+      const identity = message.senderId || message.username.trim().toLowerCase();
+      if (!identity) return message;
+      const key = `${message.platform}:${identity}`;
+      if (sessionFirstSeen.has(key)) return message;
+      sessionFirstSeen.add(key);
+      return { ...message, firstMessage: true };
+    }
+
     /* Runtime visibility controls deliberately do not stop connectors. That is
        what lets a moderator issue twitchon/youtubeon from a platform that is
        currently hidden without reloading the browser source. */
@@ -411,7 +427,8 @@ function MultichatOverlay() {
       markDirty();
     }
 
-    function addMessage(um: UnifiedMessage) {
+    function addMessage(incoming: UnifiedMessage) {
+      const um = withSessionFirstMessage(incoming);
       /* Shared partner traffic is completely outside the overlay while the
          feature is off, including its commands. Local Twitch chat remains live
          and can turn Shared Chat on at any time. */
@@ -1003,8 +1020,14 @@ function MultichatOverlay() {
     };
   }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
 
+  const hypeTrainsEnabled = !!config?.showSystemMsgs && !!config?.showHypeTrains;
+
   useEffect(() => {
-    if (!twitchPinLogin) return;
+    if (!hypeTrainsEnabled || !twitchPinLogin) {
+      setHypeTrain(null);
+      setHypeTrainEnding(false);
+      return;
+    }
     let generation = 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let active: Extract<TwitchHypeTrainState, { active: true }> | null = null;
@@ -1038,7 +1061,7 @@ function MultichatOverlay() {
       setHypeTrain(null);
       setHypeTrainEnding(false);
     };
-  }, [twitchPinLogin]);
+  }, [hypeTrainsEnabled, twitchPinLogin]);
 
   if (!ready) return null;
 

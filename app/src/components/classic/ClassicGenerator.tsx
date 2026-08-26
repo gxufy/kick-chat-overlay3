@@ -146,6 +146,10 @@ const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
 const MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');
 const MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');
 const MC_SHARED_CHAT = toggleSetting(MC, 'sharedChatEnabled');
+const MC_SHOW_SYSTEM_MSGS = toggleSetting(MC, 'showSystemMsgs');
+const MC_SHOW_HYPE_TRAINS = toggleSetting(MC, 'showHypeTrains');
+const MC_SHOW_FIRST_MESSAGES = toggleSetting(MC, 'showFirstMessages');
+const MC_SHOW_REDEEMS = toggleSetting(MC, 'showRedeems');
 const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
 const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
 const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
@@ -1223,6 +1227,10 @@ export default function ClassicGenerator({
             {chat(MC_MSG_SLIDE_IN)}
             {chat(MC_SMOOTH_SCROLL)}
             {chat(MC_SHARED_CHAT)}
+            {chat(MC_SHOW_SYSTEM_MSGS)}
+            {chat(MC_SHOW_HYPE_TRAINS)}
+            {chat(MC_SHOW_FIRST_MESSAGES)}
+            {chat(MC_SHOW_REDEEMS)}
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}

@@ -144,8 +144,23 @@ function emoteImg(key: string, src: string, alt: string, upscale = false): React
 
 /* Every badge <img> goes through here so the load-failure fallback is attached
    in one place rather than repeated at each of the badge sites below. */
-function badgeImg(key: string, src: string, alt: string, className = 'ck-badge-img'): React.ReactNode {
-  return <img key={key} className={className} src={src} alt={alt} onError={handleAssetError} />;
+function badgeImg(
+  key: string,
+  src: string,
+  alt: string,
+  className = 'ck-badge-img',
+  backgroundColor?: string,
+): React.ReactNode {
+  return (
+    <img
+      key={key}
+      className={className}
+      src={src}
+      alt={alt}
+      style={backgroundColor ? { backgroundColor } : undefined}
+      onError={handleAssetError}
+    />
+  );
 }
 
 /* Word-level 7TV swap for a plain-text segment (Kick), with zero-width
@@ -344,7 +359,13 @@ export function renderBadges(
       // TikTok badge art is frequently non-square (fan club, top gifter):
       // lock height only so it aligns with square badges without squishing
       const wide = msg.platform === 'tiktok';
-      out.push(badgeImg(key, b.url, b.type, wide ? 'ck-badge-img ck-badge-wide' : 'ck-badge-img'));
+      out.push(badgeImg(
+        key,
+        b.url,
+        b.type,
+        wide ? 'ck-badge-img ck-badge-wide' : 'ck-badge-img',
+        b.backgroundColor,
+      ));
       continue;
     }
     if (msg.platform === 'kick') {

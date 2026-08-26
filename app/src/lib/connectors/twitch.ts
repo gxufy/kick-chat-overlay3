@@ -308,6 +308,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
           deliver(buildMessage(p, 'system', pref.text, pref.emotes, 'cheer'));
         } else {
           const msg = buildMessage(p, 'chat', text, emotes);
+          if (p.tags['first-msg'] === '1') msg.firstMessage = true;
           // channel-point redeems: custom-reward-id / highlighted-message tag
           if (p.tags['custom-reward-id'] || p.tags['msg-id'] === 'highlighted-message') {
             msg.redeem = p.tags['custom-reward-id'] || 'highlighted';

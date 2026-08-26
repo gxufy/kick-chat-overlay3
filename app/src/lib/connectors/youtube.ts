@@ -2,7 +2,10 @@ import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, Unified
 
 const OFFLINE_RECHECK_MS = 60_000;
 const POLL_FLOOR_MS = 800;
-export const YOUTUBE_DELIVERY_INTERVAL_MS = 150;
+/* The overlay's legacy non-smooth render path flushes every 200ms. Keep
+ * YouTube deliveries just beyond that boundary so a provider batch cannot
+ * collapse multiple rows into the same React render/entrance animation. */
+export const YOUTUBE_DELIVERY_INTERVAL_MS = 225;
 export const YOUTUBE_BACKLOG_KEEP = 30;
 const YOUTUBE_SEEN_MAX = 512;
 const RETRY_START_MS = 3_000;
@@ -256,7 +259,7 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
       return;
     }
     deliveryQueue.push(message);
-    deliveryDelay = Math.max(0, Math.min(YOUTUBE_DELIVERY_INTERVAL_MS, delayMs));
+    deliveryDelay = Math.max(YOUTUBE_DELIVERY_INTERVAL_MS, delayMs);
     if (!deliveryTimer) deliveryTimer = setTimeout(releaseMessage, 0);
   }
 
@@ -349,7 +352,10 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
             if (skippedId) remember(skippedId);
             continue;
           }
-          handleAction(action, firstBatch, pace, deletedIds, deletedAuthors);
+          /* bChat's YouTube handler expands a provider batch into individual
+           * store additions. Queue the first backlog too so every retained row
+           * crosses its own render boundary instead of appearing as one burst. */
+          handleAction(action, false, pace, deletedIds, deletedAuthors);
         }
         firstBatch = false;
 

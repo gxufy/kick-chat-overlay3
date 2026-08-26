@@ -216,13 +216,13 @@ describe('the original two-card tool layout', () => {
 });
 
 describe('every catalog setting is reachable', () => {
-  it('renders all 27 MultiChat settings', () => {
+  it('renders all 31 MultiChat settings', () => {
     mount();
-    expect(MULTICHAT_CATALOG).toHaveLength(27);
+    expect(MULTICHAT_CATALOG).toHaveLength(31);
     /* A multiselect is a group of checkboxes, so it has no single control id —
        it is present when its first option is. Both conditional settings (the
        fade duration and the pin platform set) are on by default, so a default
-       render must already show all 27. */
+       render must already show all 31. */
     const missing = MULTICHAT_CATALOG.filter((setting) => {
       const key = String(setting.key);
       const id =

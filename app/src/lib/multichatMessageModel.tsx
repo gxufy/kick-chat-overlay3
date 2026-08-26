@@ -83,6 +83,7 @@ export type MessageFilterConfig = {
   /** Space-separated text prefixes to hide. */
   prefixBL: string;
   showSystemMsgs: boolean;
+  showFirstMessages: boolean;
   showRedeems: boolean;
 };
 
@@ -132,6 +133,7 @@ export function buildMessageFilter(
        subscription. */
     if (um.kind === 'chat' && prefixBlacklist.some((p) => um.text.startsWith(p))) return false;
     if (um.kind === 'system' && !cfg.showSystemMsgs) return false;
+    if (um.firstMessage && !cfg.showFirstMessages) return false;
     if (um.redeem && !cfg.showRedeems) return false;
     return true;
   };

@@ -51,11 +51,6 @@ function build(
 describe('overlay parse defaults (captured from HEAD)', () => {
   it('an empty query resolves to exactly the HEAD defaults', () => {
     expect(parse({})).toEqual({
-      channel: undefined,
-      kick: undefined,
-      twitch: undefined,
-      youtube: undefined,
-      tiktok: undefined,
       sevenTVCosmeticsEnabled: true,
       sevenTVEmotesEnabled: true,
       textShadow: 'large',
@@ -65,6 +60,8 @@ describe('overlay parse defaults (captured from HEAD)', () => {
       showSystemMsgs: true,
       mentionColor: true,
       bgColor: '',
+      showHypeTrains: true,
+      showFirstMessages: true,
       showRedeems: true,
       sourceTag: 'icon',
       showAvatars: false,
@@ -127,6 +124,10 @@ describe('generator defaults (captured from HEAD useState)', () => {
       msgSlideIn: false,
       smoothScroll: false,
       sharedChatEnabled: false,
+      showSystemMsgs: true,
+      showHypeTrains: true,
+      showFirstMessages: true,
+      showRedeems: true,
       modAction: true,
       paintShadows: true,
       fontColor: '',
@@ -274,14 +275,15 @@ describe('boolean coercion', () => {
     const off = parse({
       kick: 'a', msgBold: 'false', ttsEnabled: 'false',
       sevenTVEmotesEnabled: 'false', sevenTVCosmeticsEnabled: 'false',
-      showSystemMsgs: 'false', mentionColor: 'false', showRedeems: 'false',
+      showSystemMsgs: 'false', mentionColor: 'false',
+      showHypeTrains: 'false', showFirstMessages: 'false', showRedeems: 'false',
       paintShadows: 'false', modAction: 'false',
     });
     expect(off).toMatchObject({
       msgBold: false, ttsEnabled: false, sevenTVEmotesEnabled: false,
       sevenTVCosmeticsEnabled: false, showSystemMsgs: false,
-      mentionColor: false, showRedeems: false, paintShadows: false,
-      modAction: false,
+      mentionColor: false, showHypeTrains: false, showFirstMessages: false,
+      showRedeems: false, paintShadows: false, modAction: false,
     });
   });
 

@@ -148,15 +148,17 @@ export const MultichatQuerySchema = z.object({
   animation: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_ANIMATIONS, 'slide')),
   showPinEnabled: z.string().optional().transform(v => v === 'true'),
-  /* compatibility-only: parsed for URL compatibility, read by no runtime code */
+  /* Platform event cards/popups. Omitted means ON for backward compatibility. */
   showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
   
   mentionColor: z.string().optional().transform(v => v !== 'false'),
   /* chat background: 'transparent' (default) or a hex color like 191919 */
   bgColor: z.string().optional().transform(v =>
     /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  /* channel-point redeems (kick/twitch highlighted messages).
-     compatibility-only: parsed, read by no runtime code */
+  /* Event visibility controls. Omitted means ON for backward compatibility. */
+  showHypeTrains: z.string().optional().transform(v => v !== 'false'),
+  showFirstMessages: z.string().optional().transform(v => v !== 'false'),
+  /* Channel-point / reward redeems (currently Twitch + Kick). */
   showRedeems: z.string().optional().transform(v => v !== 'false'),
   
   sourceTag: z.string().optional().transform(v =>
@@ -215,8 +217,6 @@ export type MultichatConfig = z.infer<typeof MultichatQuerySchema>;
 export const MULTICHAT_UNREAD_PARAMS = [
   'ttsEnabled',
   'showAvatars',
-  'showSystemMsgs',
-  'showRedeems',
 ] as const;
 
 /**
@@ -311,6 +311,14 @@ export type MultichatGeneratorStyle = {
   smoothScroll: boolean;
   /** Include Twitch Shared Chat partner rows and show source-streamer avatars. */
   sharedChatEnabled: boolean;
+  /** Show normalized platform event cards/popups across every provider. */
+  showSystemMsgs: boolean;
+  /** Show Twitch Hype Train banner when the provider exposes one. */
+  showHypeTrains: boolean;
+  /** Show provider-tagged first-message / first-time-chatter messages. */
+  showFirstMessages: boolean;
+  /** Show channel-point / reward redemption messages where supported. */
+  showRedeems: boolean;
   modAction: boolean;
   paintShadows: boolean;
   /** '' means unset. A leading '#' is stripped when emitted. */
@@ -354,6 +362,10 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   msgSlideIn: false,
   smoothScroll: false,
   sharedChatEnabled: false,
+  showSystemMsgs: true,
+  showHypeTrains: true,
+  showFirstMessages: true,
+  showRedeems: true,
   modAction: true,
   paintShadows: true,
   fontColor: '',
@@ -462,7 +474,7 @@ export function buildMultichatQuery(
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     textSize, font, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, modAction,
+    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, showSystemMsgs, showHypeTrains, showFirstMessages, showRedeems, modAction,
     paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
     botNames, userBL, prefixBL,
   } = style;
@@ -497,6 +509,10 @@ export function buildMultichatQuery(
       ? (smoothScroll ? {} : { smoothScroll: '0' })
       : (smoothScroll ? { smoothScroll: '1' } : {})),
     ...(sharedChatEnabled ? { sharedChatEnabled: '1' } : {}),
+    ...(showSystemMsgs ? {} : { showSystemMsgs: 'false' }),
+    ...(showHypeTrains ? {} : { showHypeTrains: 'false' }),
+    ...(showFirstMessages ? {} : { showFirstMessages: 'false' }),
+    ...(showRedeems ? {} : { showRedeems: 'false' }),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),

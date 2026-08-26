@@ -11,8 +11,8 @@
  * and appears in no catalog entry.
  *
  * NOT EXPOSED, deliberately:
- *   - ttsEnabled, showAvatars, showSystemMsgs, showRedeems. The parser accepts
- *     them for URL compatibility and no runtime code reads them; they are
+ *   - ttsEnabled and showAvatars. The parser accepts them for URL
+ *     compatibility and no runtime code reads them; they are
  *     listed in MULTICHAT_UNREAD_PARAMS.
  *   - Channel fields. Those are platform descriptors, not settings.
  *
@@ -209,6 +209,38 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     label: 'Twitch Shared Chat',
     description: 'Off ignores partner Shared Chat messages. On includes them and identifies each Twitch source streamer by profile picture only.',
     default: D.sharedChatEnabled,
+  },
+  {
+    key: 'showSystemMsgs',
+    param: 'showSystemMsgs',
+    type: 'toggle',
+    label: 'Platform event popups',
+    description: 'Show platform-generated event cards such as subscriptions, gifts, Super Chats, memberships, follows, shares, hosts and announcements. Applies across every connected platform that exposes those events.',
+    default: D.showSystemMsgs,
+  },
+  {
+    key: 'showHypeTrains',
+    param: 'showHypeTrains',
+    type: 'toggle',
+    label: 'Hype trains',
+    description: 'Show Hype Train banners where the platform exposes them (currently Twitch). The Platform event popups switch also hides this banner.',
+    default: D.showHypeTrains,
+  },
+  {
+    key: 'showFirstMessages',
+    param: 'showFirstMessages',
+    type: 'toggle',
+    label: 'First messages',
+    description: 'Twitch uses the provider’s real first-message flag. Kick, YouTube and TikTok use the chatter’s first live message observed since this overlay loaded.',
+    default: D.showFirstMessages,
+  },
+  {
+    key: 'showRedeems',
+    param: 'showRedeems',
+    type: 'toggle',
+    label: 'Channel point / reward redeems',
+    description: 'Show highlighted channel-point and reward redemption messages where supported (currently Twitch and Kick).',
+    default: D.showRedeems,
   },
   {
     key: 'modAction',

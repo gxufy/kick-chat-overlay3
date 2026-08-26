@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
-import { createYouTubeConnector, parseRuns } from '@/lib/connectors/youtube';
+import { createYouTubeConnector, parseRuns, YOUTUBE_DELIVERY_INTERVAL_MS } from '@/lib/connectors/youtube';
 import { NO_COSMETICS, buildParsedMessage } from '@/lib/multichatMessageModel';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';
@@ -64,9 +64,16 @@ afterEach(() => {
 });
 
 describe('YouTube InnerTube ingestion', () => {
-  it('publishes the initial backlog immediately in provider order', async () => {
+  it('publishes the initial backlog one message at a time in provider order', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1200);
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal']);
+
+    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS);
+    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback']);
+
+    await vi.advanceTimersByTimeAsync(1500);
     expect(fixture.messages.map(message => message.id)).toEqual([
       'yt-normal', 'yt-fallback', 'yt-super-chat', 'yt-super-sticker', 'yt-membership', 'yt-gift',
     ]);
@@ -133,7 +140,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('normalizes realistic chat, badge, avatar, event, deletion, and pin actions', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1900);
+    await vi.advanceTimersByTimeAsync(2400);
     fixture.connector.stop();
 
     expect(fixture.statuses).toEqual(['connecting', 'connected']);
@@ -183,7 +190,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('renders ingested YouTube identity, source, badges, avatar, and emotes through the shared overlay', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1900);
+    await vi.advanceTimersByTimeAsync(2400);
     fixture.connector.stop();
     const [normal] = parsed(fixture.messages);
 
@@ -221,7 +228,7 @@ describe('YouTube InnerTube ingestion', () => {
 
   it('renders normalized YouTube paid and membership events with shared source chrome', async () => {
     const fixture = connectFixture();
-    await vi.advanceTimersByTimeAsync(1900);
+    await vi.advanceTimersByTimeAsync(2400);
     fixture.connector.stop();
     const events = parsed(fixture.messages.filter((message) => message.kind === 'system'));
     const config = MultichatQuerySchema.parse({ youtube: 'IShowSpeed', animation: 'none' });

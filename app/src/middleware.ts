@@ -13,13 +13,34 @@
  * 308, not 302: the forward is permanent and must preserve the method, though in
  * practice these are all GETs. The matcher below keeps the middleware off Next's
  * internal asset routes so it runs only where a redirect could apply.
+ *
+ * /api/viewers is deliberately public and carries only public concurrent-viewer
+ * data. The standalone counter calls it same-origin, but marketplace widgets run
+ * on Pogly Cloud and therefore need a CORS-readable response. `*` is appropriate
+ * here because the endpoint accepts no credentials, cookies, tokens, or writes.
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { canonicalRedirectTarget } from '@/lib/canonicalRedirect';
 
+const VIEWER_API_PATH = '/api/viewers';
+
+function viewerApiCors(response: NextResponse): NextResponse {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  return response;
+}
+
 export function middleware(request: NextRequest): NextResponse {
   const { nextUrl } = request;
+
+  /* The public viewer endpoint is consumed by third-party overlay hosts such as
+     Pogly. A plain GET is a simple CORS request, while OPTIONS is handled too so
+     future clients can probe the endpoint without receiving the app page. */
+  if (nextUrl.pathname === VIEWER_API_PATH && request.method === 'OPTIONS') {
+    return viewerApiCors(new NextResponse(null, { status: 204 }));
+  }
 
   /* The routing authority takes a ParsedUrlQuery — a plain object whose repeated
      keys are arrays. Build that shape from the request's search params so the
@@ -38,7 +59,9 @@ export function middleware(request: NextRequest): NextResponse {
   );
 
   if (target) return NextResponse.redirect(target, 308);
-  return NextResponse.next();
+
+  const response = NextResponse.next();
+  return nextUrl.pathname === VIEWER_API_PATH ? viewerApiCors(response) : response;
 }
 
 /**

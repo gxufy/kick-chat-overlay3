@@ -1,12 +1,8 @@
-<p align="center">
-  <img src="./app/public/tpl.webp" alt="TPL" width="420" />
-</p>
+<h1><img src="./app/public/tpl.webp" alt="TPL" width="135" align="middle" /> MultiChat</h1>
 
-<h1 align="center">MultiChat | Custom Multi-Platform Chat Overlay</h1>
+**Custom Multi-Platform Chat Overlay**
 
-<p align="center">
-  <a href="https://gxufy.com/">Live site</a> · <a href="https://gxufy.com/multichat">Generator</a>
-</p>
+[Live site](https://gxufy.com/) · [Generator](https://gxufy.com/multichat)
 
 A customizable **Kick, Twitch, YouTube and TikTok** chat overlay for OBS, with a separate multi-platform viewer counter.
 
@@ -27,7 +23,7 @@ Chat and viewer counts require no login. Twitch connection is optional and used 
 
 ## Commands
 
-Commands must be the **first word** of a message and require moderator or broadcaster access. `!kickchat` is also accepted as a legacy alias for `!multichat`.
+Commands must be the **first word** of a message and require moderator or broadcaster access.
 
 | Command | What it does |
 | :--- | :--- |
@@ -56,6 +52,7 @@ The generator's **Commands & help** section uses the same command registry as th
 | <img src="https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png" width="20" /> **[Twitch](https://www.twitch.tv/)** | **Emotes:** Global, Channel, Follow, Sub, Bit<br>**Badges:** Sub Badges, Bit Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
 | <img src="https://kick.com/favicon.ico" width="20" /> **[Kick](https://kick.com/)** | **Emotes:** Global, Channel, Sub<br>**Badges:** Sub Badges, Global Badges<br>**Moderation:** Delete Messages, Timeouts, Bans, Chat Clears |
 | <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" width="20" /> **[YouTube](https://www.youtube.com/)** | **Emotes:** Native Unicode and YouTube channel emoji<br>**Badges:** Owner, Moderator, Verified, Membership<br>**Events:** Super Chats, Super Stickers, Memberships, Gifted Memberships<br>**Moderation:** Message and Author Deletions |
+| <img src="https://cdn-icons-png.flaticon.com/512/3046/3046121.png" width="20" /> **[TikTok](https://www.tiktok.com/)** | **Chat:** Live Comments<br>**Badges:** Native TikTok Badges, Moderator, Subscriber<br>**Events:** Gifts, Subscriptions, Follows, Shares<br>**Moderation:** Message and Author Deletions, Pins |
 | <img src="https://7tv.app/favicon.svg" width="20" /> **[7TV](https://7tv.app/)** | **Emotes:** Global, Channel, Personal/Special Sets, Auto Set Updates, Zero-Width<br>**User Customization:** Paints, Badges, Personal/Special Emote Sets |
 | <img src="https://betterttv.com/favicon.png" width="20" /> **[BTTV](https://betterttv.com/)** | **Emotes:** Global, Channel, Auto Set Updates |
 | <img src="https://www.frankerfacez.com/static/images/favicon-32.png" width="20" /> **[FFZ](https://www.frankerfacez.com/)** | **Emotes:** Global, Channel<br>**User Customization:** Global + Channel Badges |

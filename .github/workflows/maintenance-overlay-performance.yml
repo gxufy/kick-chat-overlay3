@@ -1,4 +1,4 @@
-name: Apply overlay performance update
+name: Apply final overlay performance update
 
 on:
   push:
@@ -22,8 +22,8 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Apply performance patch
-        run: python .github/scripts/apply-overlay-performance.py
+      - name: Apply final hot-path patch
+        run: python .github/scripts/apply-overlay-performance-final.py
 
       - name: Install dependencies
         run: npm ci
@@ -47,5 +47,5 @@ jobs:
           git config user.name "Isaac"
           git config user.email "unstoppableboy99@gmail.com"
           git add -A
-          git commit -m "Improve overlay rendering performance"
+          git commit -m "Finish overlay hot-path optimization"
           git push origin HEAD:main

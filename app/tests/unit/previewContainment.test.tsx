@@ -380,7 +380,7 @@ describe('no preview content reaches the generator document', () => {
   });
 
   it('keeps the pinned fixture and its attribution inside the chat frame', () => {
-    mountChat();
+    mountChat({ showPinEnabled: true });
     const doc = frameDoc(CHAT_TITLE);
     expect(doc.body.textContent ?? '').toContain(`Pinned by ${SAMPLE_PIN_BY}`);
     expect(document.body.textContent ?? '').not.toContain(`Pinned by ${SAMPLE_PIN_BY}`);
@@ -598,7 +598,7 @@ describe('unmounting a frame disposes what it created', () => {
        so the timer count is a direct reading of whether disposal happened. */
     vi.useFakeTimers();
     const before = vi.getTimerCount();
-    const view = mountChat();
+    const view = mountChat({ showPinEnabled: true });
     expect(vi.getTimerCount()).toBeGreaterThan(before);
     view.unmount();
     expect(vi.getTimerCount()).toBe(before);

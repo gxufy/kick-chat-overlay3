@@ -239,7 +239,7 @@ describe('the whole preview surface scales, not just the text', () => {
        Over the full catalog: the pin and the event cards are library fixtures, kept
        out of the six-row default so they cannot cover the badge and paint rows. The
        scaling behaviour asserted here is theirs whenever they are drawn. */
-    mountAll(65);
+    mountAll(65, { showPinEnabled: true });
     const doc = frameDoc();
 
     const pinLabel = Array.from(doc.querySelectorAll('span')).find(

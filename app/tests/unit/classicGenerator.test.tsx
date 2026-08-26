@@ -52,6 +52,11 @@ const BASE = 'http://localhost:3000';
 const mount = (props: { focusCounter?: boolean } = {}) =>
   render(<ClassicGenerator {...props} />);
 
+const enablePins = () => {
+  const control = document.getElementById('mc-showPinEnabled') as HTMLInputElement;
+  if (!control.checked) fireEvent.click(control);
+};
+
 const panel = (selector: string) => {
   const el = document.querySelector(selector);
   expect(el, `${selector} is missing`).not.toBeNull();
@@ -219,10 +224,11 @@ describe('every catalog setting is reachable', () => {
   it('renders all 31 MultiChat settings', () => {
     mount();
     expect(MULTICHAT_CATALOG).toHaveLength(31);
+    // Pin platforms are conditional and fresh workspace widgets now start with
+    // pins disabled, so opt in before checking reachability of every setting.
+    enablePins();
     /* A multiselect is a group of checkboxes, so it has no single control id —
-       it is present when its first option is. Both conditional settings (the
-       fade duration and the pin platform set) are on by default, so a default
-       render must already show all 31. */
+       it is present when its first option is. */
     const missing = MULTICHAT_CATALOG.filter((setting) => {
       const key = String(setting.key);
       const id =
@@ -651,6 +657,8 @@ describe('conditional settings appear with what they depend on', () => {
 
   it('reveals the pin platform set only while pins are on', () => {
     mount();
+    expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();
+    enablePins();
     expect(document.getElementById('mc-pinPlatforms-kick')).not.toBeNull();
     fireEvent.click(document.getElementById('mc-showPinEnabled')!);
     expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();
@@ -889,8 +897,10 @@ describe('preview backgrounds are page-only and independent', () => {
 });
 
 describe('OAuth preserves both tools', () => {
-  const leave = () =>
+  const leave = () => {
+    enablePins();
     fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));
+  };
 
   const draft = (toolId: string) => {
     const raw = window.sessionStorage.getItem(workspaceDraftKey(toolId));
@@ -915,6 +925,7 @@ describe('OAuth preserves both tools', () => {
 
   it('sends the visitor to the canonical generator, not a retired route', () => {
     mount();
+    enablePins();
     const href = within(panel('.classic-conn')).getByText('Connect').getAttribute('href') ?? '';
     expect(href).toContain(encodeURIComponent('/multichat'));
     expect(href).not.toContain('tools');
@@ -925,6 +936,7 @@ describe('OAuth preserves both tools', () => {
     typeChannel('twitch', 'streamer');
     fireEvent.change(document.getElementById('mc-font')!, { target: { value: 'roboto' } });
     fireEvent.click(document.getElementById('vc-align-right')!);
+    enablePins();
     const expected = [chatUrl(), counterUrl()];
     leave();
 
@@ -1042,6 +1054,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
 
   it('places the connection controls in Chat settings, by the pin platforms', () => {
     mount();
+    enablePins();
     // The single connection panel now lives in Chat settings.
     expect(document.querySelectorAll('.classic-conn')).toHaveLength(1);
     expect(settings().querySelector('.classic-conn')).not.toBeNull();
@@ -1056,6 +1069,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
     /* jsdom computes no layout, so DOM order is the assertion — it is what a
        screen reader and a phone follow. The connection sits after the pins. */
     mount();
+    enablePins();
     const pin = settings().querySelector('#mc-pinPlatforms-kick')!;
     const conn = settings().querySelector('.classic-conn')!;
     expect(
@@ -1065,7 +1079,8 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
 
   it('reveals the connection controls only while pins are on', () => {
     mount();
-    // Pins default on, so the connection is present.
+    expect(settings().querySelector('.classic-conn')).toBeNull();
+    enablePins();
     expect(settings().querySelector('.classic-conn')).not.toBeNull();
     fireEvent.click(document.getElementById('mc-showPinEnabled')!);
     expect(settings().querySelector('.classic-conn')).toBeNull();
@@ -1077,6 +1092,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
        is gated on the pin switch instead, which is why Connect shows here even
        though Twitch is not yet selected. */
     mount();
+    enablePins();
     expect(
       (document.getElementById('mc-pinPlatforms-twitch') as HTMLInputElement)
         .checked,
@@ -1086,6 +1102,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
 
   it('gives Connect an accurate accessible name and associated help', () => {
     mount();
+    enablePins();
     const connect = within(settings()).getByRole('link', {
       name: 'Connect Twitch account',
     });
@@ -1098,6 +1115,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
 
   it('reuses the authoritative OAuth start URL, not a second implementation', () => {
     mount();
+    enablePins();
     const href =
       within(settings()).getByText('Connect').getAttribute('href') ?? '';
     expect(href).toContain('/api/twitch/oauth/start');
@@ -1119,6 +1137,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
   it('shows the connected login and a Disconnect action once connected', () => {
     connectVia('streamer');
     mount();
+    enablePins();
     expect(settings().textContent).toContain('Connected as');
     expect(settings().textContent).toContain('streamer');
     expect(within(settings()).getByText('Disconnect')).toBeTruthy();
@@ -1131,6 +1150,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
   it('warns and offers a one-click fix when the channel does not match', () => {
     connectVia('streamer');
     mount();
+    enablePins();
     typeChannel('twitch', 'someoneelse');
     expect(
       within(settings()).getByText(/does not match the connected account/i),
@@ -1147,6 +1167,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
   it('drops the warning once the channel matches the connected account', () => {
     connectVia('streamer');
     mount();
+    enablePins();
     typeChannel('twitch', 'streamer');
     expect(settings().textContent).toContain('Connected as');
     expect(within(settings()).queryByText(/does not match/i)).toBeNull();
@@ -1159,6 +1180,7 @@ describe('the Twitch connection lives beside the pinned-message controls', () =>
     vi.stubGlobal('fetch', fetchMock);
     connectVia('streamer');
     mount();
+    enablePins();
     fireEvent.click(within(settings()).getByText('Disconnect'));
     // Flush the disconnect's microtasks so local state clears.
     await act(async () => {

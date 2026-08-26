@@ -91,6 +91,10 @@ export const STARTUP_LOADER_MIN_MS = 700;
 export const STARTUP_LOADER_MAX_MS = 8_000;
 export const STARTUP_LOADER_FADE_MS = 250;
 
+/** Present connector bursts at a steady cadence without touching ChatOverlay rendering. */
+const BURST_PRESENT_INTERVAL_MS = 200;
+const BURST_PRESENT_MAX_BATCH = 4;
+
 /** True when *value* looks like a Twitch connection id. */
 function isTwitchConnectionId(value: string): boolean {
   return TWITCH_CONN_RE.test(value);
@@ -204,6 +208,10 @@ function MultichatOverlay() {
   const twitchPinIdRef = useRef('');
   /** messageId:updatedAt of the last pin handed to the pin handler. */
   const twitchPinKeyRef = useRef('');
+  /** Messages already handed to ChatOverlay. New arrivals wait in the capped burst queue. */
+  const presentedMessagesRef = useRef<ParsedMessage[]>([]);
+  const pendingMessagesRef = useRef<ParsedMessage[]>([]);
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Clear the pinned message only when this poller still owns it.
@@ -391,18 +399,30 @@ function MultichatOverlay() {
     let sharedChatRuntime = cfg.sharedChatEnabled;
 
     
-    /* Frame pacing is independent of the entrance animation. The old slide
-       exclusion routed the default animation through a 200 ms publication
-       timer, so bursts could only become visible at ~5 cadence points/sec.
-       A dirty frame is still scheduled only on demand, never while idle. */
+    /* Frame pacing is independent of the entrance animation. Connector arrivals
+       are presented upstream in capped 200 ms batches; repaint-only mutations
+       (cosmetics, moderation, emote refreshes, fades) retain the OBS-safe frame
+       path and never cause queued messages to jump the line. */
     const smoothRuntime = cfg.smoothScroll;
     let dirty = false;
     let flushFrame: number | null = null;
 
+    function publishMessages(next: ParsedMessage[]) {
+      presentedMessagesRef.current = next;
+      setMessages(next);
+    }
+
+    function latestPresentedMessages() {
+      const byId = new Map(s.messages.map((message) => [message.id, message] as const));
+      return presentedMessagesRef.current
+        .filter((message) => byId.has(message.id))
+        .map((message) => byId.get(message.id)!);
+    }
+
     function flushMessages() {
       if (!dirty) return;
       dirty = false;
-      setMessages([...s.messages]);
+      publishMessages(latestPresentedMessages());
     }
 
     function markDirty() {
@@ -412,6 +432,42 @@ function MultichatOverlay() {
         flushFrame = null;
         flushMessages();
       });
+    }
+
+    function scheduleBurstPresentation() {
+      if (burstTimerRef.current !== null || pendingMessagesRef.current.length === 0) return;
+      burstTimerRef.current = setTimeout(flushBurstPresentation, BURST_PRESENT_INTERVAL_MS);
+    }
+
+    function flushBurstPresentation() {
+      burstTimerRef.current = null;
+      const liveIds = new Set(s.messages.map((message) => message.id));
+      pendingMessagesRef.current = pendingMessagesRef.current.filter((message) => liveIds.has(message.id));
+      const batch = pendingMessagesRef.current.splice(0, BURST_PRESENT_MAX_BATCH);
+
+      if (batch.length) {
+        const byId = new Map(s.messages.map((message) => [message.id, message] as const));
+        const current = latestPresentedMessages();
+        const currentIds = new Set(current.map((message) => message.id));
+        for (const message of batch) {
+          const latest = byId.get(message.id);
+          if (!latest || currentIds.has(message.id)) continue;
+          current.push(latest);
+          currentIds.add(message.id);
+        }
+        publishMessages(current.slice(-100));
+      }
+
+      if (pendingMessagesRef.current.length) scheduleBurstPresentation();
+    }
+
+    function enqueueBurstPresentation(message: ParsedMessage) {
+      if (
+        presentedMessagesRef.current.some((presented) => presented.id === message.id)
+        || pendingMessagesRef.current.some((pending) => pending.id === message.id)
+      ) return;
+      pendingMessagesRef.current.push(message);
+      scheduleBurstPresentation();
     }
 
     const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime
@@ -457,9 +513,10 @@ function MultichatOverlay() {
       if (cfg.sevenTVCosmeticsEnabled && (um.platform === 'kick' || um.platform === 'twitch')) {
         cosmeticsFetcher.want(um.platform, um.senderId);
       }
-      s.messages.push(buildParsed(um));
+      const parsedMessage = buildParsed(um);
+      s.messages.push(parsedMessage);
       if (s.messages.length > 100) s.messages.shift();
-      markDirty();
+      enqueueBurstPresentation(parsedMessage);
       fadeScheduler?.wake();
       dismissLoaderWhenEligible();
     }
@@ -954,6 +1011,10 @@ function MultichatOverlay() {
       if (loaderMaximumTimer) clearTimeout(loaderMaximumTimer);
       if (flushInterval) clearInterval(flushInterval);
       if (flushFrame !== null) cancelAnimationFrame(flushFrame);
+      if (burstTimerRef.current !== null) {
+        clearTimeout(burstTimerRef.current);
+        burstTimerRef.current = null;
+      }
       fadeScheduler?.stop();
       connectors.forEach(c => c.stop());
       cleanups.forEach(fn => fn());

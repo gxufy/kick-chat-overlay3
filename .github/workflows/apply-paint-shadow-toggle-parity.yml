@@ -1,0 +1,30 @@
+name: Apply paint shadow toggle parity
+
+on:
+  push:
+    branches: [perf/60fps-burst-visual-parity]
+    paths:
+      - '.github/workflows/apply-paint-shadow-toggle-parity.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/60fps-burst-visual-parity
+      - name: Apply paint-shadow parity patch
+        run: python .github/scripts/apply-paint-shadow-toggle-parity.py
+      - name: Remove one-shot patch files
+        run: rm .github/scripts/apply-paint-shadow-toggle-parity.py .github/workflows/apply-paint-shadow-toggle-parity.yml
+      - name: Commit result
+        run: |
+          git config user.name "gxufy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Respect paint shadow toggle with restored name depth"
+          git push origin HEAD:perf/60fps-burst-visual-parity

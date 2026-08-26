@@ -1,0 +1,36 @@
+name: Apply runtime fade scheduler
+
+on:
+  push:
+    branches: [perf/runtime-idle-hotpath]
+    paths:
+      - '.github/workflows/apply-runtime-fade-scheduler.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/runtime-idle-hotpath
+          fetch-depth: 0
+
+      - name: Apply page integration
+        run: python .github/scripts/apply-runtime-fade-scheduler.py
+
+      - name: Remove one-shot patch files
+        run: |
+          git rm .github/scripts/apply-runtime-fade-scheduler.py
+          git rm .github/workflows/apply-runtime-fade-scheduler.yml
+
+      - name: Commit integration
+        run: |
+          git config user.name "gxufy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/pages/multichat.tsx
+          git diff --cached --check
+          git commit -m "Use deadline-based message fading"
+          git push origin HEAD:perf/runtime-idle-hotpath

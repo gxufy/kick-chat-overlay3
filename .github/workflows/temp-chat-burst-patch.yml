@@ -1,6 +1,8 @@
 name: Apply chat burst batching
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [perf/chat-burst-batching-pins-off]
 

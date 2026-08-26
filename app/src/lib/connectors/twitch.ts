@@ -236,6 +236,16 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     const localRoomId = tags['room-id'];
     const effectiveSourceRoomId = sourceRoomId || localRoomId;
     const sharedChat = Boolean(sourceRoomId && sourceRoomId !== localRoomId);
+    const replyUsername = tags['reply-parent-display-name'] || tags['reply-parent-user-login'];
+    const hasReplyBody = Object.prototype.hasOwnProperty.call(tags, 'reply-parent-msg-body');
+    const reply = replyUsername && (tags['reply-parent-msg-id'] || hasReplyBody)
+      ? {
+          username: replyUsername,
+          text: tags['reply-parent-msg-body'] ?? '',
+          ...(tags['reply-parent-msg-id'] ? { messageId: tags['reply-parent-msg-id'] } : {}),
+          ...(tags['reply-parent-user-id'] ? { senderId: tags['reply-parent-user-id'] } : {}),
+        }
+      : undefined;
     const message: UnifiedMessage = {
       platform: 'twitch',
       id: tags['id'] || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -248,6 +258,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
       timestamp: parseInt(tags['tmi-sent-ts']) || Date.now(),
       kind,
       category,
+      ...(reply ? { reply } : {}),
       ...(effectiveSourceRoomId ? { sourceChannel: { roomId: effectiveSourceRoomId } } : {}),
       ...(sharedChat ? { sharedChat: true } : {}),
     };

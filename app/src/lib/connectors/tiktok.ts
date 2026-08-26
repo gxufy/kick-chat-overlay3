@@ -4,6 +4,8 @@
  */
 import type { Connector, ConnectorCallbacks, UnifiedMessage } from '../types';
 
+const TIKTOK_SEEN_MAX = 512;
+
 export interface TikTokConnectorOpts extends ConnectorCallbacks {
   channel: string;
 }
@@ -11,6 +13,26 @@ export interface TikTokConnectorOpts extends ConnectorCallbacks {
 export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
   let es: EventSource | null = null;
   let stopped = false;
+  const seen = new Set<string>();
+  const seenOrder: string[] = [];
+
+  /* The server hub intentionally replays a short recent-event window to every
+   * new SSE subscriber so a fresh overlay is not blank. A transport reconnect is
+   * also a new subscriber, though, so without a client-side id gate those same
+   * rows re-enter the full parse/cosmetics/render pipeline on every SSE drop.
+   * Keep the gate bounded well above the hub's replay window. */
+  function remember(id: unknown): boolean {
+    if (id === null || id === undefined || id === '') return true;
+    const key = String(id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    seenOrder.push(key);
+    while (seenOrder.length > TIKTOK_SEEN_MAX) {
+      const oldest = seenOrder.shift();
+      if (oldest !== undefined) seen.delete(oldest);
+    }
+    return true;
+  }
 
   function toMessage(d: any, kind: 'chat' | 'system'): UnifiedMessage {
     const badges: UnifiedMessage['badges'] = [];
@@ -23,12 +45,13 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
     const emotes: UnifiedMessage['emotes'] = [];
     if (d.giftIcon) {
       const token = 'gift';
-      emotes.push({ begin: [...text].length + 1, end: [...text].length + 1 + token.length, text: token, url: d.giftIcon });
+      const begin = Array.from(text).length + 1;
+      emotes.push({ begin, end: begin + token.length, text: token, url: d.giftIcon });
       text = `${text} ${token}`;
     }
     return {
       platform: 'tiktok',
-      id: d.id,
+      id: d.id === null || d.id === undefined ? '' : String(d.id),
       senderId: d.senderId ?? '',
       username: d.username ?? '',
       color: '',
@@ -45,6 +68,11 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
     };
   }
 
+  function emitMessage(d: any, kind: 'chat' | 'system'): void {
+    if (!remember(d.id)) return;
+    opts.onMessage(toMessage(d, kind));
+  }
+
   function connect() {
     if (stopped) return;
     opts.onStatus('connecting');
@@ -54,11 +82,11 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
       try { d = JSON.parse(e.data); } catch { return; }
       switch (d.type) {
         case 'status': opts.onStatus(d.status, d.detail); break;
-        case 'chat':   opts.onMessage(toMessage(d, 'chat')); break;
+        case 'chat':   emitMessage(d, 'chat'); break;
         case 'gift':
         case 'sub':
         case 'follow':
-        case 'share':  opts.onMessage(toMessage(d, 'system')); break;
+        case 'share':  emitMessage(d, 'system'); break;
         case 'delete': opts.onDelete(d.senderId ? { senderId: d.senderId } : { id: d.id }); break;
         case 'pin':    opts.onPin({ message: toMessage(d, 'chat') }); break;
         case 'unpin':  opts.onPin(null); break;

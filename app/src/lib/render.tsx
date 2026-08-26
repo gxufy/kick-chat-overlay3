@@ -19,9 +19,9 @@ const iconImgStyle: React.CSSProperties = { height: '1em', width: 'auto', displa
 function providerIcon(p: Platform): React.ReactNode {
   switch (p) {
     case 'twitch':
-      return <img src="/platform-twitch.png" alt="Twitch" style={iconImgStyle} />;
+      return <img src="/platform-twitch.png" alt="Twitch" style={iconImgStyle} decoding="async" />;
     case 'tiktok':
-      return <img src="/platform-tiktok.png" alt="TikTok" style={iconImgStyle} />;
+      return <img src="/platform-tiktok.png" alt="TikTok" style={iconImgStyle} decoding="async" />;
     case 'kick':
       // kick's blocky K reads denser than the other marks — shrink ~20%
       // inside a 1em box so it aligns with the badge row
@@ -43,7 +43,7 @@ function providerIcon(p: Platform): React.ReactNode {
 export type SourceTagMode = 'none' | 'dot' | 'label' | 'icon';
 
 
-export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactNode {
+export function sourceTag(platform: Platform, mode: SourceTagMode, iconShadowFilter = ''): React.ReactNode {
   if (mode === 'none') return null;
   const meta = PROVIDERS[platform];
   if (mode === 'dot') {
@@ -61,7 +61,8 @@ export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactN
       /* Decorative for the same reason — the brand mark carries no unique text.
          providerIcon's <img> already uses an empty-intent alt via aria-hidden. */
       <span key="srctag" data-source-tag="icon" data-platform={platform} aria-hidden="true"
-        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em' }}>
+        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em',
+                 ...(iconShadowFilter ? { filter:iconShadowFilter } : {}) }}>
         {providerIcon(platform)}
       </span>
     );
@@ -139,7 +140,7 @@ export function readableColor(hex: string): string {
 }
 
 function emoteImg(key: string, src: string, alt: string, upscale = false): React.ReactNode {
-  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} onError={handleAssetError} />;
+  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} decoding="async" onError={handleAssetError} />;
 }
 
 /* Every badge <img> goes through here so the load-failure fallback is attached
@@ -157,10 +158,25 @@ function badgeImg(
       className={className}
       src={src}
       alt={alt}
+      decoding="async"
       style={backgroundColor ? { backgroundColor } : undefined}
       onError={handleAssetError}
     />
   );
+}
+
+const EMOTES_BY_NAME = new WeakMap<SevenTVEmote[], Map<string, SevenTVEmote>>();
+
+function emotesByName(emotes: SevenTVEmote[]): Map<string, SevenTVEmote> {
+  const cached = EMOTES_BY_NAME.get(emotes);
+  if (cached) return cached;
+  const lookup = new Map<string, SevenTVEmote>();
+  /* Array.find used to choose the first duplicate. Keep that exact behavior. */
+  for (const emote of emotes) {
+    if (!lookup.has(emote.name)) lookup.set(emote.name, emote);
+  }
+  EMOTES_BY_NAME.set(emotes, lookup);
+  return lookup;
 }
 
 /* Word-level 7TV swap for a plain-text segment (Kick), with zero-width
@@ -169,21 +185,22 @@ function badgeImg(
 function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const words = segment.split(' ');
+  const lookup = emotesByName(emotes);
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
-    const emote = emotes.find(e => e.name === word);
+    const emote = lookup.get(word);
     if (!emote) {
       nodes.push(i !== words.length - 1 ? word + ' ' : word);
       continue;
     }
     const zeroWidths: React.ReactNode[] = [];
     while (i + 1 < words.length) {
-      const next = emotes.find(e => e.name === words[i + 1]);
+      const next = lookup.get(words[i + 1]);
       if (!next || !next.zeroWidth) break;
       zeroWidths.push(emoteImg(`${keyBase}-zw-${i}`, next.image, next.name, next.upscale));
       i++;
     }
-    const nextIsEmote = i + 1 < words.length && emotes.some(e => e.name === words[i + 1]);
+    const nextIsEmote = i + 1 < words.length && lookup.has(words[i + 1]);
     if (zeroWidths.length === 0) {
       nodes.push(emoteImg(`${keyBase}-em-${i}`, emote.image, emote.name, emote.upscale));
     } else {
@@ -240,10 +257,7 @@ function renderMentions(segment: string, ctx: MentionContext | undefined, keyBas
 
 /** text + platform emote offsets (+ 7TV for kick/twitch) → React nodes */
 export function renderMessageText(msg: UnifiedMessage, sevenTV: SevenTVEmote[], mentions?: MentionContext): React.ReactNode[] {
-  const chars = Array.from(msg.text); // codepoint-safe offsets
-  const sorted = [...msg.emotes].sort((a, b) => a.begin - b.begin);
   const nodes: React.ReactNode[] = [];
-  let cursor = 0;
 
   const pushText = (segment: string, keyBase: string) => {
     if (!segment) return;
@@ -260,6 +274,20 @@ export function renderMessageText(msg: UnifiedMessage, sevenTV: SevenTVEmote[], 
       nodes.push(...renderMentions(segment, mentions, keyBase));
     }
   };
+
+  /* Most rows contain no provider-native emotes. In that case code-point
+     materialization and sorting cannot affect the result, so skip both and feed
+     the original string through the exact same 7TV/mention path. */
+  if (!msg.emotes.length) {
+    pushText(msg.text, 'tail');
+    return nodes;
+  }
+
+  const chars = Array.from(msg.text); // codepoint-safe offsets
+  const sorted = msg.emotes.length > 1
+    ? [...msg.emotes].sort((a, b) => a.begin - b.begin)
+    : msg.emotes;
+  let cursor = 0;
 
   for (let idx = 0; idx < sorted.length; idx++) {
     const e = sorted[idx];
@@ -308,16 +336,44 @@ const SIMPLE_KICK_BADGES: Record<string, string> = {
   staff: '/badges/staff.svg',
 };
 
-
+/* YouTube's original inline artwork left noticeably more transparent padding
+   than Twitch's CDN badges. The CSS box was already identical, but the visible
+   glyph looked smaller. These marks intentionally fill almost the complete
+   24x24 canvas so verified/moderator badges have the same visual footprint. */
 const YT_ICON_BADGES: Record<string, string> = {
   moderator: 'data:image/svg+xml;utf8,' + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3ea6ff"><path d="M12 2 4 5.5V12c0 4.7 3.4 8.6 8 10 4.6-1.4 8-5.3 8-10V5.5Zm5.3 6.1-6.5 6.9-3.6-3.4 1.2-1.3 2.4 2.2 5.3-5.7Z"/></svg>'),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#3ea6ff" d="M12 1 2 4.8v6.6c0 5.8 4.2 10.6 10 12.1 5.8-1.5 10-6.3 10-12.1V4.8L12 1Zm5.8 6.2-7.4 7.9-4.2-3.9 1.7-1.8 2.5 2.3 5.7-6.1 1.7 1.6Z"/></svg>'),
   verified: 'data:image/svg+xml;utf8,' + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#999999"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.5-3.9-3.9 1.4-1.4 2.5 2.5 5.9-5.9 1.4 1.4Z"/></svg>'),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#999999"/><path fill="#ffffff" d="m7.1 12.1 3.1 3.1 6.8-7.1 1.5 1.5-8.3 8.6-4.6-4.6 1.5-1.5Z"/></svg>'),
 };
 
 
 const YT_BADGE_ORDER: Record<string, number> = { verified: 0, moderator: 1, subscriber: 2 };
+const SORTED_YOUTUBE_BADGES = new WeakMap<UnifiedMessage['badges'], UnifiedMessage['badges']>();
+const SORTED_KICK_SUBSCRIBER_BADGES = new WeakMap<
+  KickChannel['subscriber_badges'],
+  KickChannel['subscriber_badges']
+>();
+
+function youtubeDisplayBadges(badges: UnifiedMessage['badges']): UnifiedMessage['badges'] {
+  const cached = SORTED_YOUTUBE_BADGES.get(badges);
+  if (cached) return cached;
+  const sorted = [...badges]
+    .filter((badge) => badge.type !== 'owner')
+    .sort((a, b) => (YT_BADGE_ORDER[a.type] ?? 9) - (YT_BADGE_ORDER[b.type] ?? 9));
+  SORTED_YOUTUBE_BADGES.set(badges, sorted);
+  return sorted;
+}
+
+function kickSubscriberBadgesByMonths(
+  badges: KickChannel['subscriber_badges'],
+): KickChannel['subscriber_badges'] {
+  const cached = SORTED_KICK_SUBSCRIBER_BADGES.get(badges);
+  if (cached) return cached;
+  const sorted = [...badges].sort((a, b) => b.months - a.months);
+  SORTED_KICK_SUBSCRIBER_BADGES.set(badges, sorted);
+  return sorted;
+}
 
 
 const TWITCH_BADGE_IDS: Record<string, string> = {
@@ -347,9 +403,7 @@ export function renderBadges(
 
   // (the name renders as a gold pill instead — see isYouTubeOwner)
   const badges = msg.platform === 'youtube'
-    ? [...msg.badges]
-        .filter(b => b.type !== 'owner')
-        .sort((a, b) => (YT_BADGE_ORDER[a.type] ?? 9) - (YT_BADGE_ORDER[b.type] ?? 9))
+    ? youtubeDisplayBadges(msg.badges)
     : msg.badges;
 
   for (let i = 0; i < badges.length; i++) {
@@ -372,8 +426,8 @@ export function renderBadges(
       const simple = SIMPLE_KICK_BADGES[b.type];
       if (simple) { out.push(badgeImg(key, simple, b.type)); continue; }
       if (b.type === 'subscriber') {
-        const sorted = [...subscriberBadges].sort((a, c) => c.months - a.months);
-        const match = sorted.find(sb => (b.count ?? 0) >= sb.months);
+        const match = kickSubscriberBadgesByMonths(subscriberBadges)
+          .find(sb => (b.count ?? 0) >= sb.months);
         out.push(badgeImg(key, match?.badge_image.src ?? '/badges/subscriber.svg', 'subscriber'));
         continue;
       }

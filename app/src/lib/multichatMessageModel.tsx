@@ -191,6 +191,49 @@ export function buildPaintStyle(
   return { background, filter: shadows.join(' ') };
 }
 
+const BADGES_BY_ID = new WeakMap<SevenTVBadge[], Map<string, SevenTVBadge>>();
+const PAINTS_BY_ID = new WeakMap<SevenTVPaint[], Map<string, SevenTVPaint>>();
+const READABLE_COLOR_CACHE_MAX = 256;
+const READABLE_COLORS = new Map<string, string>();
+
+function badgeById(badges: SevenTVBadge[], id: string): SevenTVBadge | undefined {
+  let lookup = BADGES_BY_ID.get(badges);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVBadge>();
+    for (const badge of badges) if (!lookup.has(badge.id)) lookup.set(badge.id, badge);
+    BADGES_BY_ID.set(badges, lookup);
+  }
+  return lookup.get(id);
+}
+
+function paintById(paints: SevenTVPaint[], id: string): SevenTVPaint | undefined {
+  let lookup = PAINTS_BY_ID.get(paints);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVPaint>();
+    for (const paint of paints) if (!lookup.has(paint.id)) lookup.set(paint.id, paint);
+    PAINTS_BY_ID.set(paints, lookup);
+  }
+  return lookup.get(id);
+}
+
+/**
+ * Chatter colors repeat heavily, especially on Twitch. Normalizing a dark color
+ * performs regex parsing plus RGB/HSL conversion, so keep a small bounded cache
+ * keyed by the exact upstream string. Invalid/non-hex colors are safe too:
+ * readableColor returns them byte-for-byte and the exact key preserves that.
+ */
+function cachedReadableColor(color: string): string {
+  const cached = READABLE_COLORS.get(color);
+  if (cached !== undefined) return cached;
+  const resolved = readableColor(color);
+  if (READABLE_COLORS.size >= READABLE_COLOR_CACHE_MAX) {
+    const oldest = READABLE_COLORS.keys().next().value as string | undefined;
+    if (oldest !== undefined) READABLE_COLORS.delete(oldest);
+  }
+  READABLE_COLORS.set(color, resolved);
+  return resolved;
+}
+
 /**
  * Convert one normalized message into the renderable form ChatOverlay consumes.
  *
@@ -219,7 +262,7 @@ export function buildParsedMessage(
     const entitlement = cosmetics.entitlements[`${um.platform}:${um.senderId}`];
     if (entitlement) {
       if (entitlement.badge) {
-        const badge = cosmetics.badges.find((b) => b.id === entitlement.badge);
+        const badge = badgeById(cosmetics.badges, entitlement.badge);
         if (badge) {
           badgeNodes.push(
             <img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" onError={handleAssetError} />,
@@ -227,7 +270,7 @@ export function buildParsedMessage(
         }
       }
       if (entitlement.paint) {
-        const paint = cosmetics.paints.find((p) => p.id === entitlement.paint);
+        const paint = paintById(cosmetics.paints, entitlement.paint);
         if (paint) ({ background, filter } = buildPaintStyle(paint, cfg.paintShadows));
       }
     }
@@ -238,10 +281,12 @@ export function buildParsedMessage(
   // mention map: remember every chatter's color under both upstream and display
   // spellings so presentation cleanup does not change mention resolution.
   const displayColor = um.color
-    ? readableColor(um.color)
+    ? cachedReadableColor(um.color)
     : fallbackColor(um.platform, um.username, um.senderId);
-  mentions.colors.set(um.username.toLowerCase(), displayColor);
-  mentions.colors.set(displayUsername.toLowerCase(), displayColor);
+  const upstreamNameKey = um.username.toLowerCase();
+  const displayNameKey = displayUsername.toLowerCase();
+  mentions.colors.set(upstreamNameKey, displayColor);
+  if (displayNameKey !== upstreamNameKey) mentions.colors.set(displayNameKey, displayColor);
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,

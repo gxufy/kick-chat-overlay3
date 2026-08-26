@@ -135,9 +135,9 @@ describe('the built-in chat preview is populated immediately', () => {
 
   it('renders every library fixture too, when a caller asks for the full catalog', () => {
     mountAll();
-    /* One shorter than the catalog: the pin renders in its own card above the list
-       rather than inside it. */
-    expect(bodies()).toHaveLength(SAMPLE_ALL_MESSAGES.length - 1);
+    /* Pins are disabled in a fresh workspace, so the pin fixture remains a normal
+       row until the user opts in. */
+    expect(bodies()).toHaveLength(SAMPLE_ALL_MESSAGES.length);
     expect(previewText()).toContain('read the pinned message before asking');
   });
 
@@ -269,7 +269,7 @@ describe('the preview contains the messages a generator needs to judge styling',
   });
 
   it('renders the pin card with its attribution', () => {
-    mountAll();
+    mountAll({ showPinEnabled: true });
     expect(previewText()).toContain(`Pinned by ${SAMPLE_PIN_BY}`);
   });
 });
@@ -797,7 +797,7 @@ describe('the preview demonstrates each platform badge set', () => {
     /* The banner is drawn for the whole pin window, so its badges have to go
        through renderBadges like a list row's rather than through markup of their
        own. Scoped to the banner by the "Pinned by" line, which nothing else has. */
-    mountAll();
+    mountAll({ showPinEnabled: true });
     const banner = within(preview()).getByText(`Pinned by ${SAMPLE_PIN_BY}`).closest('div')
       ?.parentElement;
     const alts = Array.from(

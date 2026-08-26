@@ -138,7 +138,11 @@ describe('legacy generator compatibility', () => {
       ...LEGACY,
       platformIcons: false,
     });
-    const workspaceNone = buildMultichatQuery(noChannels, { ...D, sourceTag: 'none' });
+    const workspaceNone = buildMultichatQuery(noChannels, {
+      ...D,
+      showPinEnabled: LEGACY.showPinEnabled,
+      sourceTag: 'none',
+    });
     expect(workspaceNone).toBe(legacyNone);
   });
 });
@@ -164,7 +168,12 @@ describe('descriptor identity', () => {
     const { platformIcons, ...shared } = LEGACY;
     /* sourceTag replaces platformIcons, and smooth scrolling is the intentional
        modern workspace default while the pinned legacy object stays unchanged. */
-    expect(D).toEqual({ ...shared, smoothScroll: true, sourceTag: 'icon' });
+    expect(D).toEqual({
+      ...shared,
+      showPinEnabled: false,
+      smoothScroll: true,
+      sourceTag: 'icon',
+    });
     expect(platformIcons).toBe(true);
     expect('platformIcons' in D).toBe(false);
   });
@@ -694,7 +703,7 @@ describe('serializer byte identity', () => {
         '&stroke=none' +
         '&animation=slide' +
         '&fade=30' +
-        '&showPinEnabled=true' +
+        '&showPinEnabled=false' +
         '&pinPlatforms=kick%2Cyoutube%2Ctiktok' +
         '&hideNames=false',
     );
@@ -772,9 +781,9 @@ describe('serializer byte identity', () => {
   });
 
   it('emits each sourceTag value as its own exact string', () => {
-    const base = LEGACY_DEFAULT_QUERY;
+    const base = LEGACY_DEFAULT_QUERY.replace('&showPinEnabled=true', '&showPinEnabled=false');
     const withTag = (tag: string) =>
-      base.replace('&showPinEnabled=true', `&showPinEnabled=true&sourceTag=${tag}`);
+      base.replace('&showPinEnabled=false', `&showPinEnabled=false&sourceTag=${tag}`);
 
     /* icon is the overlay default, so it is expressed by omission. */
     expect(multichatTool.serialize({}, { ...D, sourceTag: 'icon' })).toBe(base);
@@ -794,7 +803,7 @@ describe('serializer byte identity', () => {
   it('keeps the sourceTag parameter in a stable position', () => {
     for (const tag of ['dot', 'label', 'none'] as const) {
       const parts = multichatTool.serialize({ kick: 'a' }, { ...D, sourceTag: tag }).split('&');
-      expect(parts[parts.indexOf(`sourceTag=${tag}`) - 1]).toBe('showPinEnabled=true');
+      expect(parts[parts.indexOf(`sourceTag=${tag}`) - 1]).toBe('showPinEnabled=false');
     }
   });
 

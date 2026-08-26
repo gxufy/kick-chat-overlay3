@@ -220,6 +220,7 @@ describe('URL identity with the overlay serializer', () => {
 describe('draft persistence stays scoped to its own tool', () => {
   it('writes the counter style under the counter key only', () => {
     mount();
+    fireEvent.click(document.getElementById('mc-showPinEnabled')!);
     typeChannel('twitch', 'somechannel');
     fireEvent.click(document.getElementById('vc-combined')!);
     fireEvent.click(within(panel('.classic-conn')).getByText('Connect'));

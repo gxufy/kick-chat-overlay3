@@ -45,7 +45,7 @@ describe('MultiChat, complete strings', () => {
   const MC_DEFAULT_TAIL =
     '&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium' +
     '&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30' +
-    '&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';
+    '&showPinEnabled=false&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';
 
   it('one Kick channel at every default', () => {
     expect(
@@ -128,7 +128,7 @@ describe('MultiChat, complete strings', () => {
     ).toBe(
       'kick=k&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium' +
         '&font=opensans&textShadow=small&stroke=none&animation=slide' +
-        '&showPinEnabled=true&hideNames=false',
+        '&showPinEnabled=false&hideNames=false',
     );
   });
 

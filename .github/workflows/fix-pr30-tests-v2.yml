@@ -27,22 +27,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('.github/workflows/fix-pr30-tests.yml')
           lines = path.read_text().splitlines()
           start = next(i for i, line in enumerate(lines) if "python - <<'PY'" in line) + 1
           end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PY')
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines[start:end])
-
-          old = '''    marker = f"it('{title}'"
-    start = text.find(marker)
-    if start < 0:
-        raise SystemExit(f"{path}: missing test {title!r}")'''
-          new = '''    markers = (f"it('{title}'", f'it("{title}"')
-    starts = [text.find(marker) for marker in markers]
-    start = max(starts)
-    if start < 0:
-        raise SystemExit(f"{path}: missing test {title!r}")'''
+          old = "    marker = f\"it('{title}'\"\n    start = text.find(marker)\n    if start < 0:\n        raise SystemExit(f\"{path}: missing test {title!r}\")"
+          new = "    markers = (f\"it('{title}'\", f'it(\"{title}\"')\n    starts = [text.find(marker) for marker in markers]\n    start = max(starts)\n    if start < 0:\n        raise SystemExit(f\"{path}: missing test {title!r}\")"
           if old not in script:
               raise SystemExit('replace_in_test marker block not found')
           script = script.replace(old, new, 1)

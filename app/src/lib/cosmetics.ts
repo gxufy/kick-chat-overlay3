@@ -2,6 +2,7 @@
 import type { SevenTVBadge, SevenTVPaint, Entitlements } from './kick';
 
 const PAINT_FIELDS = 'id name function color angle shape image_url repeat stops { at color } shadows { x_offset y_offset radius color }';
+const VALID_PAINT_FUNCTIONS = new Set(['LINEAR_GRADIENT', 'RADIAL_GRADIENT', 'URL']);
 
 export interface CosmeticsStores {
   paints: SevenTVPaint[];
@@ -13,6 +14,25 @@ export interface CosmeticsFetcher {
   /** queue a chatter for cosmetics lookup (no-op if already seen) */
   want(platform: 'kick' | 'twitch', senderId: string): void;
   stop(): void;
+}
+
+/**
+ * Merge one cosmetics batch with the existing catalog while preserving the
+ * previous "remove then append" semantics.
+ *
+ * The old loop rebuilt the whole paints/badges array once for every chatter in a
+ * 40-user batch. Besides the repeated allocations, that turns a cosmetics burst
+ * into O(batch × catalog) copying on the browser thread. A Map lets the batch
+ * collect each changed id first, then the catalog is filtered/copied exactly once.
+ * Deleting before a repeated set keeps Map insertion order aligned with the old
+ * sequential behavior: the last occurrence of an id is also the one appended last.
+ */
+function mergeBatchToEnd<T extends { id: string }>(existing: T[], updates: Map<string, T>): T[] {
+  if (!updates.size) return existing;
+  return [
+    ...existing.filter((item) => !updates.has(item.id)),
+    ...updates.values(),
+  ];
 }
 
 export function createCosmeticsFetcher(
@@ -62,6 +82,8 @@ export function createCosmeticsFetcher(
     const result = data as Record<string, unknown>;
 
     const applied: string[] = [];
+    const paintUpdates = new Map<string, SevenTVPaint>();
+    const badgeUpdates = new Map<string, SevenTVBadge>();
     batch.forEach((b, i) => {
       const user = result[`u${i}`];
       const style = typeof user === 'object' && user !== null && !Array.isArray(user)
@@ -77,8 +99,7 @@ export function createCosmeticsFetcher(
       const paint = value.paint;
       if (typeof paint === 'object' && paint !== null && !Array.isArray(paint)) {
         const p = paint as Record<string, unknown>;
-        const validFunctions = new Set(['LINEAR_GRADIENT', 'RADIAL_GRADIENT', 'URL']);
-        if (typeof p.id === 'string' && p.id && typeof p.function === 'string' && validFunctions.has(p.function)) {
+        if (typeof p.id === 'string' && p.id && typeof p.function === 'string' && VALID_PAINT_FUNCTIONS.has(p.function)) {
           const mapped: SevenTVPaint = {
             id: p.id,
             func: p.function,
@@ -90,7 +111,10 @@ export function createCosmeticsFetcher(
             image_url: typeof p.image_url === 'string' ? p.image_url : undefined,
             shape: typeof p.shape === 'string' ? p.shape : undefined,
           };
-          stores.paints = [...stores.paints.filter((existing) => existing.id !== mapped.id), mapped];
+          // delete+set moves a repeated id to its last-occurrence position,
+          // matching the previous remove-then-append loop exactly.
+          paintUpdates.delete(mapped.id);
+          paintUpdates.set(mapped.id, mapped);
           ent.paint = mapped.id;
         }
       }
@@ -103,7 +127,8 @@ export function createCosmeticsFetcher(
           : null;
         if (typeof bValue.id === 'string' && bValue.id && typeof host === 'string' && host.startsWith('//')) {
           const mapped: SevenTVBadge = { id: bValue.id, image: `https:${host}/3x` };
-          stores.badges = [...stores.badges.filter((existing) => existing.id !== mapped.id), mapped];
+          badgeUpdates.delete(mapped.id);
+          badgeUpdates.set(mapped.id, mapped);
           ent.badge = mapped.id;
         }
       }
@@ -112,6 +137,9 @@ export function createCosmeticsFetcher(
         applied.push(key);
       }
     });
+
+    if (paintUpdates.size) stores.paints = mergeBatchToEnd(stores.paints, paintUpdates);
+    if (badgeUpdates.size) stores.badges = mergeBatchToEnd(stores.badges, badgeUpdates);
     if (applied.length) onApplied(applied);
   }
 

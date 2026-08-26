@@ -549,7 +549,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-          fontFamily={fontFamily} filterVal={filterVal} strokeVal={strokeVal}
+          fontFamily={fontFamily} filterVal={filterVal} visualShadowFilter={visualShadowFilter} strokeVal={strokeVal}
           hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
@@ -622,10 +622,10 @@ function HypeTrainBar({ state, ending, fontFamily }: {
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames, tagMode }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, strokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
-  filterVal:string; strokeVal:string;
+  filterVal:string; visualShadowFilter:string; strokeVal:string;
   hideNames:boolean;
   /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
      leaves no marker here either. */
@@ -683,7 +683,8 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       </div>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={false} showSharedSource={false} />
+        tagMode={tagMode} showAvatar={false} showSharedSource={false}
+        visualShadowFilter={visualShadowFilter} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}

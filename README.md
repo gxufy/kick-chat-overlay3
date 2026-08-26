@@ -20,6 +20,7 @@ Chat and viewer counts require no login. Twitch connection is optional and used 
 - Colored @mentions, transparent/custom backgrounds and message colors
 - Moderation actions, bot filtering and username/message-prefix blacklists
 - Fullscreen image, YouTube and TTS chat commands
+- Generator UI is code-split from the OBS overlay startup path to keep browser sources lean
 
 ## Commands
 

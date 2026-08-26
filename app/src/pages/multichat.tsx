@@ -3,6 +3,7 @@
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import dynamic from 'next/dynamic';
 import {
   hasConfiguredMultichatChannel,
   multichatKickChannel,
@@ -50,8 +51,14 @@ import ChatOverlay, {
   type PinnedState,
   type StartupLoaderPhase,
 } from '../components/overlay/ChatOverlay';
-import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
+
+/* The generator is a large editing UI that OBS never renders. Keep the overlay
+ * renderer in the main /multichat bundle so its startup appearance is unchanged,
+ * but load the generator chunk only when the channel-less generator branch is
+ * actually rendered. This removes generator controls/previews/simulators from
+ * the browser-source parse/evaluation path without creating a second renderer. */
+const ClassicGenerator = dynamic(() => import('../components/classic/ClassicGenerator'));
 
 /* Twitch pin polling: the generator appends an opaque connection id as a
  * URL fragment. Validated here, never rewritten, never logged. */

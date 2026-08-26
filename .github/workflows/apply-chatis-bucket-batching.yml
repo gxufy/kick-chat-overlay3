@@ -112,7 +112,9 @@ jobs:
         run: npm ci
 
       - name: Run focused regression tests
-        run: npm --prefix app exec vitest -- --config vitest.config.ts run tests/unit/chatBurstPresentation.test.ts tests/unit/smoothScroll.test.tsx
+        run: |
+          cd app
+          npx vitest --config vitest.config.ts run tests/unit/chatBurstPresentation.test.ts tests/unit/smoothScroll.test.tsx
 
       - name: Run full test suite
         run: npm test

@@ -1,0 +1,51 @@
+name: Apply overlay performance update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/maintenance-overlay-performance.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply performance patch
+        run: python .github/scripts/apply-overlay-performance.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check process config
+        run: node -e "require('./.github/infra/ecosystem.config.js')"
+
+      - name: Commit verified update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Isaac"
+          git config user.email "unstoppableboy99@gmail.com"
+          git add -A
+          git commit -m "Improve overlay rendering performance"
+          git push origin HEAD:main

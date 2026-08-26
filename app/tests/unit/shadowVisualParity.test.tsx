@@ -66,4 +66,24 @@ describe('pre-optimization username shadow parity', () => {
     expect(name.style.filter).toContain('drop-shadow(2px 2px 0.35rem black)');
     expect(name.style.textShadow).toBe('none');
   });
+
+  it('keeps the paint but removes every painted-name drop-shadow when paintShadows is off', () => {
+    render(
+      <ChatOverlay
+        config={{ ...config, paintShadows: false }}
+        messages={[message({
+          background: 'linear-gradient(90deg, #ff0055, #6f5cff)',
+          filter: '',
+        })]}
+        fadingIds={new Set()}
+        pinnedMessage={null}
+        showLoader={false}
+      />,
+    );
+
+    const name = screen.getByText('ColorUser');
+    expect(name.style.filter).toBe('');
+    expect(name.style.backgroundImage).toContain('linear-gradient');
+    expect(name.style.textShadow).toBe('none');
+  });
 });

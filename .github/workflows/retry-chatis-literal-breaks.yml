@@ -25,6 +25,15 @@ jobs:
         run: |
           awk '/python - <<'\''PY'\''/{flag=1;next} flag && /^[[:space:]]*PY[[:space:]]*$/{exit} flag{sub(/^          /,""); print}' .github/workflows/apply-chatis-literal-breaks.yml > /tmp/apply.py
           python /tmp/apply.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/tests/unit/chatOverlayEntranceQueue.test.tsx')
+          text = p.read_text()
+          old = "mockImplementation(function () {"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one mock implementation, got {text.count(old)}')
+          p.write_text(text.replace(old, "mockImplementation(function (this: HTMLElement) {", 1))
+          PY
 
       - name: Verify patch shape
         run: |
@@ -33,6 +42,7 @@ jobs:
           grep -q "startBurstPresentationTicker" app/src/pages/multichat.tsx
           grep -q "data-slide-ghost" app/src/components/overlay/ChatOverlay.tsx
           grep -q "CHATIS_JQUERY_TICK_MS = 13" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "function (this: HTMLElement)" app/tests/unit/chatOverlayEntranceQueue.test.tsx
 
       - name: Install dependencies
         run: npm ci

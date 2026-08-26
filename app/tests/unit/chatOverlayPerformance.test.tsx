@@ -30,4 +30,20 @@ describe('chat overlay compositor-friendly rendering', () => {
     expect(chat.style.filter).toBe('');
     expect(chat.style.textShadow).toContain('black');
   });
+
+  it('does not keep the scrolling subtree permanently promoted', () => {
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'none', smoothScroll: 'true' });
+    const { container } = render(
+      <ChatOverlay
+        config={config}
+        messages={[message]}
+        fadingIds={new Set()}
+        pinnedMessage={null}
+        showLoader={false}
+      />,
+    );
+    const chat = container.querySelector('#chat_container') as HTMLElement;
+    expect(chat.style.willChange).toBe('');
+  });
+
 });

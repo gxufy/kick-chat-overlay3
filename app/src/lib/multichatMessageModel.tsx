@@ -191,6 +191,29 @@ export function buildPaintStyle(
   return { background, filter: shadows.join(' ') };
 }
 
+const BADGES_BY_ID = new WeakMap<SevenTVBadge[], Map<string, SevenTVBadge>>();
+const PAINTS_BY_ID = new WeakMap<SevenTVPaint[], Map<string, SevenTVPaint>>();
+
+function badgeById(badges: SevenTVBadge[], id: string): SevenTVBadge | undefined {
+  let lookup = BADGES_BY_ID.get(badges);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVBadge>();
+    for (const badge of badges) if (!lookup.has(badge.id)) lookup.set(badge.id, badge);
+    BADGES_BY_ID.set(badges, lookup);
+  }
+  return lookup.get(id);
+}
+
+function paintById(paints: SevenTVPaint[], id: string): SevenTVPaint | undefined {
+  let lookup = PAINTS_BY_ID.get(paints);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVPaint>();
+    for (const paint of paints) if (!lookup.has(paint.id)) lookup.set(paint.id, paint);
+    PAINTS_BY_ID.set(paints, lookup);
+  }
+  return lookup.get(id);
+}
+
 /**
  * Convert one normalized message into the renderable form ChatOverlay consumes.
  *
@@ -219,7 +242,7 @@ export function buildParsedMessage(
     const entitlement = cosmetics.entitlements[`${um.platform}:${um.senderId}`];
     if (entitlement) {
       if (entitlement.badge) {
-        const badge = cosmetics.badges.find((b) => b.id === entitlement.badge);
+        const badge = badgeById(cosmetics.badges, entitlement.badge);
         if (badge) {
           badgeNodes.push(
             <img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" onError={handleAssetError} />,
@@ -227,7 +250,7 @@ export function buildParsedMessage(
         }
       }
       if (entitlement.paint) {
-        const paint = cosmetics.paints.find((p) => p.id === entitlement.paint);
+        const paint = paintById(cosmetics.paints, entitlement.paint);
         if (paint) ({ background, filter } = buildPaintStyle(paint, cfg.paintShadows));
       }
     }

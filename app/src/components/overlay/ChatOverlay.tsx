@@ -107,69 +107,23 @@ function getStroke(s: string) {
 }
 
 
-function SlideGroup({ children, fontSize, lineHeight, fontFamily }: { children: React.ReactNode; fontSize:string; lineHeight:string; fontFamily:string }) {
-
-  // 1. $auxDiv appended to #chat_container (hidden), measure height
-  // 2. $animDiv inserted (empty), animated 0→naturalH over 150ms swing
-  // 3. Complete callback: remove $animDiv, insert real content
-  const [phase, setPhase] = useState<'ghost' | 'content'>('ghost');
-  const [ghostH, setGhostH] = useState(0);
-  const measureRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = measureRef.current;
-    if (!el) return;
-    // Set width synchronously before measuring — must match container exactly
-    const container = document.getElementById('chat_container');
-    if (container) el.style.width = `${container.offsetWidth}px`;
-    // rAF 1: let browser apply width and compute layout
-    requestAnimationFrame(() => {
-      const h = el.getBoundingClientRect().height;
-      // rAF 2: trigger CSS transition 0 → h (ghost starts at 0 by default)
-      requestAnimationFrame(() => {
-        setGhostH(h);
-        // 150ms matches jQuery .animate duration; content snaps in after
-        setTimeout(() => setPhase('content'), 150);
-      });
-    });
-  }, []);
-
-  if (phase === 'content') {
-    return <>{children}</>;
-  }
-
+function SlideGroup({ children }: { children: React.ReactNode }) {
+  /* CSS grid can interpolate 0fr -> 1fr against intrinsic content height.
+     That gives the same 150ms empty-space opening before content is revealed,
+     without mounting an offscreen copy, forcing getBoundingClientRect(), or
+     coordinating React state with animation frames. The batch node stays
+     mounted, so a late repaint/deletion cannot replay the entrance. */
   return (
-    <>
-      {/* $animDiv equivalent — animates height open to push older messages up */}
-      <div data-slide-ghost style={{
-        height: ghostH,
-        overflow: 'hidden',
-        transition: 'height 150ms ease-in-out',
-      }} />
-      {/* $auxDiv equivalent — off-screen, width set dynamically in useEffect */}
-      <div ref={measureRef} style={{
-        position:   'fixed',
-        top:        '-9999px',
-        left:       0,
-        width:      'calc(100vw - 40px)', // overridden synchronously in useEffect
-        visibility: 'hidden',
-        pointerEvents: 'none',
-        fontWeight:  800,
-        wordBreak:   'break-word',
-        fontSize,
-        lineHeight,
-        fontFamily,
-              }}>
-        {children}
-      </div>
-    </>
+    <div className="gx-slide-group">
+      <div className="gx-slide-content">{children}</div>
+    </div>
   );
 }
 
 function FadeGroup({ children }: { children: React.ReactNode }) {
-  const [op, setOp] = useState(0);
-  useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setOp(1))); }, []);
-  return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
+  /* Pure CSS keeps the 220ms fade while removing two requestAnimationFrame
+     callbacks and a React state update for every arriving batch. */
+  return <div className="gx-fade-group">{children}</div>;
 }
 
 const MessageRow = memo(function MessageRow({
@@ -334,26 +288,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     />
   );
 
-  return (
-    <>
-      <Head>
-        {/* The selected web font. Without this the overlay named a family it had
-            never fetched, so every Google face — including the generator's
-            default, Open Sans — fell back to generic sans-serif in OBS while the
-            generator preview, which loads them for its own UI, showed the real
-            face. `display=swap` keeps text visible while it loads. */}
-        {fontCss && (
-          <>
-            <link rel="preconnect" href="https://fonts.googleapis.com" />
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-            {/* dangerouslySetInnerHTML, not a text child: React escapes the
-                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
-                inside a <style> raw-text element, so the @import would be an
-                invalid URL token and load nothing. */}
-            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
-          </>
-        )}
-        <style>{`${LOCAL_OVERLAY_FONT_CSS}
+  /* Visual configuration is static between settings changes. Memoizing this
+     prevents message traffic from reconstructing the same large CSS string. */
+  const overlayCss = useMemo(() => `${LOCAL_OVERLAY_FONT_CSS}
           
           html, body {
             margin: 0 !important;
@@ -379,6 +316,38 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           .gx-message-slide-in {
             animation: gxMessageSlideIn 250ms ease-out;
             backface-visibility: hidden;
+          }
+
+          @keyframes gxSlideGroupOpen {
+            from { grid-template-rows: 0fr; }
+            to   { grid-template-rows: 1fr; }
+          }
+          @keyframes gxSlideGroupReveal {
+            from { visibility: hidden; }
+            to   { visibility: visible; }
+          }
+          .gx-slide-group {
+            display: grid;
+            grid-template-rows: 0fr;
+            animation: gxSlideGroupOpen 150ms ease-in-out forwards;
+          }
+          .gx-slide-content {
+            min-height: 0;
+            overflow: hidden;
+            visibility: hidden;
+            animation: gxSlideGroupReveal 150ms step-end forwards;
+          }
+          .gx-slide-group .gx-message-slide-in {
+            /* The measured ghost used to remount the visible row after 150ms,
+               so preserve that exact visible start time without ghost DOM. */
+            animation-delay: 150ms;
+          }
+          @keyframes gxFadeGroupIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          .gx-fade-group {
+            animation: gxFadeGroupIn 220ms ease-in-out;
           }
           @media (prefers-reduced-motion: reduce) {
             .gx-message-slide-in { animation: none; }
@@ -528,7 +497,28 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .ck-startup-spinner { animation: none; border-top-color:#6d9dff; }
           }
 
-        `}</style>
+        `, [cfg, sz, emoteMaxW, emoteMaxH]);
+
+  return (
+    <>
+      <Head>
+        {/* The selected web font. Without this the overlay named a family it had
+            never fetched, so every Google face — including the generator's
+            default, Open Sans — fell back to generic sans-serif in OBS while the
+            generator preview, which loads them for its own UI, showed the real
+            face. `display=swap` keeps text visible while it loads. */}
+        {fontCss && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            {/* dangerouslySetInnerHTML, not a text child: React escapes the
+                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
+                inside a <style> raw-text element, so the @import would be an
+                invalid URL token and load nothing. */}
+            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
+          </>
+        )}
+        <style>{overlayCss}</style>
       </Head>
 
       {loaderPhase !== 'hidden' && (
@@ -567,7 +557,6 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         maxHeight:  smoothRuntime ? 'calc(100vh - 20px)' : undefined,
         display:    smoothRuntime ? 'flex' : undefined,
         flexDirection: smoothRuntime ? 'column' : undefined,
-        willChange: smoothRuntime ? 'scroll-position' : undefined,
         overflow:   'hidden',
         background: 'transparent',
         color:      cfg.fontColor || 'white',
@@ -584,7 +573,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .map((messageId) => messagesById.get(messageId))
             .filter((message): message is ParsedMessage => Boolean(message))
             .map(renderMsg);
-          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
+          if (cfg.animation==='slide') return <SlideGroup key={id}>{content}</SlideGroup>;
           if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
         })}

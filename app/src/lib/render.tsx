@@ -163,27 +163,42 @@ function badgeImg(
   );
 }
 
+const EMOTES_BY_NAME = new WeakMap<SevenTVEmote[], Map<string, SevenTVEmote>>();
+
+function emotesByName(emotes: SevenTVEmote[]): Map<string, SevenTVEmote> {
+  const cached = EMOTES_BY_NAME.get(emotes);
+  if (cached) return cached;
+  const lookup = new Map<string, SevenTVEmote>();
+  /* Array.find used to choose the first duplicate. Keep that exact behavior. */
+  for (const emote of emotes) {
+    if (!lookup.has(emote.name)) lookup.set(emote.name, emote);
+  }
+  EMOTES_BY_NAME.set(emotes, lookup);
+  return lookup;
+}
+
 /* Word-level 7TV swap for a plain-text segment (Kick), with zero-width
    emotes overlaying the previous emote — behavior carried over from the
    original parseMessageText. */
 function render7TVSegment(segment: string, emotes: SevenTVEmote[], keyBase: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const words = segment.split(' ');
+  const lookup = emotesByName(emotes);
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
-    const emote = emotes.find(e => e.name === word);
+    const emote = lookup.get(word);
     if (!emote) {
       nodes.push(i !== words.length - 1 ? word + ' ' : word);
       continue;
     }
     const zeroWidths: React.ReactNode[] = [];
     while (i + 1 < words.length) {
-      const next = emotes.find(e => e.name === words[i + 1]);
+      const next = lookup.get(words[i + 1]);
       if (!next || !next.zeroWidth) break;
       zeroWidths.push(emoteImg(`${keyBase}-zw-${i}`, next.image, next.name, next.upscale));
       i++;
     }
-    const nextIsEmote = i + 1 < words.length && emotes.some(e => e.name === words[i + 1]);
+    const nextIsEmote = i + 1 < words.length && lookup.has(words[i + 1]);
     if (zeroWidths.length === 0) {
       nodes.push(emoteImg(`${keyBase}-em-${i}`, emote.image, emote.name, emote.upscale));
     } else {

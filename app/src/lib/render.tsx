@@ -255,10 +255,7 @@ function renderMentions(segment: string, ctx: MentionContext | undefined, keyBas
 
 /** text + platform emote offsets (+ 7TV for kick/twitch) → React nodes */
 export function renderMessageText(msg: UnifiedMessage, sevenTV: SevenTVEmote[], mentions?: MentionContext): React.ReactNode[] {
-  const chars = Array.from(msg.text); // codepoint-safe offsets
-  const sorted = [...msg.emotes].sort((a, b) => a.begin - b.begin);
   const nodes: React.ReactNode[] = [];
-  let cursor = 0;
 
   const pushText = (segment: string, keyBase: string) => {
     if (!segment) return;
@@ -275,6 +272,20 @@ export function renderMessageText(msg: UnifiedMessage, sevenTV: SevenTVEmote[], 
       nodes.push(...renderMentions(segment, mentions, keyBase));
     }
   };
+
+  /* Most rows contain no provider-native emotes. In that case code-point
+     materialization and sorting cannot affect the result, so skip both and feed
+     the original string through the exact same 7TV/mention path. */
+  if (!msg.emotes.length) {
+    pushText(msg.text, 'tail');
+    return nodes;
+  }
+
+  const chars = Array.from(msg.text); // codepoint-safe offsets
+  const sorted = msg.emotes.length > 1
+    ? [...msg.emotes].sort((a, b) => a.begin - b.begin)
+    : msg.emotes;
+  let cursor = 0;
 
   for (let idx = 0; idx < sorted.length; idx++) {
     const e = sorted[idx];
@@ -333,6 +344,31 @@ const YT_ICON_BADGES: Record<string, string> = {
 
 
 const YT_BADGE_ORDER: Record<string, number> = { verified: 0, moderator: 1, subscriber: 2 };
+const SORTED_YOUTUBE_BADGES = new WeakMap<UnifiedMessage['badges'], UnifiedMessage['badges']>();
+const SORTED_KICK_SUBSCRIBER_BADGES = new WeakMap<
+  KickChannel['subscriber_badges'],
+  KickChannel['subscriber_badges']
+>();
+
+function youtubeDisplayBadges(badges: UnifiedMessage['badges']): UnifiedMessage['badges'] {
+  const cached = SORTED_YOUTUBE_BADGES.get(badges);
+  if (cached) return cached;
+  const sorted = [...badges]
+    .filter((badge) => badge.type !== 'owner')
+    .sort((a, b) => (YT_BADGE_ORDER[a.type] ?? 9) - (YT_BADGE_ORDER[b.type] ?? 9));
+  SORTED_YOUTUBE_BADGES.set(badges, sorted);
+  return sorted;
+}
+
+function kickSubscriberBadgesByMonths(
+  badges: KickChannel['subscriber_badges'],
+): KickChannel['subscriber_badges'] {
+  const cached = SORTED_KICK_SUBSCRIBER_BADGES.get(badges);
+  if (cached) return cached;
+  const sorted = [...badges].sort((a, b) => b.months - a.months);
+  SORTED_KICK_SUBSCRIBER_BADGES.set(badges, sorted);
+  return sorted;
+}
 
 
 const TWITCH_BADGE_IDS: Record<string, string> = {
@@ -362,9 +398,7 @@ export function renderBadges(
 
   // (the name renders as a gold pill instead — see isYouTubeOwner)
   const badges = msg.platform === 'youtube'
-    ? [...msg.badges]
-        .filter(b => b.type !== 'owner')
-        .sort((a, b) => (YT_BADGE_ORDER[a.type] ?? 9) - (YT_BADGE_ORDER[b.type] ?? 9))
+    ? youtubeDisplayBadges(msg.badges)
     : msg.badges;
 
   for (let i = 0; i < badges.length; i++) {
@@ -387,8 +421,8 @@ export function renderBadges(
       const simple = SIMPLE_KICK_BADGES[b.type];
       if (simple) { out.push(badgeImg(key, simple, b.type)); continue; }
       if (b.type === 'subscriber') {
-        const sorted = [...subscriberBadges].sort((a, c) => c.months - a.months);
-        const match = sorted.find(sb => (b.count ?? 0) >= sb.months);
+        const match = kickSubscriberBadgesByMonths(subscriberBadges)
+          .find(sb => (b.count ?? 0) >= sb.months);
         out.push(badgeImg(key, match?.badge_image.src ?? '/badges/subscriber.svg', 'subscriber'));
         continue;
       }

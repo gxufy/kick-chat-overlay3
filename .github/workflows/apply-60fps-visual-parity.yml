@@ -1,0 +1,30 @@
+name: Apply 60fps burst visual parity
+
+on:
+  push:
+    branches: [perf/60fps-burst-visual-parity]
+    paths:
+      - '.github/workflows/apply-60fps-visual-parity.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/60fps-burst-visual-parity
+      - name: Apply ChatOverlay patch
+        run: python .github/scripts/apply-60fps-visual-parity.py
+      - name: Remove one-shot patch files
+        run: rm .github/scripts/apply-60fps-visual-parity.py .github/workflows/apply-60fps-visual-parity.yml
+      - name: Commit result
+        run: |
+          git config user.name "gxufy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Keep burst scrolling frame-paced and restore name shadows"
+          git push origin HEAD:perf/60fps-burst-visual-parity

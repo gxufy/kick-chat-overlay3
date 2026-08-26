@@ -193,6 +193,8 @@ export function buildPaintStyle(
 
 const BADGES_BY_ID = new WeakMap<SevenTVBadge[], Map<string, SevenTVBadge>>();
 const PAINTS_BY_ID = new WeakMap<SevenTVPaint[], Map<string, SevenTVPaint>>();
+const READABLE_COLOR_CACHE_MAX = 256;
+const READABLE_COLORS = new Map<string, string>();
 
 function badgeById(badges: SevenTVBadge[], id: string): SevenTVBadge | undefined {
   let lookup = BADGES_BY_ID.get(badges);
@@ -212,6 +214,24 @@ function paintById(paints: SevenTVPaint[], id: string): SevenTVPaint | undefined
     PAINTS_BY_ID.set(paints, lookup);
   }
   return lookup.get(id);
+}
+
+/**
+ * Chatter colors repeat heavily, especially on Twitch. Normalizing a dark color
+ * performs regex parsing plus RGB/HSL conversion, so keep a small bounded cache
+ * keyed by the exact upstream string. Invalid/non-hex colors are safe too:
+ * readableColor returns them byte-for-byte and the exact key preserves that.
+ */
+function cachedReadableColor(color: string): string {
+  const cached = READABLE_COLORS.get(color);
+  if (cached !== undefined) return cached;
+  const resolved = readableColor(color);
+  if (READABLE_COLORS.size >= READABLE_COLOR_CACHE_MAX) {
+    const oldest = READABLE_COLORS.keys().next().value as string | undefined;
+    if (oldest !== undefined) READABLE_COLORS.delete(oldest);
+  }
+  READABLE_COLORS.set(color, resolved);
+  return resolved;
 }
 
 /**
@@ -261,10 +281,12 @@ export function buildParsedMessage(
   // mention map: remember every chatter's color under both upstream and display
   // spellings so presentation cleanup does not change mention resolution.
   const displayColor = um.color
-    ? readableColor(um.color)
+    ? cachedReadableColor(um.color)
     : fallbackColor(um.platform, um.username, um.senderId);
-  mentions.colors.set(um.username.toLowerCase(), displayColor);
-  mentions.colors.set(displayUsername.toLowerCase(), displayColor);
+  const upstreamNameKey = um.username.toLowerCase();
+  const displayNameKey = displayUsername.toLowerCase();
+  mentions.colors.set(upstreamNameKey, displayColor);
+  if (displayNameKey !== upstreamNameKey) mentions.colors.set(displayNameKey, displayColor);
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,

@@ -136,10 +136,10 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
 }
 
 const MessageRow = memo(function MessageRow({
-  msg, fading, msgSlideIn, smoothRuntime, shadowVal, visualShadowFilter, sz, emoteMaxH, emoteMaxW,
+  msg, fading, msgSlideIn, smoothRuntime, shadowVal, visualShadowFilter, paintVisualShadowFilter, sz, emoteMaxH, emoteMaxW,
   strokeVal, hideNames, tagMode, showAvatar, showSharedSource,
 }: {
-  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string; visualShadowFilter: string;
+  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string; visualShadowFilter: string; paintVisualShadowFilter: string;
   sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string; strokeVal: string;
   hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
 }) {
@@ -153,7 +153,7 @@ const MessageRow = memo(function MessageRow({
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
         tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource}
-        visualShadowFilter={visualShadowFilter} />
+        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
     </div>
   );
 });
@@ -168,6 +168,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
   const sz         = SIZE[szKey];
   const filterVal  = getShadowFilter(cfg.textShadow);
   const visualShadowFilter = getDropShadowFilter(cfg.textShadow);
+  /* paintShadows is an explicit promise that painted usernames can shed all
+     drop-shadow work while keeping the paint itself. Restore the old general
+     username shadow only when that paint-shadow switch is enabled. */
+  const paintVisualShadowFilter = cfg.paintShadows === false ? '' : visualShadowFilter;
   const strokeVal  = getStroke(cfg.stroke ?? 'none');
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'opensans'] ?? FONT_FAMILIES.opensans;
   /* Naming a family does not load it. Only the selected face is requested, and
@@ -281,6 +285,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       smoothRuntime={smoothRuntime}
       shadowVal={filterVal}
       visualShadowFilter={visualShadowFilter}
+      paintVisualShadowFilter={paintVisualShadowFilter}
       sz={sz}
       emoteMaxH={emoteMaxH}
       emoteMaxW={emoteMaxW}
@@ -549,7 +554,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-          fontFamily={fontFamily} filterVal={filterVal} visualShadowFilter={visualShadowFilter} strokeVal={strokeVal}
+          fontFamily={fontFamily} filterVal={filterVal} visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} strokeVal={strokeVal}
           hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
@@ -622,10 +627,10 @@ function HypeTrainBar({ state, ending, fontFamily }: {
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, strokeVal, hideNames, tagMode }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, paintVisualShadowFilter, strokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
-  filterVal:string; visualShadowFilter:string; strokeVal:string;
+  filterVal:string; visualShadowFilter:string; paintVisualShadowFilter:string; strokeVal:string;
   hideNames:boolean;
   /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
      leaves no marker here either. */
@@ -684,7 +689,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, vi
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
         stroke={strokeVal} hideNames={hideNames}
         tagMode={tagMode} showAvatar={false} showSharedSource={false}
-        visualShadowFilter={visualShadowFilter} />
+        visualShadowFilter={visualShadowFilter} paintVisualShadowFilter={paintVisualShadowFilter} />
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}
@@ -700,11 +705,11 @@ const CATEGORY_ICON: Record<string, string> = {
   milestone: '🔥', follow: '❤️', announcement: '📣',
 };
 
-function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource, visualShadowFilter }: {
+function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource, visualShadowFilter, paintVisualShadowFilter }: {
   msg: ParsedMessage; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; stroke:string;
   hideNames:boolean;
-  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean; visualShadowFilter:string;
+  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean; visualShadowFilter:string; paintVisualShadowFilter:string;
 }) {
   const isPaint = !!msg.identity.background;
   const pill = msg.identity.namePill?.split('|');
@@ -721,7 +726,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
        unaffected either way. The name carries no text-shadow: the paint's own
        drop-shadow filter is the shadow, and an inherited one muddies it. */
     ? { backgroundImage:msg.identity.background,
-        filter:[msg.identity.filter, visualShadowFilter].filter(Boolean).join(' ') || undefined,
+        filter:[msg.identity.filter, paintVisualShadowFilter].filter(Boolean).join(' ') || undefined,
         WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
         backgroundClip:'text', backgroundSize:'100% 100%',
         backgroundRepeat:'no-repeat',

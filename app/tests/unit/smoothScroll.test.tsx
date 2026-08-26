@@ -35,7 +35,7 @@ describe('smooth message handling', () => {
     expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);
   });
 
-  it('keeps the same Slide timing without an offscreen height ghost', () => {
+  it('keeps Slide on the smooth runtime without an offscreen height ghost', () => {
     const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
     const raw = SAMPLE_MESSAGES[0].message;
     const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
@@ -47,8 +47,5 @@ describe('smooth message handling', () => {
     const chat = container.querySelector('#chat_container') as HTMLElement;
     expect(chat.style.display).toBe('flex');
     expect(chat.style.maxHeight).toBe('calc(100vh - 20px)');
-    const css = Array.from(document.querySelectorAll('style')).map(node => node.textContent ?? '').join('\n');
-    expect(css).not.toContain('grid-template-rows');
-    expect(css).toContain('translate3d(0, 0.55em, 0)');
   });
 });

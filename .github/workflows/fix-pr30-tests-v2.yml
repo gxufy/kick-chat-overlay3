@@ -1,0 +1,75 @@
+name: Repair PR 30 test update runner
+
+on:
+  push:
+    branches: [perf/chat-burst-batching-pins-off]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/chat-burst-batching-pins-off
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply complete test update script
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/fix-pr30-tests.yml')
+          lines = path.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if "python - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PY')
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines[start:end])
+
+          old = '''    marker = f"it('{title}'"
+    start = text.find(marker)
+    if start < 0:
+        raise SystemExit(f"{path}: missing test {title!r}")'''
+          new = '''    markers = (f"it('{title}'", f'it("{title}"')
+    starts = [text.find(marker) for marker in markers]
+    start = max(starts)
+    if start < 0:
+        raise SystemExit(f"{path}: missing test {title!r}")'''
+          if old not in script:
+              raise SystemExit('replace_in_test marker block not found')
+          script = script.replace(old, new, 1)
+          exec(compile(script, '<pr30-test-update>', 'exec'))
+          PY
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Full unit suite
+        run: npm test
+
+      - name: Commit verified updates and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-pr30-tests.yml .github/workflows/fix-pr30-tests-v2.yml
+          git add \
+            app/tests/unit/multichatCatalog.test.ts \
+            app/tests/unit/overlayUrlStrings.test.ts \
+            app/tests/unit/classicGenerator.test.tsx \
+            app/tests/unit/multichatPreview.test.tsx \
+            app/tests/unit/previewContainment.test.tsx \
+            app/tests/unit/previewScale.test.tsx \
+            app/tests/unit/counterRegression.test.tsx
+          git commit -m "Update tests for pins-off workspace default"
+          git push origin HEAD:perf/chat-burst-batching-pins-off

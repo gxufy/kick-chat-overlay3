@@ -44,5 +44,11 @@ describe('smooth message handling', () => {
     expect(container.querySelector('[data-slide-ghost]')).toBeNull();
     expect(container.innerHTML).not.toContain('-9999px');
     expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
+    const chat = container.querySelector('#chat_container') as HTMLElement;
+    expect(chat.style.display).toBe('flex');
+    expect(chat.style.maxHeight).toBe('calc(100vh - 20px)');
+    const css = Array.from(document.querySelectorAll('style')).map(node => node.textContent ?? '').join('\n');
+    expect(css).not.toContain('grid-template-rows');
+    expect(css).toContain('translate3d(0, 0.55em, 0)');
   });
 });

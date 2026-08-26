@@ -117,11 +117,10 @@ function getStroke(s: string) {
 
 
 function SlideGroup({ children }: { children: React.ReactNode }) {
-  /* CSS grid can interpolate 0fr -> 1fr against intrinsic content height.
-     That gives the same 150ms empty-space opening before content is revealed,
-     without mounting an offscreen copy, forcing getBoundingClientRect(), or
-     coordinating React state with animation frames. The batch node stays
-     mounted, so a late repaint/deletion cannot replay the entrance. */
+  /* The batch enters layout at its real height immediately so the one scroll
+     follower can track the true bottom even while messages are bursting. The
+     visible entrance itself uses only transform/opacity; unlike grid-track or
+     height animation, it does not force layout on every animation frame. */
   return (
     <div className="gx-slide-group">
       <div className="gx-slide-content">{children}</div>
@@ -178,7 +177,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
   const fontCss    = overlayFontCss(cfg.font);
   
-  const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
+  /* Entrance style must not opt out of frame pacing. In particular slide is\n     the default generated animation and was the exact path that still fell\n     back to 200 ms / 5 Hz updates in OBS. */\n  const smoothRuntime = cfg.smoothScroll;
   const loaderPhase: StartupLoaderPhase = showLoader === true
     ? 'visible'
     : showLoader === false
@@ -329,28 +328,21 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           /* Only hint scrolling while the rAF follower is actually moving. */
           .gx-scroll-active { will-change: scroll-position; }
 
-          @keyframes gxSlideGroupOpen {
-            from { grid-template-rows: 0fr; }
-            to   { grid-template-rows: 1fr; }
-          }
           @keyframes gxSlideGroupReveal {
-            from { visibility: hidden; }
-            to   { visibility: visible; }
+            from { opacity: 0; transform: translate3d(0, 0.55em, 0); }
+            to   { opacity: 1; transform: translate3d(0, 0, 0); }
           }
           .gx-slide-group {
-            display: grid;
-            grid-template-rows: 0fr;
-            animation: gxSlideGroupOpen 150ms ease-in-out forwards;
+            overflow: hidden;
           }
           .gx-slide-content {
             min-height: 0;
-            overflow: hidden;
-            visibility: hidden;
-            animation: gxSlideGroupReveal 150ms step-end forwards;
+            animation: gxSlideGroupReveal 150ms ease-out both;
+            backface-visibility: hidden;
           }
           .gx-slide-group .gx-message-slide-in {
-            /* The measured ghost used to remount the visible row after 150ms,
-               so preserve that exact visible start time without ghost DOM. */
+            /* Keep the independent per-row slide from fighting the batch
+               entrance during its first 150 ms. */
             animation-delay: 150ms;
           }
           @keyframes gxFadeGroupIn {
@@ -361,7 +353,8 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             animation: gxFadeGroupIn 220ms ease-in-out;
           }
           @media (prefers-reduced-motion: reduce) {
-            .gx-message-slide-in { animation: none; }
+            .gx-message-slide-in,
+            .gx-slide-content { animation: none; }
           }
 
           
@@ -735,7 +728,7 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
         ...(oldNameShadow ? { filter:oldNameShadow, textShadow:'none' } : {}) };
 
   const visualPlatform = msg.displayPlatform ?? msg.platform;
-  const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;
+  const tag = visualPlatform ? sourceTag(visualPlatform, tagMode, visualShadowFilter) : null;
 
 
   const avatar = showAvatar && msg.avatar && (msg.platform === 'youtube' || msg.platform === 'tiktok') ? (

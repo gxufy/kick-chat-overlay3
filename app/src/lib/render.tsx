@@ -19,9 +19,9 @@ const iconImgStyle: React.CSSProperties = { height: '1em', width: 'auto', displa
 function providerIcon(p: Platform): React.ReactNode {
   switch (p) {
     case 'twitch':
-      return <img src="/platform-twitch.png" alt="Twitch" style={iconImgStyle} />;
+      return <img src="/platform-twitch.png" alt="Twitch" style={iconImgStyle} decoding="async" />;
     case 'tiktok':
-      return <img src="/platform-tiktok.png" alt="TikTok" style={iconImgStyle} />;
+      return <img src="/platform-tiktok.png" alt="TikTok" style={iconImgStyle} decoding="async" />;
     case 'kick':
       // kick's blocky K reads denser than the other marks — shrink ~20%
       // inside a 1em box so it aligns with the badge row
@@ -43,7 +43,7 @@ function providerIcon(p: Platform): React.ReactNode {
 export type SourceTagMode = 'none' | 'dot' | 'label' | 'icon';
 
 
-export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactNode {
+export function sourceTag(platform: Platform, mode: SourceTagMode, iconShadowFilter = ''): React.ReactNode {
   if (mode === 'none') return null;
   const meta = PROVIDERS[platform];
   if (mode === 'dot') {
@@ -61,7 +61,7 @@ export function sourceTag(platform: Platform, mode: SourceTagMode): React.ReactN
       /* Decorative for the same reason — the brand mark carries no unique text.
          providerIcon's <img> already uses an empty-intent alt via aria-hidden. */
       <span key="srctag" data-source-tag="icon" data-platform={platform} aria-hidden="true"
-        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em' }}>
+        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em',\n                 ...(iconShadowFilter ? { filter:iconShadowFilter } : {}) }}>
         {providerIcon(platform)}
       </span>
     );
@@ -139,7 +139,7 @@ export function readableColor(hex: string): string {
 }
 
 function emoteImg(key: string, src: string, alt: string, upscale = false): React.ReactNode {
-  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} onError={handleAssetError} />;
+  return <img key={key} className={`ck-emote${upscale ? ' ck-upscale' : ''}`} src={src} alt={alt} decoding="async" onError={handleAssetError} />;
 }
 
 /* Every badge <img> goes through here so the load-failure fallback is attached
@@ -157,6 +157,7 @@ function badgeImg(
       className={className}
       src={src}
       alt={alt}
+      decoding="async"
       style={backgroundColor ? { backgroundColor } : undefined}
       onError={handleAssetError}
     />

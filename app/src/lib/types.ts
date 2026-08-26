@@ -68,7 +68,7 @@ export interface UnifiedMessage {
   firstMessage?: boolean;
   
   avatar?: string;
-  /** Provider-native reply preview (currently Kick). */
+  /** Provider-native reply preview (currently Kick + Twitch). */
   reply?: UnifiedReply;
   /** Twitch source streamer identity used when Shared Chat display is enabled. */
   sourceChannel?: TwitchSourceChannel;

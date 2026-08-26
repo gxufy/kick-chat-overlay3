@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 
 
 import Head from 'next/head';
@@ -94,9 +94,9 @@ type SzKey = keyof typeof SIZE;
 
 
 function getShadowFilter(s: string) {
-  if (s === 'small')  return 'drop-shadow(2px 2px 0.2rem black)';
-  if (s === 'medium') return 'drop-shadow(2px 2px 0.35rem black)';
-  if (s === 'large')  return 'drop-shadow(2px 2px 0.5rem black)';
+  if (s === 'small')  return '2px 2px 0.2rem black';
+  if (s === 'medium') return '2px 2px 0.35rem black';
+  if (s === 'large')  return '2px 2px 0.5rem black';
   return '';
 }
 
@@ -171,6 +171,28 @@ function FadeGroup({ children }: { children: React.ReactNode }) {
   useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setOp(1))); }, []);
   return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
 }
+
+const MessageRow = memo(function MessageRow({
+  msg, fading, msgSlideIn, smoothRuntime, shadowVal, sz, emoteMaxH, emoteMaxW,
+  strokeVal, hideNames, tagMode, showAvatar, showSharedSource,
+}: {
+  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; smoothRuntime: boolean; shadowVal: string;
+  sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string; strokeVal: string;
+  hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
+}) {
+  return (
+    <div className={msgSlideIn ? 'gx-message-slide-in' : undefined} style={{
+      margin: '0 10px',
+      opacity: fading ? 0 : 1,
+      transition: fading ? 'opacity 400ms linear' : 'none',
+      ...(smoothRuntime && shadowVal ? { textShadow: shadowVal } : {}),
+    }}>
+      <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
+        stroke={strokeVal} hideNames={hideNames}
+        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+    </div>
+  );
+});
 
 export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false, sharedChatEnabled }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
@@ -273,32 +295,43 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     });
   }, [messages]);
 
-  /* Sync deletions while preserving batch identity for every surviving row. */
+  /* Sync deletions while preserving batch identity for every surviving row.
+     Returning the previous array when membership is unchanged avoids a redundant
+     full ChatOverlay render for every ordinary message arrival. */
   useEffect(() => {
     const ids = new Set(messages.map((message) => message.id));
-    setBatches((previous) => previous
-      .map((batch) => ({
-        ...batch,
-        messageIds: batch.messageIds.filter((id) => ids.has(id)),
-      }))
-      .filter((batch) => batch.messageIds.length));
+    setBatches((previous) => {
+      let changed = false;
+      const next: typeof previous = [];
+      for (const batch of previous) {
+        const messageIds = batch.messageIds.filter((id) => ids.has(id));
+        if (messageIds.length === batch.messageIds.length) {
+          next.push(batch);
+          continue;
+        }
+        changed = true;
+        if (messageIds.length) next.push({ ...batch, messageIds });
+      }
+      return changed ? next : previous;
+    });
   }, [messages]);
 
   const renderMsg = (msg: ParsedMessage) => (
-    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-message-slide-in' : undefined} style={{
-      margin: '0 10px',
-
-      opacity: fadingIds.has(msg.id) ? 0 : 1,
-      transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',
-      ...(smoothRuntime && filterVal ? { filter: filterVal } : {}),
-
-    }}>
-      <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        stroke={strokeVal} hideNames={cfg.hideNames??false}
-        tagMode={tagMode}
-        showAvatar={cfg.showAvatars ?? false}
-        showSharedSource={showSharedSource} />
-    </div>
+    <MessageRow key={msg.id}
+      msg={msg}
+      fading={fadingIds.has(msg.id)}
+      msgSlideIn={cfg.msgSlideIn ?? false}
+      smoothRuntime={smoothRuntime}
+      shadowVal={filterVal}
+      sz={sz}
+      emoteMaxH={emoteMaxH}
+      emoteMaxW={emoteMaxW}
+      strokeVal={strokeVal}
+      hideNames={cfg.hideNames ?? false}
+      tagMode={tagMode}
+      showAvatar={cfg.showAvatars ?? false}
+      showSharedSource={showSharedSource}
+    />
   );
 
   return (
@@ -345,7 +378,6 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           }
           .gx-message-slide-in {
             animation: gxMessageSlideIn 250ms ease-out;
-            will-change: transform, opacity;
             backface-visibility: hidden;
           }
           @media (prefers-reduced-motion: reduce) {
@@ -544,7 +576,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
-                ...(!smoothRuntime && filterVal ? { filter:filterVal } : {}),
+        ...(!smoothRuntime && filterVal ? { textShadow:filterVal } : {}),
         ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
       }}>
         {batches.map(({ id, messageIds }) => {
@@ -643,7 +675,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
     overflow:'hidden',
     opacity,
     transition:'opacity 400ms ease-in-out',
-    ...(filterVal ? { filter:filterVal } : {}),
+    ...(filterVal ? { textShadow:filterVal } : {}),
     ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
   };
 

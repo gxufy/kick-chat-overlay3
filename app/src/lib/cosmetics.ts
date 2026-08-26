@@ -68,7 +68,6 @@ export function createCosmeticsFetcher(
         ? (user as Record<string, unknown>).style
         : null;
       if (typeof style !== 'object' || style === null || Array.isArray(style)) {
-        seen.delete(`${b.platform}:${b.senderId}`);
         return;
       }
       const value = style as Record<string, unknown>;
@@ -111,8 +110,6 @@ export function createCosmeticsFetcher(
       if (ent.paint || ent.badge) {
         stores.entitlements[key] = ent;
         applied.push(key);
-      } else {
-        seen.delete(key);
       }
     });
     if (applied.length) onApplied(applied);

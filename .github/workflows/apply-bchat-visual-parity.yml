@@ -1,0 +1,367 @@
+name: Apply bChat visual parity
+
+on:
+  push:
+    branches: [perf/chatis-literal-breaks]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/chatis-literal-breaks
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply bChat visual parity
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def sub_once(path: str, pattern: str, replacement: str, flags=0) -> None:
+              p = Path(path)
+              text = p.read_text()
+              next_text, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {pattern[:100]}')
+              p.write_text(next_text)
+
+          overlay = 'app/src/components/overlay/ChatOverlay.tsx'
+
+          sub_once(
+              overlay,
+              r"function getShadowFilter\(s: string\) \{.*?function getStroke\(s: string\) \{.*?\n\}\n",
+              '''/* bChat/UChat applies one composite drop-shadow to each chat row rather
+             than separate text shadows to the body and username. Keep our four
+             legacy strength labels, but map them onto bChat's 0-10 opacity model;
+             `large` is the exact bChat default: 2px 2px 3px at full opacity. */
+          function getBChatMessageShadow(s: string) {
+            const alpha: Record<string, number> = { small: 0.4, medium: 0.7, large: 1 };
+            const opacity = alpha[s] ?? 0;
+            return opacity ? `drop-shadow(2px 2px 3px rgba(0, 0, 0, ${opacity}))` : '';
+          }
+
+          /* bChat's font stroke is four diagonal black text-shadows, not
+             -webkit-text-stroke. Scale the offsets for our existing thickness
+             choices so old URLs keep their useful thin/medium/thick vocabulary. */
+          function getBChatStroke(s: string) {
+            const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+            const px = width[s] ?? 0;
+            return px
+              ? `${px}px ${px}px 0 black, -${px}px ${px}px 0 black, ${px}px -${px}px 0 black, -${px}px -${px}px 0 black`
+              : '';
+          }
+
+          /* Painted names clear inherited text-shadow in bChat. When paint
+             shadows are disabled, bChat restores a WebKit stroke directly on
+             the painted glyphs; use the selected legacy width for parity. */
+          function getBChatPaintStroke(s: string) {
+            const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+            const px = width[s] ?? 0;
+            return px ? `${px}px black` : '';
+          }
+          ''',
+              flags=re.S,
+          )
+
+          sub_once(
+              overlay,
+              r"const MessageRow = memo\(function MessageRow\(\{.*?\n\}\);\n\nexport default function ChatOverlay",
+              '''const MessageRow = memo(function MessageRow({
+            msg, fading, msgSlideIn, messageShadowFilter, paintStrokeVal, sz, emoteMaxH, emoteMaxW,
+            hideNames, tagMode, showAvatar, showSharedSource,
+          }: {
+            msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; messageShadowFilter: string; paintStrokeVal: string;
+            sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string;
+            hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
+          }) {
+            return (
+              <div className={['gx-message-row', msgSlideIn ? 'gx-message-slide-in' : ''].filter(Boolean).join(' ')} style={{
+                margin: '0 10px',
+                opacity: fading ? 0 : 1,
+                transition: fading ? 'opacity 400ms linear' : 'none',
+                ...(messageShadowFilter ? { filter: messageShadowFilter } : {}),
+              }}>
+                <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
+                  paintStroke={paintStrokeVal} hideNames={hideNames}
+                  tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+              </div>
+            );
+          });
+
+          export default function ChatOverlay''',
+              flags=re.S,
+          )
+
+          sub_once(
+              overlay,
+              r"  const filterVal  = getShadowFilter\(cfg\.textShadow\);\n  const visualShadowFilter = getDropShadowFilter\(cfg\.textShadow\);\n  /\* paintShadows.*?\n  const paintVisualShadowFilter = cfg\.paintShadows === false \? '' : visualShadowFilter;\n  const strokeVal  = getStroke\(cfg\.stroke \?\? 'none'\);",
+              '''  const messageShadowFilter = getBChatMessageShadow(cfg.textShadow);
+            const strokeVal = getBChatStroke(cfg.stroke ?? 'none');
+            const paintStrokeVal = cfg.paintShadows === false ? getBChatPaintStroke(cfg.stroke ?? 'none') : '';''',
+              flags=re.S,
+          )
+
+          sub_once(
+              overlay,
+              r"      smoothRuntime=\{smoothRuntime\}\n      shadowVal=\{filterVal\}\n      visualShadowFilter=\{visualShadowFilter\}\n      paintVisualShadowFilter=\{paintVisualShadowFilter\}\n      sz=\{sz\}",
+              '''      messageShadowFilter={messageShadowFilter}
+                paintStrokeVal={paintStrokeVal}
+                sz={sz}''',
+          )
+
+          sub_once(
+              overlay,
+              r"      strokeVal=\{strokeVal\}\n      hideNames=",
+              '''      hideNames=''',
+          )
+
+          sub_once(
+              overlay,
+              r"          fontFamily=\{fontFamily\} filterVal=\{filterVal\} visualShadowFilter=\{visualShadowFilter\} paintVisualShadowFilter=\{paintVisualShadowFilter\} strokeVal=\{strokeVal\}",
+              '''          fontFamily={fontFamily} messageShadowFilter={messageShadowFilter} strokeVal={strokeVal} paintStrokeVal={paintStrokeVal}''',
+          )
+
+          sub_once(
+              overlay,
+              r"        \.\.\.\(!smoothRuntime && filterVal \? \{ textShadow:filterVal \} : \{\}\),\n        \.\.\.\(strokeVal \? \{ WebkitTextStroke:strokeVal \} : \{\}\),",
+              '''        ...(strokeVal ? { textShadow:strokeVal } : {}),''',
+          )
+
+          sub_once(
+              overlay,
+              r"function PinBanner\(\{ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, visualShadowFilter, paintVisualShadowFilter, strokeVal, hideNames, tagMode \}: \{\n  pinned: PinnedState; sz: typeof SIZE\[SzKey\];\n  emoteMaxH:string; emoteMaxW:string; fontFamily:string;\n  filterVal:string; visualShadowFilter:string; paintVisualShadowFilter:string; strokeVal:string;",
+              '''function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, messageShadowFilter, strokeVal, paintStrokeVal, hideNames, tagMode }: {
+            pinned: PinnedState; sz: typeof SIZE[SzKey];
+            emoteMaxH:string; emoteMaxW:string; fontFamily:string;
+            messageShadowFilter:string; strokeVal:string; paintStrokeVal:string;''',
+          )
+
+          sub_once(
+              overlay,
+              r"    \.\.\.\(filterVal \? \{ textShadow:filterVal \} : \{\}\),\n    \.\.\.\(strokeVal \? \{ WebkitTextStroke:strokeVal \} : \{\}\),",
+              '''    ...(strokeVal ? { textShadow:strokeVal } : {}),''',
+          )
+
+          sub_once(
+              overlay,
+              r"      <MsgLine msg=\{msg\} sz=\{sz\} emoteMaxH=\{emoteMaxH\} emoteMaxW=\{emoteMaxW\}\n        stroke=\{strokeVal\} hideNames=\{hideNames\}\n        tagMode=\{tagMode\} showAvatar=\{false\} showSharedSource=\{false\}\n        visualShadowFilter=\{visualShadowFilter\} paintVisualShadowFilter=\{paintVisualShadowFilter\} />",
+              '''      <div className="gx-message-row" style={messageShadowFilter ? { filter:messageShadowFilter } : undefined}>
+                <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
+                  paintStroke={paintStrokeVal} hideNames={hideNames}
+                  tagMode={tagMode} showAvatar={false} showSharedSource={false} />
+              </div>''',
+          )
+
+          sub_once(
+              overlay,
+              r"function MsgLine\(\{ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource, visualShadowFilter, paintVisualShadowFilter \}: \{\n  msg: ParsedMessage; sz: typeof SIZE\[SzKey\];\n  emoteMaxH:string; emoteMaxW:string; stroke:string;\n  hideNames:boolean;\n  tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean; visualShadowFilter:string; paintVisualShadowFilter:string;\n\}\) \{",
+              '''function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, paintStroke, hideNames, tagMode, showAvatar, showSharedSource }: {
+            msg: ParsedMessage; sz: typeof SIZE[SzKey];
+            emoteMaxH:string; emoteMaxW:string; paintStroke:string;
+            hideNames:boolean;
+            tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean;
+          }) {''',
+          )
+
+          sub_once(
+              overlay,
+              r"  const oldNameShadow = visualShadowFilter \|\| undefined;\n  const nameStyle: React\.CSSProperties = pill\n    \? \{ background:pill\[0\], color:pill\[1\], borderRadius:'0\.4em', padding:'0 0\.35em',\n        WebkitTextStroke:'0px', textShadow:'none', filter:oldNameShadow,\n        \}    : isPaint\n    /\* backgroundImage, not the background shorthand:.*?\n    : \{ color:msg\.identity\.color,\n        \.\.\.\(oldNameShadow \? \{ filter:oldNameShadow, textShadow:'none' \} : \{\}\) \};",
+              '''  const nameStyle: React.CSSProperties = pill
+              ? { background:pill[0], color:pill[1], borderRadius:'0.4em', padding:'0 0.35em',
+                  WebkitTextStroke:'0px', textShadow:'none' }
+              : isPaint
+              /* bChat's paint branch is deliberately isolated from the ordinary
+                 font stroke: the gradient clips to transparent glyphs, its own
+                 7TV shadow filter stays on the name, and inherited text-shadow is
+                 cleared. If paint shadows are disabled, bChat restores a direct
+                 WebKit stroke on the painted glyph instead. The row-level black
+                 drop-shadow remains outside this span, so it composes with the
+                 paint exactly once. */
+              ? { backgroundImage:msg.identity.background,
+                  filter:msg.identity.filter || undefined,
+                  WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
+                  backgroundClip:'text', backgroundSize:'100% 100%',
+                  backgroundRepeat:'no-repeat',
+                  WebkitTextStroke:paintStroke || '0px', textShadow:'none' }
+              : { color:msg.identity.color };''',
+              flags=re.S,
+          )
+
+          # Replace the old visual parity test with bChat-specific composition assertions.
+          Path('app/tests/unit/shadowVisualParity.test.tsx').write_text('''import { cleanup, render, screen } from '@testing-library/react';
+          import { afterEach, describe, expect, it } from 'vitest';
+          import ChatOverlay from '@/components/overlay/ChatOverlay';
+          import { MultichatQuerySchema } from '@/lib/multichatConfig';
+          import type { ParsedMessage } from '@/lib/kick';
+
+          const config = MultichatQuerySchema.parse({
+            twitch: 'gxufy',
+            textShadow: 'medium',
+            stroke: 'thin',
+            smoothScroll: '1',
+          });
+
+          function message(overrides: Partial<ParsedMessage['identity']> = {}): ParsedMessage {
+            return {
+              id: 'twitch:visual-shadow',
+              platform: 'twitch',
+              timestamp: 1,
+              identity: {
+                username: 'ColorUser',
+                color: '#ff4f8b',
+                background: '',
+                filter: '',
+                badges: [],
+                ...overrides,
+              },
+              message: ['hello'],
+            };
+          }
+
+          afterEach(cleanup);
+
+          describe('bChat shadow, stroke, and paint composition', () => {
+            it('uses bChat row drop-shadow geometry and diagonal text-shadow stroke', () => {
+              const { container } = render(
+                <ChatOverlay
+                  config={config}
+                  messages={[message()]}
+                  fadingIds={new Set()}
+                  pinnedMessage={null}
+                  showLoader={false}
+                />,
+              );
+
+              const name = screen.getByText('ColorUser');
+              const row = name.closest('.gx-message-row') as HTMLElement;
+              const chat = container.querySelector('#chat_container') as HTMLElement;
+
+              expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.7))');
+              expect(chat.style.textShadow).toBe('1px 1px 0 black, -1px 1px 0 black, 1px -1px 0 black, -1px -1px 0 black');
+              expect(chat.style.webkitTextStroke).toBe('');
+              expect(name.style.filter).toBe('');
+              expect(name.style.color).toBe('rgb(255, 79, 139)');
+            });
+
+            it('keeps 7TV paint shadow on the painted name and the bChat black shadow on the row', () => {
+              const { container } = render(
+                <ChatOverlay
+                  config={config}
+                  messages={[message({
+                    background: 'linear-gradient(90deg, #ff0055, #6f5cff)',
+                    filter: 'drop-shadow(0px 0px 2px rgba(255,0,85,0.8))',
+                  })]}
+                  fadingIds={new Set()}
+                  pinnedMessage={null}
+                  showLoader={false}
+                />,
+              );
+
+              const name = screen.getByText('ColorUser');
+              const row = name.closest('.gx-message-row') as HTMLElement;
+              expect(row.style.filter).toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.7))');
+              expect(name.style.filter).toBe('drop-shadow(0px 0px 2px rgba(255,0,85,0.8))');
+              expect(name.style.filter).not.toContain('2px 2px 3px');
+              expect(name.style.textShadow).toBe('none');
+              expect(container.querySelector('#chat_container')).not.toBeNull();
+            });
+
+            it('uses a direct paint stroke when paint shadows are off, just like bChat', () => {
+              render(
+                <ChatOverlay
+                  config={{ ...config, paintShadows: false }}
+                  messages={[message({
+                    background: 'linear-gradient(90deg, #ff0055, #6f5cff)',
+                    filter: '',
+                  })]}
+                  fadingIds={new Set()}
+                  pinnedMessage={null}
+                  showLoader={false}
+                />,
+              );
+
+              const name = screen.getByText('ColorUser');
+              expect(name.style.filter).toBe('');
+              expect(name.style.backgroundImage).toContain('linear-gradient');
+              expect(name.style.textShadow).toBe('none');
+              expect(name.style.webkitTextStroke).toBe('1px black');
+            });
+
+            it('maps large shadow to bChat full-opacity default and none to no filter', () => {
+              const large = render(
+                <ChatOverlay
+                  config={{ ...config, textShadow: 'large' }}
+                  messages={[message()]}
+                  fadingIds={new Set()}
+                  pinnedMessage={null}
+                  showLoader={false}
+                />,
+              );
+              expect((large.container.querySelector('.gx-message-row') as HTMLElement).style.filter)
+                .toBe('drop-shadow(2px 2px 3px rgba(0, 0, 0, 1))');
+              cleanup();
+
+              const none = render(
+                <ChatOverlay
+                  config={{ ...config, textShadow: 'none' }}
+                  messages={[message()]}
+                  fadingIds={new Set()}
+                  pinnedMessage={null}
+                  showLoader={false}
+                />,
+              );
+              expect((none.container.querySelector('.gx-message-row') as HTMLElement).style.filter).toBe('');
+            });
+          });
+          ''')
+          PY
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -q "getBChatMessageShadow" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "drop-shadow(2px 2px 3px rgba(0, 0, 0" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "gx-message-row" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "WebkitTextStroke:paintStroke" app/src/components/overlay/ChatOverlay.tsx
+          ! grep -q "getDropShadowFilter\|paintVisualShadowFilter\|visualShadowFilter" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "CHATIS_SLIDE_DURATION_MS = 150" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "CHATIS_JQUERY_TICK_MS = 13" app/src/components/overlay/ChatOverlay.tsx
+          grep -q "startBurstPresentationTicker" app/src/pages/multichat.tsx
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Focused visual and chat-break regression tests
+        run: cd app && npx vitest --config vitest.config.ts run tests/unit/shadowVisualParity.test.tsx tests/unit/rendererParity.test.tsx tests/unit/renderHotPathPerformance.test.tsx tests/unit/chatOverlayPerformance.test.tsx tests/unit/chatOverlayEntranceQueue.test.tsx tests/unit/chatBurstPresentation.test.ts tests/unit/smoothScroll.test.tsx
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Check process config
+        run: node -e "require('./.github/infra/ecosystem.config.js')"
+
+      - name: Commit implementation and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "gxufy"
+          git config user.email "150199274+gxufy@users.noreply.github.com"
+          git rm .github/workflows/apply-bchat-visual-parity.yml
+          git add app/src/components/overlay/ChatOverlay.tsx app/tests/unit/shadowVisualParity.test.tsx
+          git commit -m "Match bChat shadow and paint composition"
+          git push origin HEAD:perf/chatis-literal-breaks

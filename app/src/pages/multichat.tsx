@@ -391,7 +391,11 @@ function MultichatOverlay() {
     let sharedChatRuntime = cfg.sharedChatEnabled;
 
     
-    /* Frame pacing is independent of the entrance animation. The old slide\n       exclusion routed the default animation through a 200 ms publication\n       timer, so bursts could only become visible at ~5 cadence points/sec.\n       A dirty frame is still scheduled only on demand, never while idle. */\n    const smoothRuntime = cfg.smoothScroll;
+    /* Frame pacing is independent of the entrance animation. The old slide
+       exclusion routed the default animation through a 200 ms publication
+       timer, so bursts could only become visible at ~5 cadence points/sec.
+       A dirty frame is still scheduled only on demand, never while idle. */
+    const smoothRuntime = cfg.smoothScroll;
     let dirty = false;
     let flushFrame: number | null = null;
 

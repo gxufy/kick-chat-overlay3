@@ -61,7 +61,8 @@ export function sourceTag(platform: Platform, mode: SourceTagMode, iconShadowFil
       /* Decorative for the same reason — the brand mark carries no unique text.
          providerIcon's <img> already uses an empty-intent alt via aria-hidden. */
       <span key="srctag" data-source-tag="icon" data-platform={platform} aria-hidden="true"
-        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em',\n                 ...(iconShadowFilter ? { filter:iconShadowFilter } : {}) }}>
+        style={{ display:'inline-flex', verticalAlign:'-0.1em', marginRight:'0.4em',
+                 ...(iconShadowFilter ? { filter:iconShadowFilter } : {}) }}>
         {providerIcon(platform)}
       </span>
     );

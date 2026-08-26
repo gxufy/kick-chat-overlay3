@@ -177,7 +177,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
   const fontCss    = overlayFontCss(cfg.font);
   
-  /* Entrance style must not opt out of frame pacing. In particular slide is\n     the default generated animation and was the exact path that still fell\n     back to 200 ms / 5 Hz updates in OBS. */\n  const smoothRuntime = cfg.smoothScroll;
+  /* Entrance style must not opt out of frame pacing. In particular slide is
+     the default generated animation and was the exact path that still fell
+     back to 200 ms / 5 Hz updates in OBS. */
+  const smoothRuntime = cfg.smoothScroll;
   const loaderPhase: StartupLoaderPhase = showLoader === true
     ? 'visible'
     : showLoader === false

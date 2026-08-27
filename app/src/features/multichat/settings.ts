@@ -1,19 +1,18 @@
 /* MultiChat workspace control catalog.
  *
- * One entry per user-adjustable field of MultichatWorkspaceStyle. Every default
- * is read from MULTICHAT_WORKSPACE_DEFAULTS rather than written out, and every
- * option list comes from a tuple lib/multichatConfig exports, so this file
- * defines no values of its own — only labels, ordering, and control types.
+ * One entry per current user-adjustable field of MultichatWorkspaceStyle. Every
+ * default is read from MULTICHAT_WORKSPACE_DEFAULTS rather than written out,
+ * and every option list comes from a tuple lib/multichatConfig exports.
  *
  * `sourceTag` is a four-option select here, not the legacy `platformIcons`
- * boolean: generator state carries the full enum the overlay implements. The
- * legacy field stays on MultichatGeneratorStyle as a pinned compatibility shape
- * and appears in no catalog entry.
+ * boolean: generator state carries the full enum the overlay implements.
  *
  * NOT EXPOSED, deliberately:
  *   - ttsEnabled and showAvatars. The parser accepts them for URL
  *     compatibility and no runtime code reads them; they are
  *     listed in MULTICHAT_UNREAD_PARAMS.
+ *   - showPinEnabled and pinPlatforms. Pins are retired; the compatibility
+ *     fields remain in config so old URLs/callers parse but are forced off.
  *   - Channel fields. Those are platform descriptors, not settings.
  *
  * Browser-safe — no server-only imports, no secrets.
@@ -21,7 +20,6 @@
 import {
   MULTICHAT_ANIMATIONS,
   MULTICHAT_FONTS,
-  MULTICHAT_PLATFORMS,
   MULTICHAT_SOURCE_TAG_ORDER,
   MULTICHAT_STROKES,
   MULTICHAT_TEXT_SHADOWS,
@@ -56,12 +54,6 @@ const FONT_LABEL: Record<string, string> = {
 const FONT_OPTIONS: readonly SettingOption[] = optionsFrom(
   MULTICHAT_FONTS,
   (value) => FONT_LABEL[value] ?? titleCase(value),
-);
-
-/** Pin targets, in MULTICHAT_PLATFORMS order — the generator's chip order. */
-const PIN_OPTIONS: readonly SettingOption[] = optionsFrom(
-  MULTICHAT_PLATFORMS,
-  titleCase,
 );
 
 /** Platform tag modes, in workspace display order: icon, dot, label, none. */
@@ -111,8 +103,6 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'textShadow',
     type: 'select',
     label: 'Shadow',
-    /* 'small' — the generator's start, not the overlay's omission default of
-       'large'. The generator always writes the parameter, so they never meet. */
     options: optionsFrom(MULTICHAT_TEXT_SHADOWS, offFirst),
     default: D.textShadow,
   },
@@ -267,44 +257,13 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.hideNames,
   },
   {
-    key: 'showPinEnabled',
-    param: 'showPinEnabled',
-    type: 'toggle',
-    label: 'Pinned messages',
-    description: 'Show pinned messages from your platforms; the latest pin wins.',
-    default: D.showPinEnabled,
-  },
-  {
-    key: 'pinPlatforms',
-    param: 'pinPlatforms',
-    type: 'multiselect',
-    label: 'Pins from',
-    /* Gating is no longer static. `disabled` here could only ever be a constant,
-       so the Twitch requirement is expressed at runtime instead — the descriptor's
-       `optionAvailability` blocks just that one option and supplies the reason,
-       which changes as the user connects and edits the channel.
-       So this description states only what is always true; anything conditional
-       is the runtime's to say, and saying it here too would go stale the moment
-       someone connects. Twitch is absent from the workspace defaults, so nothing
-       here selects an option that would not work. */
-    description:
-      'An empty selection turns pins off for every platform. Native Twitch pins additionally require a connected Twitch account matching the Twitch channel above.',
-    options: PIN_OPTIONS,
-    default: D.pinPlatforms,
-  },
-  {
     key: 'sourceTag',
     param: 'sourceTag',
     type: 'select',
     label: 'Platform tag',
     /* All four values the overlay implements. The legacy platformIcons boolean
        could only reach 'icon' and 'none'; workspace state carries the enum, and
-       the authoritative serializer emits 'dot' and 'label' directly.
-       The description explains the one asymmetry a user can actually observe:
-       'icon' is the legacy omitted-parameter case, so with a single configured
-       platform the overlay's own pre-existing default applies and no marker is
-       drawn. Explaining it is the fix — changing the serializer would restyle
-       every URL already in an OBS scene. */
+       the authoritative serializer emits 'dot' and 'label' directly. */
     description:
       'Colored dot, Platform name, and Off apply exactly as chosen. Platform icon keeps the original URL format, where a single configured platform shows no marker; with several platforms, icons identify each message’s source.',
     options: SOURCE_TAG_OPTIONS,

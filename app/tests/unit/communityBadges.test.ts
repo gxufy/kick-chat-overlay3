@@ -105,6 +105,38 @@ describe('Twitch community badges', () => {
     });
   });
 
+  it('prefers the official FFZ badge when a mirror returns the exact same art', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.frankerfacez.com/v1/badges') {
+        return jsonResponse({
+          badges: [{ id: 7, title: 'FFZ Supporter', urls: { '4': 'https://cdn.example/ffz.png' } }],
+          users: { '7': ['TargetUser'] },
+        });
+      }
+      if (url === 'https://turteg-api.xslash.ovh/v1/ffz/badges') {
+        return jsonResponse({
+          badges: [{
+            id: 99,
+            title: 'Mirrored FFZ Supporter',
+            image: 'https://cdn.example/ffz.png',
+            users: ['123'],
+          }],
+        });
+      }
+      return jsonResponse({}, false);
+    }));
+
+    const badges = await resolveTwitchCommunityBadges('123', 'targetuser');
+
+    expect(badges.filter((badge) => badge.url === 'https://cdn.example/ffz.png')).toEqual([
+      {
+        type: 'community:ffz:7',
+        url: 'https://cdn.example/ffz.png',
+      },
+    ]);
+  });
+
   it('resolves Chatty and Chatsen supporter badges by Twitch identity', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

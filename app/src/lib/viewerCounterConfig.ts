@@ -109,7 +109,7 @@ export const DEFAULT_STYLE: ViewerCounterStyle = {
   combined: true,
   icons: true,
   bg: true,
-  textShadow: 'small',
+  textShadow: 'large',
   stroke: 'none',
   align: 'left',
 };

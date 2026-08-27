@@ -138,6 +138,7 @@ const MC_EMOTE_SCALE = textSetting(MC, 'emoteScale');
 const MC_SOURCE_TAG = selectSetting(MC, 'sourceTag');
 const MC_SEVENTV_EMOTES = toggleSetting(MC, 'sevenTVEmotesEnabled');
 const MC_SEVENTV_COSMETICS = toggleSetting(MC, 'sevenTVCosmeticsEnabled');
+const MC_COMMUNITY_BADGES = toggleSetting(MC, 'showCommunityBadges');
 const MC_PAINT_SHADOWS = toggleSetting(MC, 'paintShadows');
 const MC_FADE_ENABLED = toggleSetting(MC, 'fadeEnabled');
 const MC_FADE = textSetting(MC, 'fade');
@@ -1221,6 +1222,7 @@ export default function ClassicGenerator({
             <p className="col-heading">Behaviour</p>
             {chat(MC_SEVENTV_EMOTES)}
             {chat(MC_SEVENTV_COSMETICS)}
+            {chat(MC_COMMUNITY_BADGES)}
             {chat(MC_PAINT_SHADOWS)}
             {chat(MC_MSG_BOLD)}
             {chat(MC_MSG_CAPS)}

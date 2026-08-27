@@ -136,6 +136,8 @@ export const MultichatQuerySchema = z.object({
   tiktok: z.string().optional(),
   sevenTVCosmeticsEnabled: z.string().optional().transform(v => v !== 'false'),
   sevenTVEmotesEnabled: z.string().optional().transform(v => v !== 'false'),
+  /* Third-party/community badges (Chatterino, FFZ community, Homies, etc.). */
+  showCommunityBadges: z.string().optional().transform(v => v !== 'false'),
   textShadow: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_TEXT_SHADOWS, 'large')),
   textSize: z.string().optional().transform(v =>
@@ -274,6 +276,8 @@ export type MultichatChannels = {
 export type MultichatGeneratorStyle = {
   sevenTVEmotesEnabled: boolean;
   sevenTVCosmeticsEnabled: boolean;
+  /** Show third-party/community badges while preserving native platform badges. */
+  showCommunityBadges: boolean;
   textSize: string;
   font: string;
   textShadow: string;
@@ -326,6 +330,7 @@ export type MultichatGeneratorStyle = {
 export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   sevenTVEmotesEnabled: true,
   sevenTVCosmeticsEnabled: true,
+  showCommunityBadges: true,
   textSize: 'medium',
   font: 'opensans',
   textShadow: 'large',
@@ -428,6 +433,7 @@ export function buildMultichatQuery(
   const { kick: channel, twitch, youtube, tiktok } = channels;
   const {
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
+    showCommunityBadges,
     textSize, font, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool,
     mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, showSystemMsgs, showHypeTrains, showFirstMessages, showRedeems, modAction,
@@ -448,6 +454,7 @@ export function buildMultichatQuery(
     ...(!channel.trim() && !twitch.trim() && !youtube.trim() && !tiktok.trim() ? { kick: 'yourchannel' } : {}),
     sevenTVEmotesEnabled:    String(sevenTVE),
     sevenTVCosmeticsEnabled: String(sevenTVC),
+    ...(showCommunityBadges ? {} : { showCommunityBadges: 'false' }),
     textSize, font, textShadow, stroke, animation,
     ...(fadeBool && fade !== '' ? { fade } : {}),
     /* Same slot the legacy sourceTag=none occupied — position is part of the

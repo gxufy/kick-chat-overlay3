@@ -148,6 +148,14 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.sevenTVCosmeticsEnabled,
   },
   {
+    key: 'showCommunityBadges',
+    param: 'showCommunityBadges',
+    type: 'toggle',
+    label: 'Show community badges',
+    description: 'Show third-party badges from Chatterino, FFZ community badges, Chatterino Homies, Moltorino and similar registries. Native platform badges such as Moderator, VIP, Subscriber and Broadcaster are unaffected.',
+    default: D.showCommunityBadges,
+  },
+  {
     key: 'fadeEnabled',
     param: 'fade',
     type: 'toggle',

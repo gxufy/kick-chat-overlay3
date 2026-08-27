@@ -143,6 +143,14 @@ function prefixText(prefix: string, text: string, emotes: UnifiedEmote[]): { tex
   };
 }
 
+/** The overlay URL is immutable for one connector lifetime, so this is a cheap
+ * runtime gate that also keeps tests/server callers default-on when no window
+ * exists. */
+function communityBadgesEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  return new URLSearchParams(window.location.search).get('showCommunityBadges') !== 'false';
+}
+
 export interface TwitchConnectorOpts extends ConnectorCallbacks {
   channel: string;
   /** room-id from ROOMSTATE — used for 7TV Twitch channel emotes */
@@ -216,7 +224,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   }
 
   function enrichCommunityBadges(message: UnifiedMessage): void {
-    if (!message.senderId) return;
+    if (!communityBadgesEnabled() || !message.senderId) return;
     const ownedGeneration = generation;
     void resolveTwitchCommunityBadges(message.senderId, message.username).then(communityBadges => {
       if (stopped || generation !== ownedGeneration || !communityBadges.length) return;

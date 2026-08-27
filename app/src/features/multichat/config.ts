@@ -26,7 +26,6 @@ import {
   type MultichatChannels,
   type MultichatFont,
   type MultichatPlatform,
-  type MultichatSourceTag,
   type MultichatStroke,
   type MultichatTextShadow,
   type MultichatTextSize,

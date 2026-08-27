@@ -472,7 +472,18 @@ function dedupe(assignments: Assignment[]): Assignment[] {
     seen.add(key);
     out.push(badge);
   }
-  return out;
+
+  /* Some community registries mirror FFZ's own badge catalog. If the exact art
+     is already present from the official FrankerFaceZ API, keep that canonical
+     FFZ assignment and suppress only the mirrored copy. Do not collapse normal
+     cross-provider badges just because two projects intentionally share art. */
+  const officialFfzUrls = new Set(
+    out.filter((badge) => badge.provider === 'ffz').map((badge) => badge.url),
+  );
+  if (officialFfzUrls.size === 0) return out;
+  return out.filter(
+    (badge) => badge.provider === 'ffz' || !officialFfzUrls.has(badge.url),
+  );
 }
 
 function applyProviderMultiplicity(assignments: Assignment[]): Assignment[] {

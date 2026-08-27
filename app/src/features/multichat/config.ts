@@ -138,6 +138,7 @@ export function normalizeMultichatStyle(
       style.sevenTVCosmeticsEnabled,
       d.sevenTVCosmeticsEnabled,
     ),
+    showCommunityBadges: keepBoolean(style.showCommunityBadges, d.showCommunityBadges),
     textSize: keepEnum(style.textSize, MULTICHAT_TEXT_SIZES, d.textSize as MultichatTextSize),
     font: keepEnum(style.font, MULTICHAT_FONTS, d.font as MultichatFont),
     textShadow: keepEnum(

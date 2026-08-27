@@ -7,19 +7,21 @@
  * `sourceTag` is a four-option select here, not the legacy `platformIcons`
  * boolean: generator state carries the full enum the overlay implements.
  *
- * NOT EXPOSED, deliberately:
- *   - ttsEnabled and showAvatars. The parser accepts them for URL
- *     compatibility and no runtime code reads them; they are
- *     listed in MULTICHAT_UNREAD_PARAMS.
- *   - showPinEnabled and pinPlatforms. Pins are retired; the compatibility
- *     fields remain in config so old URLs/callers parse but are forced off.
- *   - Channel fields. Those are platform descriptors, not settings.
+ * RETIRED / HIDDEN:
+ *   - showPinEnabled and pinPlatforms remain addressable descriptors because the
+ *     Classic layout resolves every descriptor at module scope, but both are
+ *     hidden. ClassicSetting honors `hidden` by returning null, so no pin control
+ *     is shown while old internal lookups remain safe.
+ *   - ttsEnabled and showAvatars are parser compatibility fields and are not
+ *     catalog settings.
+ *   - Channel fields are platform descriptors, not settings.
  *
  * Browser-safe — no server-only imports, no secrets.
  */
 import {
   MULTICHAT_ANIMATIONS,
   MULTICHAT_FONTS,
+  MULTICHAT_PLATFORMS,
   MULTICHAT_SOURCE_TAG_ORDER,
   MULTICHAT_STROKES,
   MULTICHAT_TEXT_SHADOWS,
@@ -54,6 +56,12 @@ const FONT_LABEL: Record<string, string> = {
 const FONT_OPTIONS: readonly SettingOption[] = optionsFrom(
   MULTICHAT_FONTS,
   (value) => FONT_LABEL[value] ?? titleCase(value),
+);
+
+/** Retained only for the hidden compatibility pin descriptor. */
+const PIN_OPTIONS: readonly SettingOption[] = optionsFrom(
+  MULTICHAT_PLATFORMS,
+  titleCase,
 );
 
 /** Platform tag modes, in workspace display order: icon, dot, label, none. */
@@ -121,8 +129,6 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'emoteScale',
     type: 'text',
     label: 'Emote scale (0–3)',
-    /* Text, not number: the generator holds raw input and '' means "omit the
-       parameter", which a numeric control cannot express. */
     description: 'Blank uses the overlay default.',
     placeholder: '1.0',
     default: D.emoteScale,
@@ -141,10 +147,6 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     label: '7TV Cosmetics',
     default: D.sevenTVCosmeticsEnabled,
   },
-  /* The fade pair, kept as the two fields the generator actually holds. The
-     toggle gates emission; the text field carries the seconds. Both are needed
-     because `fade` is raw input whose emptiness also suppresses the parameter,
-     so neither field can be derived from the other. */
   {
     key: 'fadeEnabled',
     param: 'fade',
@@ -237,8 +239,7 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'modAction',
     type: 'toggle',
     label: 'Moderation actions',
-    description:
-      'Deletions, timeouts, bans and clears remove messages from the overlay.',
+    description: 'Deletions, timeouts, bans and clears remove messages from the overlay.',
     default: D.modAction,
   },
   {
@@ -257,15 +258,32 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     default: D.hideNames,
   },
   {
+    key: 'showPinEnabled',
+    param: 'showPinEnabled',
+    type: 'toggle',
+    label: 'Pinned messages',
+    description: 'Retired compatibility setting. Pins are disabled.',
+    hidden: true,
+    disabled: true,
+    default: D.showPinEnabled,
+  },
+  {
+    key: 'pinPlatforms',
+    param: 'pinPlatforms',
+    type: 'multiselect',
+    label: 'Pins from',
+    description: 'Retired compatibility setting. Pins are disabled.',
+    options: PIN_OPTIONS,
+    hidden: true,
+    disabled: true,
+    default: D.pinPlatforms,
+  },
+  {
     key: 'sourceTag',
     param: 'sourceTag',
     type: 'select',
     label: 'Platform tag',
-    /* All four values the overlay implements. The legacy platformIcons boolean
-       could only reach 'icon' and 'none'; workspace state carries the enum, and
-       the authoritative serializer emits 'dot' and 'label' directly. */
-    description:
-      'Colored dot, Platform name, and Off apply exactly as chosen. Platform icon keeps the original URL format, where a single configured platform shows no marker; with several platforms, icons identify each message’s source.',
+    description: 'Colored dot, Platform name, and Off apply exactly as chosen. Platform icon keeps the original URL format, where a single configured platform shows no marker; with several platforms, icons identify each message’s source.',
     options: SOURCE_TAG_OPTIONS,
     default: D.sourceTag,
   },
@@ -274,8 +292,7 @@ export const MULTICHAT_CATALOG: SettingCatalog<MultichatWorkspaceStyle> = [
     param: 'mentionColor',
     type: 'toggle',
     label: 'Colored mentions',
-    description:
-      'Highlight @mentions in the mentioned user’s name color. They must have chatted before.',
+    description: 'Highlight @mentions in the mentioned user’s name color. They must have chatted before.',
     default: D.mentionColor,
   },
   {

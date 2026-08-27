@@ -2,16 +2,18 @@
  *
  * This was previously a closure inside the overlay route's connect effect, which
  * meant nothing else could perform the conversion without reimplementing it.
- * Four appearance settings are applied *here* rather than in ChatOverlay:
+ * Five appearance settings are applied *here* rather than in ChatOverlay:
  *
  *   sevenTVEmotesEnabled     decides whether third-party emotes are swapped into
  *                            the text at all (by passing an empty emote list)
  *   sevenTVCosmeticsEnabled  decides whether a paint or 7TV badge is attached
+ *   showCommunityBadges      decides whether third-party/community badge nodes
+ *                            are rendered while leaving native badges untouched
  *   paintShadows             decides whether a paint contributes drop-shadows
  *   mentionColor             decides whether @tokens become coloured strongs
  *
  * A caller that skipped this step and built ParsedMessage values by hand would
- * therefore be unable to respond to any of those four, however faithfully it
+ * therefore be unable to respond to any of those settings, however faithfully it
  * copied the rest. That is why the generator's preview renders fixtures through
  * this function instead of shipping pre-rendered nodes: the settings have to pass
  * through the same code on the way to the screen.
@@ -71,6 +73,8 @@ export type MessageCosmetics = {
 export type MessageStyleConfig = {
   sevenTVEmotesEnabled: boolean;
   sevenTVCosmeticsEnabled: boolean;
+  /** Omitted means on, preserving existing callers and old overlay URLs. */
+  showCommunityBadges?: boolean;
   paintShadows: boolean;
 };
 
@@ -250,7 +254,10 @@ export function buildParsedMessage(
   mentions: MentionContext,
   timestamp: number,
 ): ParsedMessage {
-  const badgeNodes = renderBadges(um, cosmetics.channel?.subscriber_badges ?? []);
+  const badgeMessage = cfg.showCommunityBadges === false
+    ? { ...um, badges: um.badges.filter((badge) => !badge.type.startsWith('community:')) }
+    : um;
+  const badgeNodes = renderBadges(badgeMessage, cosmetics.channel?.subscriber_badges ?? []);
   let background = '';
   let filter = '';
 

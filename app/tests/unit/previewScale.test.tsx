@@ -5,7 +5,7 @@
  * intentionally ignored by the serializer and therefore cannot resurrect a pin
  * banner in Preview Data.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import ClassicChatPreview from '@/components/classic/ClassicChatPreview';
 import IsolatedPreviewFrame, {

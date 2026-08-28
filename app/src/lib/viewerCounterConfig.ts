@@ -108,7 +108,7 @@ export type ViewerCounterConfig = {
 export const DEFAULT_STYLE: ViewerCounterStyle = {
   combined: true,
   icons: true,
-  bg: true,
+  bg: false,
   textShadow: 'large',
   stroke: 'none',
   align: 'left',
@@ -141,9 +141,15 @@ function pickEnum<T extends string>(
   return fallback;
 }
 
-/** Booleans default to true unless explicitly 'false'. */
-function boolTrueDefault(raw: unknown): boolean {
-  return one(raw) !== 'false';
+/**
+ * Parse a boolean with an authoritative fallback when the parameter is omitted
+ * or is not a single string. Explicit values preserve the historical rule that
+ * only the literal string 'false' disables a default-on flag.
+ */
+function boolDefault(raw: unknown, fallback: boolean): boolean {
+  const value = one(raw);
+  if (!value) return fallback;
+  return value !== 'false';
 }
 
 /** Keep an enum value if allowed, else fall back to the authoritative default. */
@@ -214,9 +220,9 @@ export function parseViewerCounterConfig(
   return {
     channels,
     style: {
-      combined: boolTrueDefault(query.combined),
-      icons: boolTrueDefault(query.icons),
-      bg: boolTrueDefault(query.bg),
+      combined: boolDefault(query.combined, DEFAULT_STYLE.combined),
+      icons: boolDefault(query.icons, DEFAULT_STYLE.icons),
+      bg: boolDefault(query.bg, DEFAULT_STYLE.bg),
       textShadow: pickEnum(
         query.textShadow,
         TEXT_SHADOWS,
@@ -262,13 +268,13 @@ export function buildViewerCounterQuery(
      parameter is now Partial so the type matches reality and the coercion is
      explicit.
 
-     Emitting 'undefined' is worse than cosmetic: boolTrueDefault treats anything
-     other than 'false' as true, so combined=undefined parses back as ON. Someone
-     who switched Combined off and copied the URL got one that reads as on, with
-     nothing to indicate the setting was lost.
+     Emitting 'undefined' is worse than cosmetic: the parser must not guess at a
+     missing runtime value. Normalization makes each missing field inherit its
+     authoritative default before serialization.
 
      Normalizing a complete style is a no-op, so every already-copied URL and
-     every existing caller serializes byte-identically. */
+     every existing caller serializes byte-identically except where a caller was
+     relying on the old pill-background default. */
   const safe = normalizeCounterStyle(style);
 
   params.set('combined', String(safe.combined));

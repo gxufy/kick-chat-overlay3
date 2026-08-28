@@ -153,6 +153,13 @@ export const MULTICHAT_COMMANDS: readonly MultichatCommand[] = [
     detail: 'Targets the matching gxufy.com counter source generated from the same channel set.',
   },
   {
+    name: 'events',
+    syntax: '!multichat events <on|off|feature> [on|off]',
+    summary: 'Turns notification/event features on or off without reloading the source.',
+    detail:
+      'Use events on/off for everything, or target subs, gifts, raids, cheers, milestones, watchstreaks, follows, announcements, hypetrain, firstmessages, or redeems. Watch streaks share the milestone event category.',
+  },
+  {
     name: 'refresh',
     syntax: '!multichat refresh [emotes]',
     summary: 'Reloads 7TV, BTTV, and FFZ emotes without reloading the source.',

@@ -43,6 +43,7 @@ import {
   type MentionContext,
 } from './render';
 import { handleAssetError } from './render/imageFallback';
+import { runtimeEventMessageVisible } from './multichatEventRuntime';
 import type { Platform, UnifiedMessage } from './types';
 
 
@@ -136,6 +137,7 @@ export function buildMessageFilter(
        connector, not typed by the chatter, so blacklisting "!" should not hide a
        subscription. */
     if (um.kind === 'chat' && prefixBlacklist.some((p) => um.text.startsWith(p))) return false;
+    if (!runtimeEventMessageVisible(um)) return false;
     if (um.kind === 'system' && !cfg.showSystemMsgs) return false;
     if (um.firstMessage && !cfg.showFirstMessages) return false;
     if (um.redeem && !cfg.showRedeems) return false;

@@ -472,27 +472,35 @@ function dedupe(assignments: Assignment[]): Assignment[] {
     seen.add(key);
     out.push(badge);
   }
-
-  /* Some community registries mirror FFZ's own badge catalog. If the exact art
-     is already present from the official FrankerFaceZ API, keep that canonical
-     FFZ assignment and suppress only the mirrored copy. Do not collapse normal
-     cross-provider badges just because two projects intentionally share art. */
-  const officialFfzUrls = new Set(
-    out.filter((badge) => badge.provider === 'ffz').map((badge) => badge.url),
-  );
-  if (officialFfzUrls.size === 0) return out;
-  return out.filter(
-    (badge) => badge.provider === 'ffz' || !officialFfzUrls.has(badge.url),
-  );
+  return out;
 }
 
 function applyProviderMultiplicity(assignments: Assignment[]): Assignment[] {
-  const blue = assignments.filter((badge) => badge.provider === 'bluzyrino');
-  if (blue.length <= 1) return assignments;
-  const keep = blue[blue.length - 1];
-  return assignments.filter((badge) => badge.provider !== 'bluzyrino' || badge === keep);
-}
+  let out = assignments;
 
+  const blue = out.filter((badge) => badge.provider === 'bluzyrino');
+  if (blue.length > 1) {
+    const keep = blue[blue.length - 1];
+    out = out.filter((badge) => badge.provider !== 'bluzyrino' || badge === keep);
+  }
+
+  /* Turteg's /v1/ffz/badges feed mirrors the FFZ badge family. Treat the
+     official FrankerFaceZ API as canonical and allow only one FFZ-family badge
+     per chatter, regardless of badge id, image size, CDN URL, or which identity
+     index matched it. This prevents a visually identical FFZ badge from being
+     rendered twice when the mirror and official API describe the same user. */
+  const officialFfz = out.filter((badge) => badge.provider === 'ffz');
+  const mirroredFfz = out.filter((badge) => badge.provider === 'turteg');
+  if (officialFfz.length || mirroredFfz.length) {
+    const keep = officialFfz[officialFfz.length - 1]
+      ?? mirroredFfz[mirroredFfz.length - 1];
+    out = out.filter(
+      (badge) => (badge.provider !== 'ffz' && badge.provider !== 'turteg') || badge === keep,
+    );
+  }
+
+  return out;
+}
 
 export async function resolveTwitchCommunityBadges(
   userId: string,

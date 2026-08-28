@@ -39,8 +39,8 @@ describe('serialization', () => {
     const params = new URLSearchParams(query);
     expect(params.get('combined')).toBe('true');
     expect(params.get('icons')).toBe('true');
-    expect(params.get('bg')).toBe('true');
-    expect(params.get('textShadow')).toBe('small');
+    expect(params.get('bg')).toBe('false');
+    expect(params.get('textShadow')).toBe('large');
     expect(params.get('stroke')).toBe('none');
     expect(params.has('align')).toBe(false);
   });

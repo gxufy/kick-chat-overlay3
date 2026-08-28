@@ -29,6 +29,10 @@ import {
   MULTICHAT_COMMAND_MIN_ACCESS,
   MULTICHAT_COMMAND_TRIGGER,
 } from './multichatCommands';
+import {
+  setRuntimeEventFeatureVisible,
+  type MultichatRuntimeEventTarget,
+} from './multichatEventRuntime';
 
 /** Both accepted trigger words, primary first. */
 export const MULTICHAT_TRIGGERS = [
@@ -43,6 +47,47 @@ export const YT_PRESETS: Readonly<Record<string, string>> = {
   'dc-ping': 'jiWj1zZlRjQ',
   rickroll: 'dQw4w9WgXcQ',
   'win-error': 'v76-ChTSLJk',
+};
+
+const EVENT_TARGETS: Readonly<Record<string, MultichatRuntimeEventTarget>> = {
+  subs: 'subscription',
+  sub: 'subscription',
+  subscriptions: 'subscription',
+  subscription: 'subscription',
+  gifts: 'gift',
+  gift: 'gift',
+  raids: 'raid',
+  raid: 'raid',
+  cheers: 'cheer',
+  cheer: 'cheer',
+  milestones: 'milestone',
+  milestone: 'milestone',
+  watchstreaks: 'milestone',
+  watchstreak: 'milestone',
+  follows: 'follow',
+  follow: 'follow',
+  announcements: 'announcement',
+  announcement: 'announcement',
+  hypetrain: 'hypetrain',
+  hype: 'hypetrain',
+  firstmessages: 'firstmessages',
+  firstmessage: 'firstmessages',
+  redeems: 'redeems',
+  redeem: 'redeems',
+};
+
+const EVENT_LABELS: Readonly<Record<MultichatRuntimeEventTarget, string>> = {
+  all: 'Events',
+  subscription: 'Subscriptions',
+  gift: 'Gifts',
+  raid: 'Raids',
+  cheer: 'Cheers',
+  milestone: 'Milestones / watch streaks',
+  follow: 'Follows',
+  announcement: 'Announcements',
+  hypetrain: 'Hype Train',
+  firstmessages: 'First messages',
+  redeems: 'Redeems',
 };
 
 /** Float slots, one per concurrent on-screen element. */
@@ -334,6 +379,26 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
       .catch(() => host.showFloat(FLOAT_EMOTES, '❌ Emote reload failed', 2000, 0.7));
   }
 
+  function runEvents(command: ParsedCommand): boolean {
+    const args = command.args.map((arg) => arg.toLowerCase());
+    let target: MultichatRuntimeEventTarget | undefined;
+    let action: string | undefined;
+
+    if (args.length === 1 && (args[0] === 'on' || args[0] === 'off')) {
+      target = 'all';
+      action = args[0];
+    } else if (args.length === 2) {
+      target = EVENT_TARGETS[args[0]];
+      action = args[1];
+    }
+
+    if (!target || (action !== 'on' && action !== 'off')) return false;
+    const visible = action === 'on';
+    setRuntimeEventFeatureVisible(target, visible);
+    host.showFloat(FLOAT_NOTICE, `${EVENT_LABELS[target]} ${visible ? 'ON' : 'OFF'}`, 2500);
+    return true;
+  }
+
   function runTts(command: ParsedCommand): void {
     /* `rest` is everything after the command word, so the trigger and the word
        `tts` are already gone — the previous regex-strip spoke the whole message
@@ -422,6 +487,9 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
         case 'counterbgoff':
           host.setCounterBackground(false);
           host.showFloat(FLOAT_NOTICE, 'Counter background OFF', 2500);
+          break;
+        case 'events':
+          if (!runEvents(command)) return null;
           break;
         case 'refresh':
           runRefresh(command);

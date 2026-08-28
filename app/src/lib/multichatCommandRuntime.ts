@@ -381,6 +381,15 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
 
   function runEvents(command: ParsedCommand): boolean {
     const args = command.args.map((arg) => arg.toLowerCase());
+    if (args.length === 0) {
+      host.showFloat(
+        FLOAT_NOTICE,
+        'Usage: !multichat events off | events on | events <feature> <on|off>',
+        5000,
+      );
+      return true;
+    }
+
     let target: MultichatRuntimeEventTarget | undefined;
     let action: string | undefined;
 

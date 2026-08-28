@@ -137,7 +137,12 @@ describe('registration boundary', () => {
     expect(TOOLS).toHaveLength(2);
     expect(TOOLS[0]?.id).toBe('multichat');
     expect(TOOL_IDS).toEqual(['multichat', 'counter']);
-    expect(findTool('multichat')).toBe(multichatTool);
+    const registered = findTool('multichat');
+    expect(registered).toBe(TOOLS[0]);
+    expect(registered?.id).toBe(multichatTool.id);
+    expect(registered?.label).toBe(multichatTool.label);
+    expect(registered?.overlayRoute).toBe(multichatTool.overlayRoute);
+    expect(registered?.obs).toEqual(multichatTool.obs);
   });
 
   it('keeps /multichat as the overlay route', () => {

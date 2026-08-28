@@ -137,6 +137,47 @@ describe('Twitch community badges', () => {
     ]);
   });
 
+  it('keeps only one FFZ-family badge per chatter even when ids and image URLs differ', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.frankerfacez.com/v1/badges') {
+        return jsonResponse({
+          badges: [
+            { id: 7, title: 'Old FFZ Supporter', urls: { '4': 'https://cdn.example/ffz-old.png' } },
+            { id: 8, title: 'Current FFZ Supporter', urls: { '4': 'https://cdn.example/ffz-current.png' } },
+          ],
+          users: {
+            '7': ['TargetUser'],
+            '8': ['TargetUser'],
+          },
+        });
+      }
+      if (url === 'https://turteg-api.xslash.ovh/v1/ffz/badges') {
+        return jsonResponse({
+          badges: [{
+            id: 99,
+            title: 'Mirrored FFZ Supporter',
+            image: 'https://mirror.example/ffz-supporter.png',
+            users: ['123'],
+          }],
+        });
+      }
+      return jsonResponse({}, false);
+    }));
+
+    const badges = await resolveTwitchCommunityBadges('123', 'targetuser');
+    const ffzFamily = badges.filter((badge) =>
+      badge.type.startsWith('community:ffz:') || badge.type.startsWith('community:turteg:'),
+    );
+
+    expect(ffzFamily).toEqual([
+      {
+        type: 'community:ffz:8',
+        url: 'https://cdn.example/ffz-current.png',
+      },
+    ]);
+  });
+
   it('resolves Chatty and Chatsen supporter badges by Twitch identity', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

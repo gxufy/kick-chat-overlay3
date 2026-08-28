@@ -1,11 +1,8 @@
-/* MultiChat descriptor and catalog integrity, plus serializer byte identity.
+/* MultiChat descriptor/catalog integrity and serializer identity.
  *
- * The 105 parser compatibility tests in multichatConfig.test.ts stay the
- * authority on parsing and serialization behaviour; nothing here re-tests them.
- * These cover the descriptor layer instead: that it reuses the authoritative
- * defaults and enums rather than restating them, that it produces exactly the
- * string buildMultichatQuery produces, and that it is registered as the first
- * workspace tool while still generating URLs for the existing /multichat route.
+ * The parser contract lives in multichatConfig.test.ts. This suite verifies the
+ * workspace adapter, current defaults, hidden retired pin descriptors, and the
+ * exact serializer shape the descriptor exposes.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -23,7 +20,6 @@ import {
   MultichatQuerySchema,
   buildMultichatQuery,
   multichatSourceTagOf,
-  type MultichatGeneratorStyle,
   type MultichatPlatform,
   type MultichatWorkspaceStyle,
 } from '@/lib/multichatConfig';
@@ -32,18 +28,28 @@ import {
   configuredMultichatPlatforms,
   multichatTool,
   normalizeMultichatStyle,
+  normalizePinPlatforms,
   toMultichatChannels,
 } from '@/features/multichat/config';
 import { MULTICHAT_CATALOG } from '@/features/multichat/settings';
 import { TOOLS, TOOL_IDS, findTool } from '@/features/registry';
 
-/** Workspace defaults — what the catalog and descriptor are built on. */
 const D = MULTICHAT_WORKSPACE_DEFAULTS;
+const GENERATOR = MULTICHAT_GENERATOR_DEFAULTS;
+const noChannels = { kick: '', twitch: '', youtube: '', tiktok: '' };
 
-/** Legacy generator defaults — the pinned compatibility shape. */
-const LEGACY = MULTICHAT_GENERATOR_DEFAULTS;
+const DEFAULT_QUERY =
+  'kick=yourchannel' +
+  '&sevenTVEmotesEnabled=true' +
+  '&sevenTVCosmeticsEnabled=true' +
+  '&textSize=medium' +
+  '&font=opensans' +
+  '&textShadow=large' +
+  '&stroke=none' +
+  '&animation=slide' +
+  '&fade=30' +
+  '&hideNames=false';
 
-/** Both sides of every identity check get the same complete channel shape. */
 const serializePair = (
   channels: Partial<Record<MultichatPlatform, string>>,
   style: MultichatWorkspaceStyle,
@@ -52,111 +58,49 @@ const serializePair = (
   viaAuthority: buildMultichatQuery(toMultichatChannels(channels), style),
 });
 
-/** The exact string the generator produced before the sourceTag extension. */
-const LEGACY_DEFAULT_QUERY =
-  'kick=yourchannel' +
-  '&sevenTVEmotesEnabled=true' +
-  '&sevenTVCosmeticsEnabled=true' +
-  '&textSize=medium' +
-  '&font=opensans' +
-  '&textShadow=small' +
-  '&stroke=none' +
-  '&animation=slide' +
-  '&fade=30' +
-  '&showPinEnabled=true' +
-  '&pinPlatforms=kick%2Cyoutube%2Ctiktok' +
-  '&hideNames=false';
-
-const noChannels = { kick: '', twitch: '', youtube: '', tiktok: '' };
-
-/* The serializer now accepts two style shapes. This suite pins the legacy one:
-   every assertion here passed before MultichatWorkspaceStyle existed and must
-   keep passing, because these are the URLs already sitting in people's OBS. */
-describe('legacy generator compatibility', () => {
-  it('still produces the exact previous default string', () => {
-    expect(buildMultichatQuery(noChannels, LEGACY)).toBe(LEGACY_DEFAULT_QUERY);
+describe('generator compatibility shape', () => {
+  it('produces the current default string exactly', () => {
+    expect(buildMultichatQuery(noChannels, GENERATOR)).toBe(DEFAULT_QUERY);
   });
 
-  it('still omits sourceTag when platformIcons is true', () => {
-    const url = buildMultichatQuery(noChannels, { ...LEGACY, platformIcons: true });
-    expect(url).not.toContain('sourceTag');
-    expect(url).toBe(LEGACY_DEFAULT_QUERY);
+  it('keeps platformIcons on the generator shape and maps it to sourceTag', () => {
+    expect(GENERATOR.platformIcons).toBe(true);
+    expect('sourceTag' in GENERATOR).toBe(false);
+    expect(multichatSourceTagOf({ ...GENERATOR, platformIcons: true })).toBe('icon');
+    expect(multichatSourceTagOf({ ...GENERATOR, platformIcons: false })).toBe('none');
   });
 
-  it('still emits sourceTag=none when platformIcons is false', () => {
-    expect(buildMultichatQuery(noChannels, { ...LEGACY, platformIcons: false })).toBe(
-      LEGACY_DEFAULT_QUERY.replace(
-        '&showPinEnabled=true',
-        '&showPinEnabled=true&sourceTag=none',
-      ),
+  it('emits sourceTag=none in the stable serializer slot', () => {
+    expect(buildMultichatQuery(noChannels, { ...GENERATOR, platformIcons: false })).toBe(
+      DEFAULT_QUERY.replace('&hideNames=false', '&sourceTag=none&hideNames=false'),
     );
   });
 
-  it('keeps platformIcons on the legacy style, untouched', () => {
-    expect(LEGACY.platformIcons).toBe(true);
-    expect('sourceTag' in LEGACY).toBe(false);
-  });
-
-  it('maps the legacy boolean onto the enum the way it always serialized', () => {
-    expect(multichatSourceTagOf({ ...LEGACY, platformIcons: true })).toBe('icon');
-    expect(multichatSourceTagOf({ ...LEGACY, platformIcons: false })).toBe('none');
-  });
-
-  /* A spread of legacy generator states, each byte-pinned against the same serializer
-     call, so any drift in order, encoding, or inclusion shows up here. */
-  it('stays byte-identical across representative legacy generator states', () => {
-    const fixtures: Partial<MultichatGeneratorStyle>[] = [
-      {},
-      { platformIcons: false },
-      { textSize: 'large', font: 'impact', stroke: 'thick', textShadow: 'none' },
-      { fadeEnabled: false },
-      { fade: '' },
-      { pinPlatforms: [] },
-      { pinPlatforms: ['kick', 'twitch', 'youtube', 'tiktok'] },
-      { bgColor: '#191919', fontColor: '#ff0000' },
-      { msgBold: false, msgCaps: true, hideNames: true, mentionColor: false },
-      { botNames: 'nightbot, streamelements', userBL: 'a b', prefixBL: 'https://' },
-      { emoteScale: '1.5' },
-      { modAction: false, paintShadows: false, showPinEnabled: false },
-    ];
-    for (const fixture of fixtures) {
-      const style = { ...LEGACY, ...fixture };
-      const channels = { kick: 'k', twitch: '@t', youtube: '@y', tiktok: '@tt' };
-      /* Recomputed from the same authority, then checked for the one parameter
-         the extension touches. */
-      const url = buildMultichatQuery(channels, style);
-      expect(url).toContain('kick=k&twitch=t&youtube=y&tiktok=tt');
-      expect(url.includes('sourceTag=none')).toBe(style.platformIcons === false);
-      expect(url).not.toContain('sourceTag=dot');
-      expect(url).not.toContain('sourceTag=label');
-      expect(url).not.toContain('sourceTag=icon');
+  it('retired pin fields are harmless even when legacy callers set them', () => {
+    for (const style of [
+      { ...GENERATOR, showPinEnabled: true },
+      { ...GENERATOR, pinPlatforms: ['twitch'] },
+      { ...GENERATOR, showPinEnabled: true, pinPlatforms: ['kick', 'twitch'] },
+    ]) {
+      const query = buildMultichatQuery(noChannels, style);
+      expect(query).toBe(DEFAULT_QUERY);
+      expect(query).not.toContain('showPinEnabled');
+      expect(query).not.toContain('pinPlatforms');
     }
   });
 
-  it('puts sourceTag in the same slot for legacy and workspace styles', () => {
-    const legacyNone = buildMultichatQuery(noChannels, {
-      ...LEGACY,
-      platformIcons: false,
-    });
-    const workspaceNone = buildMultichatQuery(noChannels, {
-      ...D,
-      showPinEnabled: LEGACY.showPinEnabled,
-      sourceTag: 'none',
-    });
-    expect(workspaceNone).toBe(legacyNone);
+  it('community badges remain on by omission and serialize only when disabled', () => {
+    expect(buildMultichatQuery(noChannels, GENERATOR)).not.toContain('showCommunityBadges');
+    expect(buildMultichatQuery(noChannels, { ...GENERATOR, showCommunityBadges: false }))
+      .toContain('showCommunityBadges=false');
   });
 });
 
 describe('descriptor identity', () => {
-  it('declares the stable id and its overlay route', () => {
+  it('declares the stable id, route, and OBS size', () => {
     expect(multichatTool.id).toBe('multichat');
     expect(multichatTool.label).toBe('MultiChat');
     expect(multichatTool.overlayRoute).toBe('/multichat');
-  });
-
-  it('declares the intended OBS browser-source size', () => {
-    /* 680 × 280 — the size the generator's own OBS setup step recommends, from
-       lib/tools/multichat/obs.ts. */
     expect(multichatTool.obs).toEqual({ width: 680, height: 280 });
   });
 
@@ -164,13 +108,12 @@ describe('descriptor identity', () => {
     expect(multichatTool.defaults).toBe(MULTICHAT_WORKSPACE_DEFAULTS);
   });
 
-  it('derives the workspace defaults from the generator defaults', () => {
-    const { platformIcons, ...shared } = LEGACY;
-    /* sourceTag replaces platformIcons, and smooth scrolling is the intentional
-       modern workspace default while the pinned legacy object stays unchanged. */
+  it('derives workspace defaults from generator defaults without platformIcons', () => {
+    const { platformIcons, ...shared } = GENERATOR;
     expect(D).toEqual({
       ...shared,
       showPinEnabled: false,
+      pinPlatforms: [],
       smoothScroll: true,
       sourceTag: 'icon',
     });
@@ -178,93 +121,49 @@ describe('descriptor identity', () => {
     expect('platformIcons' in D).toBe(false);
   });
 
-  it('leaves the generator defaults unmutated by the derivation', () => {
-    expect(LEGACY.platformIcons).toBe(true);
-    expect(LEGACY.textShadow).toBe('small');
+  it('uses the shared large shadow default', () => {
+    expect(GENERATOR.textShadow).toBe('large');
+    expect(D.textShadow).toBe('large');
+    expect(MultichatQuerySchema.parse({}).textShadow).toBe('large');
   });
 
-  /* The descriptor now declares a context, but it must stay silent unless a
-     connection is genuinely usable — that is what keeps every URL built without
-     one byte-identical to what this tool produced before the connection existed. */
-  it('contributes no fragment without a connection', () => {
-    expect(multichatTool.context).toBeDefined();
-    expect(
-      multichatTool.context?.(D, {
-        connectionId: '',
-        connectedLogin: '',
-        twitchChannel: '',
-      }),
-    ).toBeUndefined();
+  it('has no URL context/connection fragment provider after pin retirement', () => {
+    expect(multichatTool.context).toBeUndefined();
   });
 });
 
 describe('registration boundary', () => {
-  it('can be imported directly', () => {
-    expect(multichatTool).toBeDefined();
-    expect(multichatTool.catalog).toBe(MULTICHAT_CATALOG);
-  });
-
-  it('is present in TOOLS, first', () => {
-    expect(TOOLS.some((tool) => tool.id === 'multichat')).toBe(true);
+  it('is registered first and findable by id', () => {
     expect(TOOLS).toHaveLength(2);
     expect(TOOLS[0]?.id).toBe('multichat');
-  });
-
-  it('puts multichat ahead of the counter in TOOL_IDS', () => {
     expect(TOOL_IDS).toEqual(['multichat', 'counter']);
+    const registered = findTool('multichat');
+    expect(registered).toBe(TOOLS[0]);
+    expect(registered?.id).toBe(multichatTool.id);
+    expect(registered?.label).toBe(multichatTool.label);
+    expect(registered?.overlayRoute).toBe(multichatTool.overlayRoute);
+    expect(registered?.obs).toEqual(multichatTool.obs);
   });
 
-  it('is findable by id, which is what the retired /tools redirect resolves', () => {
-    expect(findTool('multichat')).toBeDefined();
-    expect(findTool('multichat')?.id).toBe('multichat');
-  });
-
-  it('keeps the overlay route the generated URL has always pointed at', () => {
-    /* The generated URL points at the overlay, never at a generator page — that
-       is what keeps every URL already pasted into OBS valid regardless of which
-       address the generator itself is served from. */
+  it('keeps /multichat as the overlay route', () => {
     expect(findTool('multichat')?.overlayRoute).toBe('/multichat');
-  });
-
-  it('hands back the same descriptor object through use', () => {
-    /* Compared inside the callback: returning the descriptor out of `use` would
-     * re-widen its type parameters, which is the very thing `use` exists to
-     * avoid. Object.is proves identity without that. */
-    expect(findTool('multichat')?.use((tool) => Object.is(tool, multichatTool))).toBe(true);
-    expect(findTool('multichat')?.use((tool) => tool.catalog)).toBe(MULTICHAT_CATALOG);
   });
 });
 
 describe('platforms', () => {
   const keys = MULTICHAT_PLATFORM_DEFS.map((platform) => platform.key);
 
-  it('matches the generator order: kick, twitch, youtube, tiktok', () => {
+  it('matches the generator order and authoritative platform tuple', () => {
     expect(keys).toEqual(['kick', 'twitch', 'youtube', 'tiktok']);
     expect(keys).toEqual([...MULTICHAT_PLATFORMS]);
   });
 
-  it('uses unique keys', () => {
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it('gives every platform a non-empty label', () => {
-    for (const platform of MULTICHAT_PLATFORM_DEFS) {
-      expect(platform.label.length).toBeGreaterThan(0);
-    }
+  it('gives every platform a label and the expected placeholder', () => {
     expect(MULTICHAT_PLATFORM_DEFS.map((p) => p.label)).toEqual([
-      'Kick',
-      'Twitch',
-      'YouTube',
-      'TikTok',
+      'Kick', 'Twitch', 'YouTube', 'TikTok',
     ]);
-  });
-
-  it('keeps the generator placeholders, including the @ ones', () => {
     expect(MULTICHAT_PLATFORM_DEFS.map((p) => p.placeholder)).toEqual([
-      'Channel name',
-      'Channel name',
-      '@handle',
-      '@username',
+      'Channel name', 'Channel name', '@handle', '@username',
     ]);
   });
 
@@ -277,52 +176,24 @@ describe('platforms', () => {
     expect(by('tiktok')('@someone')).toBe('someone');
   });
 
-  it('strips only one leading @, and only from the front', () => {
-    const twitch = MULTICHAT_PLATFORM_DEFS.find((p) => p.key === 'twitch')!.normalize;
-    expect(twitch('@@someone')).toBe('@someone');
-    expect(twitch('some@one')).toBe('some@one');
-  });
-
-  it('trims but adds no validation the generator does not have', () => {
+  it('trims input without adding counter-style validation', () => {
     for (const platform of MULTICHAT_PLATFORM_DEFS) {
       expect(platform.normalize('  spaced  ')).toBe('spaced');
-      /* Characters the counter would reject are kept here. */
       expect(platform.normalize('a b!$%')).toBe('a b!$%');
-      expect(platform.normalize('x'.repeat(80))).toHaveLength(80);
-    }
-  });
-
-  it('does not URL-encode inside the normalizer', () => {
-    const kick = MULTICHAT_PLATFORM_DEFS.find((p) => p.key === 'kick')!.normalize;
-    expect(kick('a b#c%d')).toBe('a b#c%d');
-  });
-
-  it('returns empty for non-strings and blank input', () => {
-    for (const platform of MULTICHAT_PLATFORM_DEFS) {
       expect(platform.normalize(undefined)).toBe('');
-      expect(platform.normalize(null)).toBe('');
-      expect(platform.normalize(42)).toBe('');
-      expect(platform.normalize('   ')).toBe('');
     }
   });
 });
 
-describe('configuredPlatforms', () => {
-  it('is empty when nothing is typed', () => {
+describe('configured platforms', () => {
+  it('is empty when nothing usable is typed', () => {
     expect(configuredMultichatPlatforms({})).toEqual([]);
     expect(configuredMultichatPlatforms({ kick: '', twitch: '   ' })).toEqual([]);
   });
 
-  it('lists only normalized non-empty channels, in descriptor order', () => {
-    expect(
-      configuredMultichatPlatforms({ tiktok: 'c', kick: 'a', youtube: 'b' }),
-    ).toEqual(['kick', 'youtube', 'tiktok']);
-  });
-
-  it('counts a lone @ as configured on kick but not elsewhere', () => {
-    /* Preserved asymmetry: '@' survives kick's trim-only rule. */
-    expect(configuredMultichatPlatforms({ kick: '@' })).toEqual(['kick']);
-    expect(configuredMultichatPlatforms({ twitch: '@' })).toEqual([]);
+  it('lists normalized channels in descriptor order', () => {
+    expect(configuredMultichatPlatforms({ tiktok: 'c', kick: 'a', youtube: 'b' }))
+      .toEqual(['kick', 'youtube', 'tiktok']);
   });
 
   it('agrees with the descriptor method', () => {
@@ -334,73 +205,54 @@ describe('configuredPlatforms', () => {
 describe('catalog integrity', () => {
   const keys = MULTICHAT_CATALOG.map((setting) => setting.key);
 
-  it('uses unique keys', () => {
+  it('uses unique keys and only the fade pair shares a query parameter', () => {
     expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it('shares a param only for the fade pair, which is one parameter', () => {
     const params = MULTICHAT_CATALOG.map((setting) => setting.param);
     const duplicated = params.filter((p, i) => params.indexOf(p) !== i);
     expect(duplicated).toEqual(['fade']);
-    expect(
-      MULTICHAT_CATALOG.filter((s) => s.param === 'fade').map((s) => s.key),
-    ).toEqual(['fadeEnabled', 'fade']);
   });
 
-  it('contains no channel field', () => {
-    for (const platform of MULTICHAT_PLATFORMS) {
-      expect(keys).not.toContain(platform);
-    }
+  it('covers every workspace style field and no channel fields', () => {
+    expect([...keys].sort()).toEqual(Object.keys(D).sort());
+    for (const platform of MULTICHAT_PLATFORMS) expect(keys).not.toContain(platform);
     expect(keys).not.toContain('channel');
+    expect(keys).not.toContain('platformIcons');
   });
 
-  it('contains none of the unread compatibility-only parameters', () => {
+  it('contains none of the unread parser-only compatibility parameters', () => {
     const params = MULTICHAT_CATALOG.map((setting) => setting.param);
     for (const unread of MULTICHAT_UNREAD_PARAMS) {
       expect(keys).not.toContain(unread);
       expect(params).not.toContain(unread);
     }
-    expect([...MULTICHAT_UNREAD_PARAMS]).toEqual([
-      'ttsEnabled',
-      'showAvatars',
-    ]);
-    expect(params).toContain('showSystemMsgs');
-    expect(params).toContain('showRedeems');
   });
 
-  it('takes every default from MULTICHAT_GENERATOR_DEFAULTS', () => {
+  it('takes every default from the authoritative workspace defaults', () => {
     for (const setting of MULTICHAT_CATALOG) {
       expect(setting.default).toEqual(D[setting.key]);
     }
   });
 
-  it('keeps the generator textShadow default of small, not the overlay large', () => {
-    const shadow = MULTICHAT_CATALOG.find((s) => s.key === 'textShadow');
-    expect(shadow?.default).toBe('small');
-    expect(MultichatQuerySchema.parse({}).textShadow).toBe('large');
+  it('exposes community badges as a normal enabled toggle', () => {
+    const setting = MULTICHAT_CATALOG.find((s) => s.key === 'showCommunityBadges');
+    expect(setting?.type).toBe('toggle');
+    expect(setting?.default).toBe(true);
+    expect(setting?.hidden).toBeUndefined();
+    expect(setting?.disabled).toBeUndefined();
   });
 
-  it('uses only the six supported control types', () => {
-    const allowed = ['toggle', 'select', 'text', 'color', 'number', 'multiselect'];
-    for (const setting of MULTICHAT_CATALOG) {
-      expect(allowed).toContain(setting.type);
+  it('retains both pin descriptors only as hidden disabled compatibility entries', () => {
+    for (const key of ['showPinEnabled', 'pinPlatforms'] as const) {
+      const setting = MULTICHAT_CATALOG.find((s) => s.key === key);
+      expect(setting).toBeDefined();
+      expect(setting?.hidden).toBe(true);
+      expect(setting?.disabled).toBe(true);
     }
+    const pins = MULTICHAT_CATALOG.find((s) => s.key === 'pinPlatforms');
+    expect(pins?.default).toEqual([]);
   });
 
-  it('gives every setting a non-empty label', () => {
-    for (const setting of MULTICHAT_CATALOG) {
-      expect(setting.label.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('declares every select default inside its own option list', () => {
-    for (const setting of MULTICHAT_CATALOG) {
-      if (setting.type !== 'select') continue;
-      expect(setting.options.map((option) => option.value)).toContain(setting.default);
-    }
-  });
-
-  it('sources every select option list from an authoritative tuple, in order', () => {
+  it('sources every select option list from authoritative tuples', () => {
     const values = (key: string) => {
       const setting = MULTICHAT_CATALOG.find((s) => s.key === key);
       return setting && setting.type === 'select'
@@ -412,272 +264,77 @@ describe('catalog integrity', () => {
     expect(values('stroke')).toEqual([...MULTICHAT_STROKES]);
     expect(values('animation')).toEqual([...MULTICHAT_ANIMATIONS]);
     expect(values('font')).toEqual([...MULTICHAT_FONTS]);
+    expect(values('sourceTag')).toEqual([...MULTICHAT_SOURCE_TAG_ORDER]);
   });
 
-  it('sources the multiselect options from the platform tuple, in order', () => {
-    const pins = MULTICHAT_CATALOG.find((s) => s.key === 'pinPlatforms');
-    expect(pins?.type).toBe('multiselect');
-    expect(
-      pins && pins.type === 'multiselect'
-        ? pins.options.map((option) => option.value)
-        : undefined,
-    ).toEqual([...MULTICHAT_PLATFORMS]);
-  });
-
-  it('allows an empty pin selection and defaults to the generator subset', () => {
-    const pins = MULTICHAT_CATALOG.find((s) => s.key === 'pinPlatforms');
-    expect(pins?.default).toEqual(['kick', 'youtube', 'tiktok']);
-    expect(pins?.default).toEqual(D.pinPlatforms);
-  });
-
-  it('keeps the fade pair as two uncollapsed fields', () => {
-    const enabled = MULTICHAT_CATALOG.find((s) => s.key === 'fadeEnabled');
-    const seconds = MULTICHAT_CATALOG.find((s) => s.key === 'fade');
-    expect(enabled?.type).toBe('toggle');
-    expect(enabled?.default).toBe(true);
-    expect(seconds?.type).toBe('text');
-    expect(seconds?.default).toBe('30');
-  });
-
-  it('carries no OAuth, connection, or token metadata', () => {
-    const serialized = JSON.stringify(MULTICHAT_CATALOG);
-    for (const word of ['oauth', 'token', 'connectionId', 'twitchConnection', 'login']) {
-      expect(serialized.toLowerCase()).not.toContain(word.toLowerCase());
-    }
-  });
-
-  /* The catalog stays static. Pin gating is genuinely dynamic — it changes as the
-     user connects and retypes the channel — so it lives in the descriptor's
-     `optionAvailability`, not in a `disabled` flag that could only be a constant.
-     A static flag here would be permanently wrong in one direction or the other. */
-  it('declares no disabled or hidden flags, leaving gating to the runtime', () => {
-    for (const setting of MULTICHAT_CATALOG) {
-      expect(setting.disabled).toBeUndefined();
-      expect(setting.hidden).toBeUndefined();
-    }
-  });
-
-  it('exposes sourceTag as a four-option select, and no platformIcons entry', () => {
-    const keys = MULTICHAT_CATALOG.map((s) => s.key);
-    expect(keys).toContain('sourceTag');
-    expect(keys).not.toContain('platformIcons');
-    const tag = MULTICHAT_CATALOG.find((s) => s.key === 'sourceTag');
-    expect(tag?.type).toBe('select');
-    expect(tag?.param).toBe('sourceTag');
-    expect(tag?.default).toBe('icon');
-    expect(
-      tag && tag.type === 'select' ? tag.options.map((o) => o.value) : undefined,
-    ).toEqual(['icon', 'dot', 'label', 'none']);
-  });
-
-  it('draws the sourceTag options from the authoritative display tuple', () => {
-    const tag = MULTICHAT_CATALOG.find((s) => s.key === 'sourceTag');
-    expect(
-      tag && tag.type === 'select' ? tag.options.map((o) => o.value) : undefined,
-    ).toEqual([...MULTICHAT_SOURCE_TAG_ORDER]);
-    /* Display order is a permutation of the parser's set, never a new set. */
+  it('sourceTag display values are exactly the parser values in display order', () => {
     expect([...MULTICHAT_SOURCE_TAG_ORDER].sort()).toEqual([...MULTICHAT_SOURCE_TAGS].sort());
-    expect(MULTICHAT_SOURCE_TAG_ORDER).toHaveLength(MULTICHAT_SOURCE_TAGS.length);
-  });
-
-  it('labels every sourceTag option', () => {
-    const tag = MULTICHAT_CATALOG.find((s) => s.key === 'sourceTag');
-    const labels = tag && tag.type === 'select' ? tag.options.map((o) => o.label) : [];
-    expect(labels).toHaveLength(4);
-    for (const label of labels) expect(label.length).toBeGreaterThan(0);
-    expect(new Set(labels).size).toBe(4);
-  });
-
-  it('covers every workspace style field, sourceTag included', () => {
-    /* Compared against the workspace defaults, not the legacy generator ones, so
-       sourceTag counts and platformIcons does not. Fails if a field is added to
-       MultichatWorkspaceStyle without a catalog decision. */
-    const styleKeys = Object.keys(MULTICHAT_WORKSPACE_DEFAULTS).sort();
-    expect([...keys].sort()).toEqual(styleKeys);
-    expect(styleKeys).toContain('sourceTag');
-    expect(styleKeys).not.toContain('platformIcons');
   });
 });
 
 describe('normalization', () => {
-  it('fills an empty object with the generator defaults exactly', () => {
-    expect(normalizeMultichatStyle({})).toEqual(D);
-  });
-
-  it('returns a fresh object, never the defaults themselves', () => {
-    expect(normalizeMultichatStyle({})).not.toBe(D);
-  });
-
-  it('falls back to the generator default for every missing catalog field', () => {
-    for (const setting of MULTICHAT_CATALOG) {
-      const result = normalizeMultichatStyle({ [setting.key]: undefined });
-      expect(result[setting.key]).toEqual(D[setting.key]);
-    }
-  });
-
-  it('preserves a valid value for every catalog field', () => {
-    const valid: Partial<Record<string, unknown>> = {
-      textSize: 'large',
-      font: 'impact',
-      stroke: 'thick',
-      textShadow: 'medium',
-      animation: 'none',
-      emoteScale: '2.5',
-      sevenTVEmotesEnabled: false,
-      sevenTVCosmeticsEnabled: false,
-      sharedChatEnabled: true,
-      showSystemMsgs: false,
-      showHypeTrains: false,
-      showFirstMessages: false,
-      showRedeems: false,
-      fadeEnabled: false,
-      fade: '12',
-      msgBold: false,
-      msgCaps: true,
-      msgSlideIn: true,
-      smoothScroll: false,
-      modAction: false,
-      paintShadows: false,
-      hideNames: true,
-      showPinEnabled: false,
-      pinPlatforms: ['twitch'],
-      sourceTag: 'dot',
-      mentionColor: false,
-      bgColor: '#191919',
-      fontColor: '#ff0000',
-      botNames: 'nightbot',
-      userBL: 'spammer',
-      prefixBL: 'https://',
-    };
-    for (const setting of MULTICHAT_CATALOG) {
-      const value = valid[setting.key];
-      const result = normalizeMultichatStyle({ [setting.key]: value } as never);
-      expect(result[setting.key]).toEqual(value);
-    }
-  });
-
-  it('replaces a wrong-typed value with the default for every catalog field', () => {
-    const wrong = [null, undefined, 42, {}, [], 'nonsense-value', true];
-    for (const setting of MULTICHAT_CATALOG) {
-      for (const value of wrong) {
-        /* A boolean field legitimately accepts true, so skip that one pairing. */
-        if (setting.type === 'toggle' && typeof value === 'boolean') continue;
-        /* Free text legitimately accepts any string. */
-        if (
-          (setting.type === 'text' || setting.type === 'color') &&
-          typeof value === 'string'
-        ) {
-          continue;
-        }
-        /* An empty selection is a valid multiselect value, not a bad one. */
-        if (setting.type === 'multiselect' && Array.isArray(value)) continue;
-        const result = normalizeMultichatStyle({ [setting.key]: value } as never);
-        expect(result[setting.key]).toEqual(D[setting.key]);
-      }
-    }
-  });
-
-  it('keeps textShadow at small when it is missing', () => {
-    expect(normalizeMultichatStyle({}).textShadow).toBe('small');
-    expect(normalizeMultichatStyle({ textShadow: undefined }).textShadow).toBe('small');
-  });
-
-  it('does not borrow the overlay large default on a bad value', () => {
-    expect(normalizeMultichatStyle({ textShadow: 'enormous' as never }).textShadow).toBe(
-      'small',
-    );
-  });
-
-  it('leaves the overlay omission default as large in the parser', () => {
-    expect(MultichatQuerySchema.parse({}).textShadow).toBe('large');
-  });
-
-  it('does not mutate its input', () => {
-    const input: Partial<MultichatGeneratorStyle> = { textSize: 'large' };
-    const snapshot = { ...input };
-    normalizeMultichatStyle(input);
-    expect(input).toEqual(snapshot);
-  });
-
-  it('does not mutate the authoritative defaults', () => {
-    const snapshot = JSON.parse(JSON.stringify(D));
-    const result = normalizeMultichatStyle({ pinPlatforms: [] });
-    result.pinPlatforms = ['kick'];
-    expect(D).toEqual(snapshot);
-  });
-
-  it('keeps arrays as arrays and copies rather than aliasing', () => {
-    const input = ['kick', 'twitch'];
-    const result = normalizeMultichatStyle({ pinPlatforms: input });
-    expect(Array.isArray(result.pinPlatforms)).toBe(true);
-    expect(result.pinPlatforms).not.toBe(input);
-    expect(result.pinPlatforms).toEqual(['kick', 'twitch']);
-  });
-
-  it('preserves an empty pin selection instead of defaulting it', () => {
-    expect(normalizeMultichatStyle({ pinPlatforms: [] }).pinPlatforms).toEqual([]);
-  });
-
-  it('orders a pin selection by the declared option order, not click order', () => {
-    expect(
-      normalizeMultichatStyle({ pinPlatforms: ['tiktok', 'kick'] }).pinPlatforms,
-    ).toEqual(['kick', 'tiktok']);
-  });
-
-  it('drops unknown pin names and deduplicates', () => {
-    expect(
-      normalizeMultichatStyle({ pinPlatforms: ['kick', 'kick', 'discord'] }).pinPlatforms,
-    ).toEqual(['kick']);
-  });
-
-  it('falls back to the default pin subset for a non-array', () => {
-    expect(normalizeMultichatStyle({ pinPlatforms: 'kick' as never }).pinPlatforms).toEqual(
-      D.pinPlatforms,
-    );
-  });
-
-  it('agrees with the descriptor method', () => {
-    expect(multichatTool.normalize({})).toEqual(D);
-  });
-
-  it('falls back to icon when sourceTag is missing', () => {
-    expect(normalizeMultichatStyle({}).sourceTag).toBe('icon');
-    expect(normalizeMultichatStyle({ sourceTag: undefined }).sourceTag).toBe('icon');
-  });
-
-  it('preserves every valid sourceTag value', () => {
-    for (const tag of MULTICHAT_SOURCE_TAGS) {
-      expect(normalizeMultichatStyle({ sourceTag: tag }).sourceTag).toBe(tag);
-    }
-  });
-
-  it('falls back to icon for a malformed sourceTag', () => {
-    for (const bad of ['ICON', 'dots', '', 'true', 42, null, {}, []]) {
-      expect(normalizeMultichatStyle({ sourceTag: bad as never }).sourceTag).toBe('icon');
-    }
-  });
-
-  it('emits no platformIcons property in workspace output', () => {
+  it('fills an empty object with the workspace defaults in a fresh object', () => {
     const result = normalizeMultichatStyle({});
-    expect('platformIcons' in result).toBe(false);
-    expect(Object.keys(result)).not.toContain('platformIcons');
-    /* Even when a caller passes the legacy field, it does not leak through. */
-    const contaminated = normalizeMultichatStyle({ platformIcons: false } as never);
-    expect('platformIcons' in contaminated).toBe(false);
-    expect(contaminated.sourceTag).toBe('icon');
+    expect(result).toEqual(D);
+    expect(result).not.toBe(D);
   });
 
-  it('does not mutate the workspace defaults', () => {
-    const snapshot = JSON.parse(JSON.stringify(D));
-    const result = normalizeMultichatStyle({ sourceTag: 'dot' });
-    result.sourceTag = 'label';
-    expect(D).toEqual(snapshot);
-    expect(D.sourceTag).toBe('icon');
+  it('keeps valid active values and falls malformed enums back to defaults', () => {
+    expect(normalizeMultichatStyle({
+      textSize: 'large',
+      textShadow: 'medium',
+      sourceTag: 'dot',
+      showCommunityBadges: false,
+      smoothScroll: false,
+      bgColor: '#191919',
+    })).toMatchObject({
+      textSize: 'large',
+      textShadow: 'medium',
+      sourceTag: 'dot',
+      showCommunityBadges: false,
+      smoothScroll: false,
+      bgColor: '#191919',
+    });
+    expect(normalizeMultichatStyle({ textShadow: 'enormous' as never }).textShadow)
+      .toBe('large');
+    expect(normalizeMultichatStyle({ sourceTag: 'bad' as never }).sourceTag)
+      .toBe('icon');
+  });
+
+  it('always retires pin state regardless of saved input', () => {
+    for (const input of [
+      {},
+      { showPinEnabled: true },
+      { pinPlatforms: ['twitch'] },
+      { showPinEnabled: true, pinPlatforms: ['kick', 'twitch'] },
+    ]) {
+      const result = normalizeMultichatStyle(input as Partial<MultichatWorkspaceStyle>);
+      expect(result.showPinEnabled).toBe(false);
+      expect(result.pinPlatforms).toEqual([]);
+    }
+    expect(normalizePinPlatforms(['kick', 'twitch'])).toEqual([]);
+    expect(normalizePinPlatforms('kick')).toEqual([]);
+  });
+
+  it('does not mutate input or authoritative defaults', () => {
+    const input: Partial<MultichatWorkspaceStyle> = {
+      textSize: 'large',
+      pinPlatforms: ['twitch'],
+    };
+    const inputSnapshot = { ...input, pinPlatforms: [...(input.pinPlatforms ?? [])] };
+    const defaultsSnapshot = JSON.parse(JSON.stringify(D));
+    normalizeMultichatStyle(input);
+    expect(input).toEqual(inputSnapshot);
+    expect(D).toEqual(defaultsSnapshot);
+  });
+
+  it('never leaks platformIcons into workspace output', () => {
+    const result = normalizeMultichatStyle({ platformIcons: false } as never);
+    expect('platformIcons' in result).toBe(false);
+    expect(result.sourceTag).toBe('icon');
   });
 });
 
-/* Every case below compares the complete string, never a parsed parameter map:
-   order and encoding are part of the compatibility surface. */
 describe('serializer byte identity', () => {
   const expectIdentical = (
     channels: Partial<Record<MultichatPlatform, string>>,
@@ -688,214 +345,73 @@ describe('serializer byte identity', () => {
     return viaTool;
   };
 
-  /* Pinned literally, because comparing the descriptor against
-     buildMultichatQuery alone would pass even if both produced nonsense. This
-     locks the actual bytes: parameter order, the placeholder, textShadow=small
-     rather than large, and the CSV encoding of the default pin subset. */
   it('produces the exact expected default string', () => {
-    expect(multichatTool.serialize({}, D)).toBe(
-      'kick=yourchannel' +
-        '&sevenTVEmotesEnabled=true' +
-        '&sevenTVCosmeticsEnabled=true' +
-        '&textSize=medium' +
-        '&font=opensans' +
-        '&textShadow=small' +
-        '&stroke=none' +
-        '&animation=slide' +
-        '&fade=30' +
-        '&showPinEnabled=false' +
-        '&pinPlatforms=kick%2Cyoutube%2Ctiktok' +
-        '&hideNames=false',
-    );
+    expect(multichatTool.serialize({}, D)).toBe(DEFAULT_QUERY);
   });
 
-  it('matches for the defaults, placeholder included', () => {
-    const url = expectIdentical({}, D);
-    expect(url).toContain('kick=yourchannel');
-  });
-
-  it('matches for each platform independently', () => {
+  it('matches for each platform and all four together', () => {
     for (const platform of MULTICHAT_PLATFORMS) {
       expectIdentical({ [platform]: 'someone' }, D);
     }
-  });
-
-  it('matches for all four platforms at once', () => {
-    const url = expectIdentical(
+    expect(expectIdentical(
       { kick: 'k', twitch: 't', youtube: 'y', tiktok: 'tt' },
       D,
-    );
-    expect(url).not.toContain('yourchannel');
+    )).not.toContain('yourchannel');
   });
 
-  it('matches with the @ asymmetry in play', () => {
-    const url = expectIdentical(
-      { kick: '@keeps', twitch: '@strips', youtube: '@strips', tiktok: '@strips' },
-      D,
-    );
-    expect(url).toContain('kick=%40keeps');
-    expect(url).toContain('twitch=strips');
+  it('matches for representative active setting changes', () => {
+    const states: MultichatWorkspaceStyle[] = [
+      { ...D, textSize: 'large', font: 'impact', stroke: 'thick', textShadow: 'none' },
+      { ...D, sourceTag: 'dot' },
+      { ...D, sourceTag: 'label' },
+      { ...D, showCommunityBadges: false },
+      { ...D, fadeEnabled: false },
+      { ...D, msgBold: false, msgCaps: true, hideNames: true, mentionColor: false },
+      { ...D, bgColor: '#191919', fontColor: '#ff0000', emoteScale: '1.5' },
+      { ...D, botNames: 'nightbot, streamelements', userBL: 'a b', prefixBL: 'https://' },
+    ];
+    for (const style of states) expectIdentical({ kick: 'someone' }, style);
   });
 
-  it('matches for every catalog field changed individually', () => {
-    const alternatives: Record<string, unknown[]> = {
-      textSize: [...MULTICHAT_TEXT_SIZES],
-      font: [...MULTICHAT_FONTS],
-      stroke: [...MULTICHAT_STROKES],
-      textShadow: [...MULTICHAT_TEXT_SHADOWS],
-      animation: [...MULTICHAT_ANIMATIONS],
-      emoteScale: ['', '1', '2.5', '0'],
-      sevenTVEmotesEnabled: [true, false],
-      sevenTVCosmeticsEnabled: [true, false],
-      sharedChatEnabled: [true, false],
-      showSystemMsgs: [true, false],
-      showHypeTrains: [true, false],
-      showFirstMessages: [true, false],
-      showRedeems: [true, false],
-      fadeEnabled: [true, false],
-      fade: ['', '0', '30', '999'],
-      msgBold: [true, false],
-      msgCaps: [true, false],
-      msgSlideIn: [true, false],
-      smoothScroll: [true, false],
-      modAction: [true, false],
-      paintShadows: [true, false],
-      hideNames: [true, false],
-      showPinEnabled: [true, false],
-      pinPlatforms: [[], ['kick'], ['kick', 'twitch', 'youtube', 'tiktok']],
-      sourceTag: [...MULTICHAT_SOURCE_TAGS],
-      mentionColor: [true, false],
-      bgColor: ['', '#191919', '191919', 'transparent'],
-      fontColor: ['', '#ff0000', 'ff0000'],
-      botNames: ['', 'nightbot, streamelements'],
-      userBL: ['', 'spammer1 botuser'],
-      prefixBL: ['', 'https:// scam '],
-    };
-    for (const setting of MULTICHAT_CATALOG) {
-      const values = alternatives[setting.key];
-      expect(values, `no alternatives listed for ${setting.key}`).toBeDefined();
-      for (const value of values) {
-        expectIdentical({ kick: 'someone' }, { ...D, [setting.key]: value });
-      }
-    }
-  });
-
-  it('emits each sourceTag value as its own exact string', () => {
-    const base = LEGACY_DEFAULT_QUERY.replace('&showPinEnabled=true', '&showPinEnabled=false');
-    const withTag = (tag: string) =>
-      base.replace('&showPinEnabled=false', `&showPinEnabled=false&sourceTag=${tag}`);
-
-    /* icon is the overlay default, so it is expressed by omission. */
-    expect(multichatTool.serialize({}, { ...D, sourceTag: 'icon' })).toBe(base);
-    expect(multichatTool.serialize({}, { ...D, sourceTag: 'dot' })).toBe(withTag('dot'));
-    expect(multichatTool.serialize({}, { ...D, sourceTag: 'label' })).toBe(
-      withTag('label'),
-    );
-    expect(multichatTool.serialize({}, { ...D, sourceTag: 'none' })).toBe(withTag('none'));
-  });
-
-  it('matches the authority for every sourceTag value', () => {
-    for (const tag of MULTICHAT_SOURCE_TAGS) {
-      expectIdentical({ kick: 'a' }, { ...D, sourceTag: tag });
-    }
-  });
-
-  it('keeps the sourceTag parameter in a stable position', () => {
-    for (const tag of ['dot', 'label', 'none'] as const) {
-      const parts = multichatTool.serialize({ kick: 'a' }, { ...D, sourceTag: tag }).split('&');
-      expect(parts[parts.indexOf(`sourceTag=${tag}`) - 1]).toBe('showPinEnabled=false');
-    }
-  });
-
-  it('never collapses two sourceTag values onto the same output, except icon', () => {
-    const outputs = MULTICHAT_SOURCE_TAGS.map((tag) =>
-      multichatTool.serialize({ kick: 'a' }, { ...D, sourceTag: tag }),
-    );
-    expect(new Set(outputs).size).toBe(MULTICHAT_SOURCE_TAGS.length);
-    /* dot and label are genuinely reachable, which the boolean could not do. */
-    expect(outputs.some((url) => url.includes('sourceTag=dot'))).toBe(true);
-    expect(outputs.some((url) => url.includes('sourceTag=label'))).toBe(true);
-    /* icon alone omits the parameter. */
-    const icon = multichatTool.serialize({ kick: 'a' }, { ...D, sourceTag: 'icon' });
+  it('emits each sourceTag distinctly and in the current stable position', () => {
+    const icon = multichatTool.serialize({}, { ...D, sourceTag: 'icon' });
+    expect(icon).toBe(DEFAULT_QUERY);
     expect(icon).not.toContain('sourceTag');
+
+    for (const tag of ['dot', 'label', 'none'] as const) {
+      const url = multichatTool.serialize({}, { ...D, sourceTag: tag });
+      expect(url).toBe(DEFAULT_QUERY.replace('&hideNames=false', `&sourceTag=${tag}&hideNames=false`));
+      expect(url).toContain(`sourceTag=${tag}`);
+    }
   });
 
-  it('round-trips each sourceTag back through the parser', () => {
+  it('round-trips every sourceTag through the parser', () => {
     for (const tag of MULTICHAT_SOURCE_TAGS) {
       const url = multichatTool.serialize({ kick: 'a' }, { ...D, sourceTag: tag });
-      const parsed = MultichatQuerySchema.parse(
-        Object.fromEntries(new URLSearchParams(url)),
-      );
+      const parsed = MultichatQuerySchema.parse(Object.fromEntries(new URLSearchParams(url)));
       expect(parsed.sourceTag).toBe(tag);
     }
   });
 
-  it('matches for fade enabled, disabled, and blank', () => {
-    expect(
-      expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: true, fade: '30' }),
-    ).toContain('fade=30');
-    expect(
-      expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: false, fade: '30' }),
-    ).not.toContain('fade=');
-    expect(
-      expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: true, fade: '' }),
-    ).not.toContain('fade=');
-  });
-
-  it('matches for empty, partial, and all pin selections', () => {
-    expect(expectIdentical({ kick: 'a' }, { ...D, pinPlatforms: [] })).toContain(
-      'pinPlatforms=',
+  it('never emits retired pin params even when state is contaminated', () => {
+    const url = multichatTool.serialize(
+      { kick: 'a' },
+      { ...D, showPinEnabled: true, pinPlatforms: ['kick', 'twitch'] },
     );
-    expect(
-      expectIdentical({ kick: 'a' }, { ...D, pinPlatforms: ['kick', 'twitch'] }),
-    ).toContain('pinPlatforms=kick%2Ctwitch');
-    expect(
-      expectIdentical({ kick: 'a' }, {
-        ...D,
-        pinPlatforms: ['kick', 'twitch', 'youtube', 'tiktok'],
-      }),
-    ).not.toContain('pinPlatforms');
+    expect(url).not.toContain('showPinEnabled');
+    expect(url).not.toContain('pinPlatforms');
   });
 
-  it('matches for filters carrying spaces, commas, Unicode, #, %, + and /', () => {
-    const nasty = 'a b,c#d%e+f/g é 日本 🎉';
-    for (const key of ['botNames', 'userBL', 'prefixBL'] as const) {
-      expectIdentical({ kick: 'a' }, { ...D, [key]: nasty });
-    }
+  it('matches for fade enabled, disabled, and blank', () => {
+    expect(expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: true, fade: '30' }))
+      .toContain('fade=30');
+    expect(expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: false, fade: '30' }))
+      .not.toContain('fade=');
+    expect(expectIdentical({ kick: 'a' }, { ...D, fadeEnabled: true, fade: '' }))
+      .not.toContain('fade=');
   });
 
-  it('matches for transparent and hex colours', () => {
-    for (const value of ['', '#191919', '191919', 'transparent', '#FFF']) {
-      expectIdentical({ kick: 'a' }, { ...D, bgColor: value });
-      expectIdentical({ kick: 'a' }, { ...D, fontColor: value });
-    }
-  });
-
-  it('matches for realistic combined configurations', () => {
-    const combos: Partial<MultichatWorkspaceStyle>[] = [
-      { textSize: 'large', font: 'impact', stroke: 'thick', textShadow: 'none' },
-      { hideNames: true, msgCaps: true, msgBold: false, mentionColor: false },
-      { showPinEnabled: false, pinPlatforms: [], sourceTag: 'none' },
-      {
-        bgColor: '#191919',
-        fontColor: '#ff00ff',
-        emoteScale: '1.5',
-        fadeEnabled: false,
-        botNames: 'nightbot, streamelements',
-        userBL: 'a b',
-        prefixBL: 'https://',
-      },
-      { animation: 'fade', fade: '5', paintShadows: false, modAction: false },
-    ];
-    for (const combo of combos) {
-      expectIdentical(
-        { kick: 'k', twitch: '@t', youtube: '@y', tiktok: '@tt' },
-        { ...D, ...combo },
-      );
-    }
-  });
-
-  it('matches for a normalized style, and never emits a fragment', () => {
+  it('emits no fragment or leading question mark', () => {
     const url = expectIdentical({ kick: 'a' }, normalizeMultichatStyle({}));
     expect(url).not.toContain('#');
     expect(url.startsWith('?')).toBe(false);

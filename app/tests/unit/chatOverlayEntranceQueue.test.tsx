@@ -2,6 +2,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay, { chatisSwing } from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
+import { MESSAGE_FADE_TRANSITION_MS } from '@/lib/messageFadeScheduler';
 import type { ParsedMessage } from '@/lib/kick';
 import type { Platform } from '@/lib/types';
 
@@ -99,5 +100,29 @@ describe('literal ChatIS batch entrance', () => {
     const { container } = render(<ChatOverlay {...props(animation)} messages={messages} />);
     expect(container.querySelectorAll('.ck-body')).toHaveLength(2);
     expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+  });
+
+  it('fades and collapses an expiring row in one eased exit', () => {
+    const message = parsed('twitch', 'old');
+    const { container, rerender } = render(<ChatOverlay {...props('none')} messages={[message]} />);
+    let row = container.querySelector('.gx-message-row') as HTMLElement;
+    expect(row.style.gridTemplateRows).toBe('1fr');
+    expect(row.style.opacity).toBe('1');
+
+    rerender(
+      <ChatOverlay
+        {...props('none')}
+        fadingIds={new Set([message.id])}
+        messages={[message]}
+      />,
+    );
+
+    row = container.querySelector('.gx-message-row') as HTMLElement;
+    expect(row.style.gridTemplateRows).toBe('0fr');
+    expect(row.style.opacity).toBe('0');
+    expect(row.style.transform).toBe('translate3d(0, -6px, 0)');
+    expect(row.style.transition).toContain(`grid-template-rows ${MESSAGE_FADE_TRANSITION_MS}ms`);
+    expect(row.style.transition).toContain(`opacity ${MESSAGE_FADE_TRANSITION_MS}ms`);
+    expect((row.firstElementChild as HTMLElement).style.overflow).toBe('hidden');
   });
 });

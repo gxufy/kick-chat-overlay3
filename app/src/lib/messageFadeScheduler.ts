@@ -22,22 +22,23 @@ interface SchedulerOptions<T extends FadeScheduledMessage> {
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
+/** The renderer's eased fade/collapse duration. Keep removal in sync with CSS. */
+export const MESSAGE_FADE_TRANSITION_MS = 700;
+
 /**
- * Preserve the old 200 ms fade cadence without waking five times per second for
- * the entire stream.
+ * Preserve the 200 ms expiry cadence without waking five times per second for the
+ * entire stream.
  *
- * The previous overlay used setInterval(..., 200) forever. Each interval tick
- * faded at most one expired row, and the row was removed 400 ms later. This
- * scheduler keeps those exact two timing rules, but arms a timeout only for the
- * first 200 ms cadence boundary at or after the next message deadline. When chat
- * is idle and no row is approaching its fade deadline, there is no check timer.
+ * Each cadence tick starts at most one expired row. The row then gets the full
+ * bChat-style eased exit window before it is removed, so opacity and layout can
+ * settle together instead of disappearing first and snapping the gap closed.
  */
 export function createMessageFadeScheduler<T extends FadeScheduledMessage>(
   options: SchedulerOptions<T>,
 ): MessageFadeScheduler {
   const now = options.now ?? Date.now;
   const tickMs = options.tickMs ?? 200;
-  const transitionMs = options.transitionMs ?? 400;
+  const transitionMs = options.transitionMs ?? MESSAGE_FADE_TRANSITION_MS;
   const setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
   const clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
   const epoch = now();
@@ -98,7 +99,7 @@ export function createMessageFadeScheduler<T extends FadeScheduledMessage>(
     }
 
     // If several rows are already expired this resolves to the *next* cadence
-    // boundary, so only one starts fading per 200 ms just like the interval did.
+    // boundary, so only one begins its exit per 200 ms.
     scheduleNext();
   }
 

@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay, { chatisSwing } from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import { MESSAGE_FADE_TRANSITION_MS } from '@/lib/messageFadeScheduler';
+import {
+  AUTO_ANIMATION_BYPASS_BATCH_SIZE,
+  AUTO_ANIMATION_BYPASS_HOLD_MS,
+  recordRuntimeAnimationBatch,
+  resetRuntimeAnimationState,
+  setRuntimeAnimationMode,
+} from '@/lib/multichatAnimationRuntime';
 import type { ParsedMessage } from '@/lib/kick';
 import type { Platform } from '@/lib/types';
 
@@ -35,6 +42,7 @@ function mockSlideMeasure(height: number) {
 
 afterEach(() => {
   cleanup();
+  resetRuntimeAnimationState();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -124,5 +132,54 @@ describe('literal ChatIS batch entrance', () => {
     expect(row.style.transition).toContain(`grid-template-rows ${MESSAGE_FADE_TRANSITION_MS}ms`);
     expect(row.style.transition).toContain(`opacity ${MESSAGE_FADE_TRANSITION_MS}ms`);
     expect((row.firstElementChild as HTMLElement).style.overflow).toBe('hidden');
+  });
+
+  it('auto mode bypasses slide and row entrance animation for a heavy presentation batch', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    mockSlideMeasure(220);
+    setRuntimeAnimationMode('auto');
+    recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, Date.now());
+
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'slide', msgSlideIn: 'true' });
+    const messages = Array.from(
+      { length: AUTO_ANIMATION_BYPASS_BATCH_SIZE },
+      (_, index) => parsed('twitch', `burst-${index}`),
+    );
+    const { container } = render(
+      <ChatOverlay {...props('slide')} config={config} messages={messages} />,
+    );
+
+    expect(container.querySelector('.gx-slide-group')).toBeNull();
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+    expect(container.querySelectorAll('.gx-message-slide-in')).toHaveLength(0);
+    expect(container.querySelectorAll('.ck-body')).toHaveLength(AUTO_ANIMATION_BYPASS_BATCH_SIZE);
+  });
+
+  it('auto mode restores the configured entrance animation after the burst hold expires', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20_000);
+    mockSlideMeasure(55);
+    setRuntimeAnimationMode('auto');
+    recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, Date.now());
+
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'slide', msgSlideIn: 'true' });
+    const first = parsed('twitch', 'burst');
+    const { container, rerender } = render(
+      <ChatOverlay {...props('slide')} config={config} messages={[first]} />,
+    );
+    expect(container.querySelector('.gx-slide-group')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(AUTO_ANIMATION_BYPASS_HOLD_MS);
+    });
+    recordRuntimeAnimationBatch(1, Date.now());
+    const second = parsed('twitch', 'normal');
+    rerender(
+      <ChatOverlay {...props('slide')} config={config} messages={[first, second]} />,
+    );
+
+    expect(container.querySelector('.gx-slide-group')).not.toBeNull();
+    expect(container.querySelectorAll('.gx-message-slide-in').length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -1,11 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BURST_PRESENT_INTERVAL_MS,
   drainBurstPresentationQueue,
   startBurstPresentationTicker,
 } from '@/lib/chatBurstPresentation';
+import {
+  AUTO_ANIMATION_BYPASS_BATCH_SIZE,
+  resetRuntimeAnimationState,
+  runtimeEntranceAnimationEnabled,
+  setRuntimeAnimationMode,
+} from '@/lib/multichatAnimationRuntime';
 
-afterEach(() => vi.useRealTimers());
+beforeEach(() => resetRuntimeAnimationState());
+afterEach(() => {
+  resetRuntimeAnimationState();
+  vi.useRealTimers();
+});
 
 describe('chat burst presentation buckets', () => {
   it('uses the ChatIS 200ms presentation cadence', () => {
@@ -44,5 +54,22 @@ describe('chat burst presentation buckets', () => {
     pending.push('d', 'e');
     expect(drainBurstPresentationQueue(pending)).toEqual(['d', 'e']);
     expect(pending).toEqual([]);
+  });
+
+  it('uses the exact drained batch as auto-mode traffic pressure', () => {
+    setRuntimeAnimationMode('auto');
+    const pending = Array.from({ length: AUTO_ANIMATION_BYPASS_BATCH_SIZE }, (_, index) => index);
+    drainBurstPresentationQueue(pending);
+    expect(runtimeEntranceAnimationEnabled()).toBe(false);
+  });
+
+  it('does not let an empty metronome tick overwrite the last real batch decision', () => {
+    setRuntimeAnimationMode('auto');
+    const heavy = Array.from({ length: AUTO_ANIMATION_BYPASS_BATCH_SIZE }, (_, index) => index);
+    drainBurstPresentationQueue(heavy);
+    expect(runtimeEntranceAnimationEnabled()).toBe(false);
+
+    drainBurstPresentationQueue([]);
+    expect(runtimeEntranceAnimationEnabled()).toBe(false);
   });
 });

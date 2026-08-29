@@ -153,6 +153,13 @@ export const MULTICHAT_COMMANDS: readonly MultichatCommand[] = [
     detail: 'Targets the matching gxufy.com counter source generated from the same channel set.',
   },
   {
+    name: 'animation',
+    syntax: '!multichat animation <on|off|auto>',
+    summary: 'Controls chat entrance animations at runtime without reloading the source.',
+    detail:
+      'on restores the animation selected in the overlay URL, off makes new chat rows appear immediately, and auto keeps the configured animation for normal traffic but bypasses it during heavy 200 ms chat batches until the burst settles. Runtime-only; a browser-source reload resets it to on.',
+  },
+  {
     name: 'events',
     syntax: '!multichat events <on|off|feature> [on|off]',
     summary: 'Turns notification/event features on or off without reloading the source.',

@@ -10,6 +10,7 @@ import type { TwitchHypeTrainState } from '../../lib/twitchHypeTrainClient';
 import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
 import { createSmoothScrollFollower } from '../../lib/smoothScrollFollower';
 import { MESSAGE_FADE_TRANSITION_MS } from '../../lib/messageFadeScheduler';
+import { runtimeEntranceAnimationEnabled } from '../../lib/multichatAnimationRuntime';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -308,10 +309,10 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
 
   
   const seqRef = useRef(0);
-  /* Batches retain only membership. Their current ParsedMessage values come from
-     `messagesById`, so late badge/paint/emote data repaints an existing row without
-     creating another batch or replaying its entrance animation. */
-  const [batches, setBatches] = useState<{ id: number; messageIds: string[] }[]>([]);
+  /* Batches retain membership plus the entrance decision sampled when the batch
+     first arrived. Late badge/paint/emote repaints therefore never replay an
+     entrance, and changing the runtime animation command never remounts old rows. */
+  const [batches, setBatches] = useState<{ id: number; messageIds: string[]; animate: boolean }[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const messagesById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
@@ -328,8 +329,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     }
     if (!newMessageIds.length) return;
     const id = ++seqRef.current;
+    const animate = runtimeEntranceAnimationEnabled();
     setBatches((previous) => {
-      const next = [...previous, { id, messageIds: newMessageIds }];
+      const next = [...previous, { id, messageIds: newMessageIds, animate }];
       let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
       while (total > 100 && next.length) {
         total -= next[0].messageIds.length;
@@ -360,11 +362,11 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     });
   }, [messages]);
 
-  const renderMsg = (msg: ParsedMessage) => (
+  const renderMsg = (msg: ParsedMessage, animate = true) => (
     <MessageRow key={msg.id}
       msg={msg}
       fading={fadingIds.has(msg.id)}
-      msgSlideIn={cfg.msgSlideIn ?? false}
+      msgSlideIn={animate && (cfg.msgSlideIn ?? false)}
       messageShadowFilter={messageShadowFilter}
       paintStrokeVal={paintStrokeVal}
       sz={sz}
@@ -647,13 +649,13 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         fontSize:   sz.fontSize,
         ...(strokeVal ? { textShadow:strokeVal } : {}),
       }}>
-        {batches.map(({ id, messageIds }) => {
+        {batches.map(({ id, messageIds, animate }) => {
           const content = messageIds
             .map((messageId) => messagesById.get(messageId))
             .filter((message): message is ParsedMessage => Boolean(message))
-            .map(renderMsg);
-          if (cfg.animation==='slide') return <SlideGroup key={id}>{content}</SlideGroup>;
-          if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
+            .map((message) => renderMsg(message, animate));
+          if (animate && cfg.animation==='slide') return <SlideGroup key={id}>{content}</SlideGroup>;
+          if (animate && cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
         })}
       </div>

@@ -33,6 +33,10 @@ import {
   setRuntimeEventFeatureVisible,
   type MultichatRuntimeEventTarget,
 } from './multichatEventRuntime';
+import {
+  setRuntimeAnimationMode,
+  type MultichatRuntimeAnimationMode,
+} from './multichatAnimationRuntime';
 
 /** Both accepted trigger words, primary first. */
 export const MULTICHAT_TRIGGERS = [
@@ -408,6 +412,24 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
     return true;
   }
 
+  function runAnimation(command: ParsedCommand): boolean {
+    if (command.args.length === 0) {
+      host.showFloat(FLOAT_NOTICE, 'Usage: !multichat animation <on|off|auto>', 5000);
+      return true;
+    }
+    if (command.args.length !== 1) return false;
+
+    const mode = command.args[0].toLowerCase() as MultichatRuntimeAnimationMode;
+    if (mode !== 'on' && mode !== 'off' && mode !== 'auto') return false;
+
+    setRuntimeAnimationMode(mode);
+    const label = mode === 'auto'
+      ? 'Chat animations AUTO — bypassing heavy bursts'
+      : `Chat animations ${mode.toUpperCase()}`;
+    host.showFloat(FLOAT_NOTICE, label, 3000);
+    return true;
+  }
+
   function runTts(command: ParsedCommand): void {
     /* `rest` is everything after the command word, so the trigger and the word
        `tts` are already gone — the previous regex-strip spoke the whole message
@@ -496,6 +518,9 @@ export function createMultichatCommandRunner(host: CommandHost): MultichatComman
         case 'counterbgoff':
           host.setCounterBackground(false);
           host.showFloat(FLOAT_NOTICE, 'Counter background OFF', 2500);
+          break;
+        case 'animation':
+          if (!runAnimation(command)) return null;
           break;
         case 'events':
           if (!runEvents(command)) return null;

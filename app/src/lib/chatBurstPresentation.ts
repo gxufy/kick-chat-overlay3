@@ -1,3 +1,5 @@
+import { recordRuntimeAnimationBatch } from './multichatAnimationRuntime';
+
 /**
  * Presentation cadence used by the overlay ingress queue.
  *
@@ -7,9 +9,19 @@
  */
 export const BURST_PRESENT_INTERVAL_MS = 200;
 
-/** Drain every message accumulated for the current presentation bucket. */
+/**
+ * Drain every message accumulated for the current presentation bucket.
+ *
+ * This is also the authoritative traffic-pressure sample for the opt-in runtime
+ * animation `auto` mode. Sampling here means "heavy" is based on the exact rows
+ * about to appear together, not a separate timer or an approximate msg/s counter.
+ * Empty metronome ticks deliberately do not overwrite the decision for the last
+ * real batch while React is still committing it.
+ */
 export function drainBurstPresentationQueue<T>(pending: T[]): T[] {
-  return pending.splice(0);
+  const batch = pending.splice(0);
+  if (batch.length) recordRuntimeAnimationBatch(batch.length);
+  return batch;
 }
 
 /**

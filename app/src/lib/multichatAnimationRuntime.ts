@@ -19,10 +19,13 @@ export const AUTO_ANIMATION_BYPASS_HOLD_MS = 1_000;
 
 let runtimeMode: MultichatRuntimeAnimationMode = 'on';
 let autoBypassUntil = 0;
+let lastBatchAnimationEnabled = true;
 
 export function setRuntimeAnimationMode(mode: MultichatRuntimeAnimationMode): void {
   runtimeMode = mode;
   if (mode !== 'auto') autoBypassUntil = 0;
+  if (mode === 'on') lastBatchAnimationEnabled = true;
+  if (mode === 'off') lastBatchAnimationEnabled = false;
 }
 
 export function getRuntimeAnimationMode(): MultichatRuntimeAnimationMode {
@@ -30,37 +33,46 @@ export function getRuntimeAnimationMode(): MultichatRuntimeAnimationMode {
 }
 
 /**
- * Record one actual presentation batch and return whether its entrance should be
- * animated. The decision is sampled by ChatOverlay when it creates the matching
- * immutable render batch, so later mode changes never replay old animations.
+ * Record one actual non-empty presentation batch and return whether its entrance
+ * should be animated. The result is retained verbatim for ChatOverlay to stamp on
+ * the matching immutable render batch. That matters under load: React can render
+ * late, but a batch that was classified as a burst never becomes animated merely
+ * because the hold timer elapsed before its effect ran.
  */
 export function recordRuntimeAnimationBatch(
   batchSize: number,
   now = Date.now(),
 ): boolean {
-  if (runtimeMode === 'off') return false;
-  if (runtimeMode === 'on') return true;
+  let animate: boolean;
 
-  if (batchSize >= AUTO_ANIMATION_BYPASS_BATCH_SIZE) {
+  if (runtimeMode === 'off') {
+    animate = false;
+  } else if (runtimeMode === 'on') {
+    animate = true;
+  } else if (batchSize >= AUTO_ANIMATION_BYPASS_BATCH_SIZE) {
     autoBypassUntil = Math.max(autoBypassUntil, now + AUTO_ANIMATION_BYPASS_HOLD_MS);
-    return false;
+    animate = false;
+  } else {
+    animate = now >= autoBypassUntil;
   }
 
-  return now >= autoBypassUntil;
+  lastBatchAnimationEnabled = animate;
+  return animate;
 }
 
 /**
- * Read the decision for the batch most recently presented by the 200 ms ticker.
+ * Read the immutable decision for the most recently presented non-empty batch.
  * `recordRuntimeAnimationBatch` runs before React receives that batch.
  */
-export function runtimeEntranceAnimationEnabled(now = Date.now()): boolean {
+export function runtimeEntranceAnimationEnabled(): boolean {
   if (runtimeMode === 'off') return false;
   if (runtimeMode === 'on') return true;
-  return now >= autoBypassUntil;
+  return lastBatchAnimationEnabled;
 }
 
 /** Test-only reset helper; a browser-source reload naturally resets the module. */
 export function resetRuntimeAnimationState(): void {
   runtimeMode = 'on';
   autoBypassUntil = 0;
+  lastBatchAnimationEnabled = true;
 }

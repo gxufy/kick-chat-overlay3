@@ -9,6 +9,7 @@ import type { Platform } from '../../lib/types';
 import type { TwitchHypeTrainState } from '../../lib/twitchHypeTrainClient';
 import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
 import { createSmoothScrollFollower } from '../../lib/smoothScrollFollower';
+import { MESSAGE_FADE_TRANSITION_MS } from '../../lib/messageFadeScheduler';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -216,16 +217,30 @@ const MessageRow = memo(function MessageRow({
   sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string;
   hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
 }) {
+  const exitEasing = 'cubic-bezier(0.4, 0, 0.2, 1)';
+  const exitTransition = [
+    `grid-template-rows ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+    `opacity ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+    `transform ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+  ].join(', ');
+
   return (
     <div className={['gx-message-row', msgSlideIn ? 'gx-message-slide-in' : ''].filter(Boolean).join(' ')} style={{
       margin: '0 10px',
+      display: 'grid',
+      gridTemplateRows: fading ? '0fr' : '1fr',
       opacity: fading ? 0 : 1,
-      transition: fading ? 'opacity 400ms linear' : 'none',
+      transform: fading ? 'translate3d(0, -6px, 0)' : 'translate3d(0, 0, 0)',
+      transformOrigin: 'top center',
+      transition: exitTransition,
+      willChange: fading ? 'grid-template-rows, opacity, transform' : undefined,
       ...(messageShadowFilter ? { filter: messageShadowFilter } : {}),
     }}>
-      <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        paintStroke={paintStrokeVal} hideNames={hideNames}
-        tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+      <div className="gx-message-row-inner" style={{ minHeight: 0, overflow: 'hidden' }}>
+        <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
+          paintStroke={paintStrokeVal} hideNames={hideNames}
+          tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+      </div>
     </div>
   );
 });
@@ -415,6 +430,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           }
           @media (prefers-reduced-motion: reduce) {
             .gx-message-slide-in { animation: none; }
+            .gx-message-row { transition-duration: 0ms !important; transform: none !important; }
           }
 
           

@@ -1,9 +1,10 @@
 /* Command metadata must describe the real dispatcher, not a parallel wish list.
  *
- * The load-bearing test here reads lib/multichatCommandRuntime.ts and extracts the
- * `case` labels from the dispatcher's own switch statement, then asserts they are
- * exactly the documented names. A hardcoded expected list would drift silently the
- * moment someone adds or removes a case; reading the source cannot.
+ * The load-bearing test here reads lib/multichatCommandRuntimeCore.ts and extracts
+ * the `case` labels from the dispatcher's own switch statement, then asserts they
+ * are exactly the documented names. The public multichatCommandRuntime.ts module
+ * now decorates that core dispatcher with live DOM visibility reconciliation, so
+ * source-shape assertions belong to the core where the switch actually lives.
  *
  * The remaining tests pin the facts the UI copy asserts — both triggers, the single
  * shared access gate, and the argument shapes — so documentation cannot claim
@@ -25,7 +26,7 @@ import {
 import { MULTICHAT_TRIGGERS, YT_PRESETS } from '@/lib/multichatCommandRuntime';
 
 const SOURCE = readFileSync(
-  join(process.cwd(), 'src', 'lib', 'multichatCommandRuntime.ts'),
+  join(process.cwd(), 'src', 'lib', 'multichatCommandRuntimeCore.ts'),
   'utf8',
 );
 

@@ -1,8 +1,8 @@
 import type { Platform } from './types';
 
 const CHANNEL_PATTERNS: Readonly<Record<Platform, RegExp>> = {
-  kick: /^[A-Za-z0-9_-]{1,50}$/,
-  twitch: /^[A-Za-z0-9_]{1,50}$/,
+  kick: /^[A-Za-z0-9_-]{1,80}$/,
+  twitch: /^[A-Za-z0-9_]{1,25}$/,
   youtube: /^[A-Za-z0-9._-]{1,50}$/,
   tiktok: /^[A-Za-z0-9._]{1,50}$/,
 };

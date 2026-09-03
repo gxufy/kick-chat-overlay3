@@ -57,14 +57,14 @@ function connectFixture() {
 }
 
 describe('TikTok SSE ingestion', () => {
-  it('suppresses pre-start hub replay while reconnect replay can recover unseen new rows', async () => {
+  it('keeps one overlay-start cutoff across reconnects while recovering unseen new rows', async () => {
     const fixture = connectFixture();
     const first = FakeEventSource.instances[0];
-    expect(first.url).toBe('/api/tiktok/chat?user=%40gxufy');
+    expect(first.url).toBe('/api/tiktok/chat?user=%40gxufy&since=10000');
 
     first.emit({ type: 'status', status: 'connected' });
-    /* These are the server hub's recent-event replay from before the browser
-       source existed. They establish dedupe state but must never animate in. */
+    /* Defense-in-depth: an older server/proxy replay still cannot leak through
+       even though the current SSE endpoint filters these rows server-side. */
     first.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'old chat', timestamp: 9_000 });
     first.emit({
       type: 'gift', id: 'gift-old', senderId: 'u2', username: 'two',
@@ -72,7 +72,6 @@ describe('TikTok SSE ingestion', () => {
     });
     expect(fixture.messages).toEqual([]);
 
-    /* Genuine traffic after the overlay baseline still passes immediately. */
     first.emit({ type: 'chat', id: '124', senderId: 'u3', username: 'three', text: 'new', timestamp: 10_100 });
     first.emit({
       type: 'gift', id: 'gift-new', senderId: 'u4', username: 'four',
@@ -91,15 +90,40 @@ describe('TikTok SSE ingestion', () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     const second = FakeEventSource.instances[1];
-    expect(second).toBeDefined();
-    /* Old baseline rows remain suppressed, a row already shown stays deduped,
-       and a post-start row missed during the SSE drop is recovered. */
+    expect(second.url).toBe('/api/tiktok/chat?user=%40gxufy&since=10000');
     second.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'old chat', timestamp: 9_000 });
     second.emit({ type: 'chat', id: '124', senderId: 'u3', username: 'three', text: 'new', timestamp: 10_100 });
     second.emit({ type: 'chat', id: '125', senderId: 'u5', username: 'five', text: 'missed while reconnecting', timestamp: 12_000 });
 
     expect(fixture.messages.map(message => message.id)).toEqual(['124', 'gift-new', '125']);
     expect(fixture.statuses).toEqual(['connecting', 'connected', 'connecting']);
+    fixture.connector.stop();
+  });
+
+  it('backs off repeated SSE failures and resets after a connected status', async () => {
+    const fixture = connectFixture();
+    const first = FakeEventSource.instances[0];
+
+    first.fail();
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeEventSource.instances).toHaveLength(2);
+
+    const second = FakeEventSource.instances[1];
+    second.fail();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeEventSource.instances).toHaveLength(3);
+
+    const third = FakeEventSource.instances[2];
+    third.emit({ type: 'status', status: 'connected' });
+    third.fail();
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(FakeEventSource.instances).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeEventSource.instances).toHaveLength(4);
     fixture.connector.stop();
   });
 
@@ -114,8 +138,6 @@ describe('TikTok SSE ingestion', () => {
 
     expect(fixture.messages).toHaveLength(2);
     expect(fixture.messages.every(message => message.id === '')).toBe(true);
-    /* Pins are current-state replay, not feed rows, so reapplying one is safe and
-       lets a reconnect restore the banner even if its feed id was seen already. */
     expect(fixture.pins.map(pin => pin?.message.id)).toEqual(['pin-1', 'pin-1']);
     fixture.connector.stop();
   });

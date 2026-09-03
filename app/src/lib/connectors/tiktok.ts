@@ -3,6 +3,7 @@
  * TikTok has no colors/emotes; moderator/subscriber flags become badges.
  */
 import type { Connector, ConnectorCallbacks, UnifiedMessage } from '../types';
+import { isMessageFromCurrentOverlaySession } from '../startupMessageBaseline';
 
 const TIKTOK_SEEN_MAX = 512;
 
@@ -13,14 +14,15 @@ export interface TikTokConnectorOpts extends ConnectorCallbacks {
 export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
   let es: EventSource | null = null;
   let stopped = false;
+  const startedAt = Date.now();
   const seen = new Set<string>();
   const seenOrder: string[] = [];
 
   /* The server hub intentionally replays a short recent-event window to every
-   * new SSE subscriber so a fresh overlay is not blank. A transport reconnect is
-   * also a new subscriber, though, so without a client-side id gate those same
-   * rows re-enter the full parse/cosmetics/render pipeline on every SSE drop.
-   * Keep the gate bounded well above the hub's replay window. */
+   * new SSE subscriber. Rows from before this browser-source instance started are
+   * startup context, not new chat, so they are remembered but never emitted.
+   * Reconnect replay still recovers genuinely missed rows from after startedAt,
+   * while the id gate prevents rows already shown from appearing twice. */
   function remember(id: unknown): boolean {
     if (id === null || id === undefined || id === '') return true;
     const key = String(id);
@@ -70,7 +72,9 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
 
   function emitMessage(d: any, kind: 'chat' | 'system'): void {
     if (!remember(d.id)) return;
-    opts.onMessage(toMessage(d, kind));
+    const message = toMessage(d, kind);
+    if (!isMessageFromCurrentOverlaySession(message.timestamp, startedAt)) return;
+    opts.onMessage(message);
   }
 
   function connect() {

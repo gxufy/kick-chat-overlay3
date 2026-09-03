@@ -81,7 +81,6 @@ export function createTikTokConnector(opts: TikTokConnectorOpts): Connector {
     if (stopped || reconnectTimer) return;
     const wait = reconnectDelay;
     reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
-    opts.onStatus('connecting');
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();

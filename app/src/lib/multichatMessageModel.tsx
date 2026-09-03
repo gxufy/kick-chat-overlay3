@@ -44,6 +44,7 @@ import {
 } from './render';
 import { handleAssetError } from './render/imageFallback';
 import { runtimeEventMessageVisible } from './multichatEventRuntime';
+import { ensureStartupDebugPanel, reportStartupAcceptedMessage } from './startupDebug';
 import type { Platform, UnifiedMessage } from './types';
 
 
@@ -117,6 +118,7 @@ const KNOWN_BOTS: ReadonlySet<string> = new Set([
 export function buildMessageFilter(
   cfg: MessageFilterConfig,
 ): (um: UnifiedMessage) => boolean {
+  ensureStartupDebugPanel();
   const extraBots = new Set(
     (cfg.botNames || '')
       .split(',')
@@ -256,6 +258,7 @@ export function buildParsedMessage(
   mentions: MentionContext,
   timestamp: number,
 ): ParsedMessage {
+  reportStartupAcceptedMessage(um);
   const badgeMessage = cfg.showCommunityBadges === false
     ? { ...um, badges: um.badges.filter((badge) => !badge.type.startsWith('community:')) }
     : um;

@@ -55,6 +55,11 @@ function parsed(messages: UnifiedMessage[]): ParsedMessage[] {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  /* The main normalization fixture carries an explicit Aug 2024 provider
+     timestamp. Put this suite's browser-source baseline just before it so these
+     tests exercise current-session parsing/pacing; startup-history suppression is
+     covered separately by connectorStartupHistory.test.ts with an old+new pair. */
+  vi.setSystemTime(1_700_000_000_000);
 });
 
 afterEach(() => {
@@ -64,7 +69,7 @@ afterEach(() => {
 });
 
 describe('YouTube InnerTube ingestion', () => {
-  it('publishes the initial backlog one message at a time in provider order', async () => {
+  it('paces current-session additions one message at a time in provider order', async () => {
     const fixture = connectFixture();
 
     await vi.advanceTimersByTimeAsync(1100);

@@ -30,6 +30,7 @@ class FakeEventSource {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.setSystemTime(10_000);
   FakeEventSource.instances.length = 0;
   vi.stubGlobal('EventSource', FakeEventSource);
 });
@@ -56,19 +57,28 @@ function connectFixture() {
 }
 
 describe('TikTok SSE ingestion', () => {
-  it('drops replayed message ids after an SSE reconnect', async () => {
+  it('suppresses pre-start hub replay while reconnect replay can recover unseen new rows', async () => {
     const fixture = connectFixture();
     const first = FakeEventSource.instances[0];
     expect(first.url).toBe('/api/tiktok/chat?user=%40gxufy');
 
     first.emit({ type: 'status', status: 'connected' });
-    first.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'hello', timestamp: 1 });
+    /* These are the server hub's recent-event replay from before the browser
+       source existed. They establish dedupe state but must never animate in. */
+    first.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'old chat', timestamp: 9_000 });
     first.emit({
-      type: 'gift', id: 'gift-1', senderId: 'u2', username: 'two',
-      text: '😀 wow', giftIcon: 'https://example.test/gift.png', timestamp: 2,
+      type: 'gift', id: 'gift-old', senderId: 'u2', username: 'two',
+      text: 'old gift', giftIcon: 'https://example.test/gift.png', timestamp: 9_500,
     });
+    expect(fixture.messages).toEqual([]);
 
-    expect(fixture.messages.map(message => message.id)).toEqual(['123', 'gift-1']);
+    /* Genuine traffic after the overlay baseline still passes immediately. */
+    first.emit({ type: 'chat', id: '124', senderId: 'u3', username: 'three', text: 'new', timestamp: 10_100 });
+    first.emit({
+      type: 'gift', id: 'gift-new', senderId: 'u4', username: 'four',
+      text: '😀 wow', giftIcon: 'https://example.test/gift.png', timestamp: 10_200,
+    });
+    expect(fixture.messages.map(message => message.id)).toEqual(['124', 'gift-new']);
     expect(fixture.messages[1].emotes).toEqual([{
       begin: 6,
       end: 10,
@@ -82,25 +92,25 @@ describe('TikTok SSE ingestion', () => {
 
     const second = FakeEventSource.instances[1];
     expect(second).toBeDefined();
-    /* The hub replays recent rows to a new subscriber. They must not traverse
-       the overlay pipeline a second time. */
-    second.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'hello', timestamp: 1 });
-    second.emit({ type: 'gift', id: 'gift-1', senderId: 'u2', username: 'two', text: '😀 wow', timestamp: 2 });
-    second.emit({ type: 'chat', id: '124', senderId: 'u3', username: 'three', text: 'new', timestamp: 3 });
+    /* Old baseline rows remain suppressed, a row already shown stays deduped,
+       and a post-start row missed during the SSE drop is recovered. */
+    second.emit({ type: 'chat', id: 123, senderId: 'u1', username: 'one', text: 'old chat', timestamp: 9_000 });
+    second.emit({ type: 'chat', id: '124', senderId: 'u3', username: 'three', text: 'new', timestamp: 10_100 });
+    second.emit({ type: 'chat', id: '125', senderId: 'u5', username: 'five', text: 'missed while reconnecting', timestamp: 12_000 });
 
-    expect(fixture.messages.map(message => message.id)).toEqual(['123', 'gift-1', '124']);
+    expect(fixture.messages.map(message => message.id)).toEqual(['124', 'gift-new', '125']);
     expect(fixture.statuses).toEqual(['connecting', 'connected', 'connecting']);
     fixture.connector.stop();
   });
 
-  it('keeps pin replay stateful and does not collapse events without ids', () => {
+  it('keeps pin replay stateful and does not collapse new events without ids', () => {
     const fixture = connectFixture();
     const source = FakeEventSource.instances[0];
 
-    source.emit({ type: 'follow', username: 'one', text: 'one followed', timestamp: 1 });
-    source.emit({ type: 'follow', username: 'one', text: 'one followed again', timestamp: 2 });
-    source.emit({ type: 'pin', id: 'pin-1', senderId: 'u1', username: 'one', text: 'pinned', timestamp: 3 });
-    source.emit({ type: 'pin', id: 'pin-1', senderId: 'u1', username: 'one', text: 'pinned', timestamp: 3 });
+    source.emit({ type: 'follow', username: 'one', text: 'one followed', timestamp: 10_001 });
+    source.emit({ type: 'follow', username: 'one', text: 'one followed again', timestamp: 10_002 });
+    source.emit({ type: 'pin', id: 'pin-1', senderId: 'u1', username: 'one', text: 'pinned', timestamp: 10_003 });
+    source.emit({ type: 'pin', id: 'pin-1', senderId: 'u1', username: 'one', text: 'pinned', timestamp: 10_003 });
 
     expect(fixture.messages).toHaveLength(2);
     expect(fixture.messages.every(message => message.id === '')).toBe(true);

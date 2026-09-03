@@ -1,6 +1,7 @@
 import Pusher from 'pusher-js';
 import { getKickChannel, type KickChannel } from '../kick';
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
+import { isMessageFromCurrentOverlaySession } from '../startupMessageBaseline';
 
 const KICK_EMOTE_RE = /\[(?:emote|emoji):(\w+):([^\]]*)\]/g;
 export const KICK_HISTORY_MAX = 40;
@@ -188,6 +189,7 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
   let watchdog: ReturnType<typeof setInterval> | null = null;
   let historyAbort: AbortController | null = null;
   let stopped = false;
+  const startedAt = Date.now();
   let bootstrappingHistory = true;
   const pendingLive: UnifiedMessage[] = [];
   const seen = new Set<string>();
@@ -206,6 +208,11 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
 
   function deliver(message: UnifiedMessage): void {
     if (!message.id || !remember(message.id)) return;
+    /* Kick's history endpoint is only a race-closure source now. Rows that were
+     * already present when this overlay instance started establish the baseline
+     * but never enter the render/command pipeline. A message that arrives during
+     * bootstrap still survives because its provider timestamp is >= startedAt. */
+    if (!isMessageFromCurrentOverlaySession(message.timestamp, startedAt)) return;
     opts.onMessage(message);
   }
 
@@ -342,7 +349,7 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
       const history = await fetchKickHistory(channel, historyAbort.signal);
       if (!stopped) history.forEach(deliver);
     } catch {
-      // History is optional context; the live socket remains authoritative.
+      // History is optional race closure; live Pusher traffic remains authoritative.
     } finally {
       clearTimeout(historyTimeout);
       historyAbort = null;

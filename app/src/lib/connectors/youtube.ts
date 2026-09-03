@@ -1,4 +1,5 @@
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
+import { isMessageFromCurrentOverlaySession } from '../startupMessageBaseline';
 
 const OFFLINE_RECHECK_MS = 60_000;
 const POLL_FLOOR_MS = 800;
@@ -6,7 +7,6 @@ const POLL_FLOOR_MS = 800;
  * YouTube deliveries just beyond that boundary so a provider batch cannot
  * collapse multiple rows into the same React render/entrance animation. */
 export const YOUTUBE_DELIVERY_INTERVAL_MS = 225;
-export const YOUTUBE_BACKLOG_KEEP = 30;
 const YOUTUBE_SEEN_MAX = 512;
 const RETRY_START_MS = 3_000;
 const RETRY_MAX_MS = 12_000;
@@ -223,8 +223,8 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let deliveryTimer: ReturnType<typeof setTimeout> | null = null;
   let deliveryDelay = YOUTUBE_DELIVERY_INTERVAL_MS;
-  let firstBatch = true;
   let backoff = RETRY_START_MS;
+  const startedAt = Date.now();
   const deliveryQueue: UnifiedMessage[] = [];
   const seen = new Set<string>();
   const seenOrder: string[] = [];
@@ -254,6 +254,11 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
 
   function emitMessage(message: UnifiedMessage, immediate: boolean, delayMs: number): void {
     if (!remember(message.id)) return;
+    /* InnerTube's first continuation contains chat history. Treat those ids as
+     * baseline state but do not enqueue anything timestamped before this browser
+     * source started. Because the cutoff is applied before deliveryQueue, old
+     * history cannot delay genuinely new YouTube chat behind a paced backlog. */
+    if (!isMessageFromCurrentOverlaySession(message.timestamp, startedAt)) return;
     if (immediate) {
       opts.onMessage(message);
       return;
@@ -330,7 +335,6 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
         const next = nextContinuation(cont);
         const actions: any[] = Array.isArray(cont.actions) ? cont.actions : [];
         const additions = actions.filter((action) => action?.addChatItemAction?.item);
-        const backlogKeep = new Set(firstBatch ? additions.slice(-YOUTUBE_BACKLOG_KEEP) : additions);
         const deletedIds = new Set<string>();
         const deletedAuthors = new Set<string>();
         for (const action of actions) {
@@ -346,18 +350,10 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
         );
 
         for (const action of actions) {
-          const item = action?.addChatItemAction?.item;
-          if (item && firstBatch && !backlogKeep.has(action)) {
-            const skippedId = itemId(item);
-            if (skippedId) remember(skippedId);
-            continue;
-          }
-          /* bChat's YouTube handler expands a provider batch into individual
-           * store additions. Queue the first backlog too so every retained row
-           * crosses its own render boundary instead of appearing as one burst. */
+          /* Every provider addition is normalized, but emitMessage applies the
+           * overlay-start cutoff before anything can enter the paced queue. */
           handleAction(action, false, pace, deletedIds, deletedAuthors);
         }
-        firstBatch = false;
 
         if (!next.continuation) {
           opts.onStatus('offline', 'Stream ended');

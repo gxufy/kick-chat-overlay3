@@ -52,7 +52,7 @@ describe('TikTok shared-hub recovery', () => {
     expect(tikTokBufferedEventMatchesDelete({ id: 'm1', senderId: 'u1' }, { id: 'other' })).toBe(false);
   });
 
-  it('does not replay a message that was deleted while every SSE subscriber was disconnected', async () => {
+  it('replays a delete tombstone, not the deleted row, when moderation happens during SSE downtime', async () => {
     const first: any[] = [];
     const unsubscribeFirst = subscribe('streamer', (data) => first.push(data));
     await Promise.resolve();
@@ -70,10 +70,11 @@ describe('TikTok shared-hub recovery', () => {
     const recovered: any[] = [];
     const unsubscribeRecovered = subscribe('streamer', (data) => recovered.push(data));
     expect(recovered.some((event) => event.type === 'chat' && event.id === 'message-1')).toBe(false);
+    expect(recovered.some((event) => event.type === 'delete' && event.id === 'message-1')).toBe(true);
     unsubscribeRecovered();
   });
 
-  it('prunes all buffered rows from an author deletion before a reconnect replay', async () => {
+  it('prunes an author while retaining the author-delete tombstone for reconnecting overlays', async () => {
     const unsubscribeFirst = subscribe('streamer', () => {});
     await Promise.resolve();
     for (const id of ['m1', 'm2']) {
@@ -94,6 +95,7 @@ describe('TikTok shared-hub recovery', () => {
     const recovered: any[] = [];
     const unsubscribeRecovered = subscribe('streamer', (data) => recovered.push(data));
     expect(recovered.filter((event) => event.type === 'chat').map((event) => event.id)).toEqual(['keep']);
+    expect(recovered.some((event) => event.type === 'delete' && event.senderId === 'user-1')).toBe(true);
     unsubscribeRecovered();
   });
 });

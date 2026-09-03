@@ -246,6 +246,8 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
+type RenderBatch = { id: number; messageIds: string[]; animate: boolean };
+
 export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false, sharedChatEnabled }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
      read below, so no intersection or cast is needed. */
@@ -307,59 +309,48 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     };
   }, [smoothRuntime]);
 
-  
-  const seqRef = useRef(0);
-  /* Batches retain membership plus the entrance decision sampled when the batch
-     first arrived. Late badge/paint/emote repaints therefore never replay an
-     entrance, and changing the runtime animation command never remounts old rows. */
-  const [batches, setBatches] = useState<{ id: number; messageIds: string[]; animate: boolean }[]>([]);
-  const seenIdsRef = useRef<Set<string>>(new Set());
+  /* The parent already commits connector arrivals on the fixed 200 ms clock.
+     Derive batch membership during that same render instead of committing the
+     messages first and then running an effect that calls setBatches for a second
+     React commit. Refs preserve immutable batch identity across repaint-only
+     updates without scheduling any additional render. */
+  const batchStateRef = useRef<{
+    sequence: number;
+    seen: Set<string>;
+    batches: RenderBatch[];
+  }>({ sequence: 0, seen: new Set<string>(), batches: [] });
   const messagesById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const batches = useMemo(() => {
+    const state = batchStateRef.current;
+    const liveIds = new Set(messages.map((message) => message.id));
+    let next = state.batches
+      .map((batch) => ({ ...batch, messageIds: batch.messageIds.filter((id) => liveIds.has(id)) }))
+      .filter((batch) => batch.messageIds.length > 0);
 
-  useEffect(() => {
     const newMessageIds = messages
-      .filter((message) => !seenIdsRef.current.has(message.id))
+      .filter((message) => !state.seen.has(message.id))
       .map((message) => message.id);
-    newMessageIds.forEach((id) => seenIdsRef.current.add(id));
-    if (seenIdsRef.current.size > 500) {
-      seenIdsRef.current = new Set(messages.map((message) => message.id));
-    }
-    if (!newMessageIds.length) return;
-    const id = ++seqRef.current;
-    const animate = runtimeEntranceAnimationEnabled();
-    setBatches((previous) => {
-      const next = [...previous, { id, messageIds: newMessageIds, animate }];
-      let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
-      while (total > 100 && next.length) {
-        total -= next[0].messageIds.length;
-        next.shift();
-      }
-      return next;
-    });
-  }, [messages]);
+    for (const id of newMessageIds) state.seen.add(id);
 
-  /* Sync deletions while preserving batch identity for every surviving row.
-     Returning the previous array when membership is unchanged avoids a redundant
-     full ChatOverlay render for every ordinary message arrival. */
-  useEffect(() => {
-    const ids = new Set(messages.map((message) => message.id));
-    setBatches((previous) => {
-      let changed = false;
-      const next: typeof previous = [];
-      for (const batch of previous) {
-        const messageIds = batch.messageIds.filter((id) => ids.has(id));
-        if (messageIds.length === batch.messageIds.length) {
-          next.push(batch);
-          continue;
-        }
-        changed = true;
-        if (messageIds.length) next.push({ ...batch, messageIds });
-      }
-      return changed ? next : previous;
-    });
+    if (newMessageIds.length) {
+      next = [...next, {
+        id: ++state.sequence,
+        messageIds: newMessageIds,
+        animate: runtimeEntranceAnimationEnabled(),
+      }];
+    }
+
+    if (state.seen.size > 500) state.seen = new Set(liveIds);
+    let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
+    while (total > 100 && next.length) {
+      total -= next[0].messageIds.length;
+      next.shift();
+    }
+    state.batches = next;
+    return next;
   }, [messages]);
 
   const renderMsg = (msg: ParsedMessage, animate = true) => (

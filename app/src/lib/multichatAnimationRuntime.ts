@@ -1,3 +1,9 @@
+import {
+  recordPerformanceBatch,
+  resetPerformanceRuntimeForTests,
+  runtimeVisualEffectsReduced,
+} from './multichatPerformanceRuntime';
+
 export type MultichatRuntimeAnimationMode = 'on' | 'off' | 'auto';
 
 /**
@@ -17,7 +23,11 @@ export const AUTO_ANIMATION_BYPASS_BATCH_SIZE = 4;
  */
 export const AUTO_ANIMATION_BYPASS_HOLD_MS = 1_000;
 
-let runtimeMode: MultichatRuntimeAnimationMode = 'on';
+/* Auto is now the production default: normal traffic keeps the configured
+ * entrance effect, while provider bursts and actual slow browser frames shed
+ * only that expensive visual work. `animation on` remains an explicit force-on
+ * override for streamers who want the old always-animate behavior. */
+let runtimeMode: MultichatRuntimeAnimationMode = 'auto';
 let autoBypassUntil = 0;
 let lastBatchAnimationEnabled = true;
 
@@ -52,11 +62,17 @@ export function recordRuntimeAnimationBatch(
   } else if (batchSize >= AUTO_ANIMATION_BYPASS_BATCH_SIZE) {
     autoBypassUntil = Math.max(autoBypassUntil, now + AUTO_ANIMATION_BYPASS_HOLD_MS);
     animate = false;
+  } else if (runtimeVisualEffectsReduced()) {
+    /* Actual Chromium/OBS frame pressure is a stronger signal than message count:
+       keep content current and temporarily skip entrance work until frames recover. */
+    autoBypassUntil = Math.max(autoBypassUntil, now + AUTO_ANIMATION_BYPASS_HOLD_MS);
+    animate = false;
   } else {
     animate = now >= autoBypassUntil;
   }
 
   lastBatchAnimationEnabled = animate;
+  recordPerformanceBatch(batchSize, runtimeMode, animate);
   return animate;
 }
 
@@ -72,7 +88,8 @@ export function runtimeEntranceAnimationEnabled(): boolean {
 
 /** Test-only reset helper; a browser-source reload naturally resets the module. */
 export function resetRuntimeAnimationState(): void {
-  runtimeMode = 'on';
+  runtimeMode = 'auto';
   autoBypassUntil = 0;
   lastBatchAnimationEnabled = true;
+  resetPerformanceRuntimeForTests();
 }

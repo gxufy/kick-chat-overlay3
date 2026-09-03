@@ -13,10 +13,16 @@ beforeEach(() => resetRuntimeAnimationState());
 afterEach(() => resetRuntimeAnimationState());
 
 describe('runtime chat animation control', () => {
-  it('defaults to configured entrance animations being enabled', () => {
-    expect(getRuntimeAnimationMode()).toBe('on');
+  it('defaults to adaptive auto mode while keeping normal traffic animated', () => {
+    expect(getRuntimeAnimationMode()).toBe('auto');
     expect(runtimeEntranceAnimationEnabled()).toBe(true);
-    expect(recordRuntimeAnimationBatch(50, 1_000)).toBe(true);
+    expect(recordRuntimeAnimationBatch(1, 1_000)).toBe(true);
+  });
+
+  it('defaults to bypassing a heavy presentation batch', () => {
+    expect(getRuntimeAnimationMode()).toBe('auto');
+    expect(recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, 1_000)).toBe(false);
+    expect(runtimeEntranceAnimationEnabled()).toBe(false);
   });
 
   it('turns all new entrance animations off until explicitly restored', () => {
@@ -62,7 +68,6 @@ describe('runtime chat animation control', () => {
     setRuntimeAnimationMode('auto');
     recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, 5_000);
 
-    // Merely reading later must not reinterpret the already-presented burst.
     expect(runtimeEntranceAnimationEnabled()).toBe(false);
     expect(runtimeEntranceAnimationEnabled()).toBe(false);
 

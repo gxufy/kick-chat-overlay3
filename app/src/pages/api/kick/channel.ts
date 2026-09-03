@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { normalizeChatChannel } from '../../../lib/channelValidation';
 
 const HEADERS = {
   Accept: 'application/json,text/plain,*/*',
@@ -9,8 +10,8 @@ const HEADERS = {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store');
-  const channel = String(req.query.channel ?? '').replace(/^@/, '').trim();
-  if (!/^[A-Za-z0-9_-]{1,80}$/.test(channel)) return res.status(400).json({ error: 'invalid channel' });
+  const channel = normalizeChatChannel('kick', req.query.channel);
+  if (!channel) return res.status(400).json({ error: 'invalid channel' });
   try {
     const upstream = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(channel)}`, {
       headers: HEADERS,

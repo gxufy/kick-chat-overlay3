@@ -1,4 +1,5 @@
 import type { Platform, UnifiedMessage } from './types';
+import { recordPerformanceAcceptedMessage } from './multichatPerformanceRuntime';
 
 const PANEL_ID = 'multichat-startup-debug';
 const DEBUG_PARAM = 'startupDebug';
@@ -125,6 +126,10 @@ export function ensureStartupDebugPanel(): HTMLElement | null {
 }
 
 export function reportStartupAcceptedMessage(message: UnifiedMessage): void {
+  /* This hook already runs once for every UnifiedMessage that reaches parsing,
+     making it the cheapest shared ingress point for provider-age diagnostics. */
+  recordPerformanceAcceptedMessage(message);
+
   const configured = configuredPlatforms();
   if (
     message.kind !== 'chat'

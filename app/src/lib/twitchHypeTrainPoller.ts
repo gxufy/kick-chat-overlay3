@@ -6,6 +6,7 @@ import {
 
 export const HYPE_TRAIN_INACTIVE_INTERVAL_MS = 60_000;
 export const HYPE_TRAIN_ACTIVE_INTERVAL_MS = 15_000;
+export const HYPE_TRAIN_ERROR_BACKOFF_MAX_MS = 600_000;
 
 export function startTwitchHypeTrainPoller(opts: {
   login: string;
@@ -16,6 +17,7 @@ export function startTwitchHypeTrainPoller(opts: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let controller: AbortController | null = null;
   let lastSerialized = '';
+  let errorBackoffMs = HYPE_TRAIN_INACTIVE_INTERVAL_MS;
 
   function emit(state: TwitchHypeTrainState): void {
     const serialized = JSON.stringify(state);
@@ -54,6 +56,7 @@ export function startTwitchHypeTrainPoller(opts: {
         return;
       }
       emit(state);
+      errorBackoffMs = state.active ? HYPE_TRAIN_ACTIVE_INTERVAL_MS : HYPE_TRAIN_INACTIVE_INTERVAL_MS;
       schedule(state.active ? HYPE_TRAIN_ACTIVE_INTERVAL_MS : HYPE_TRAIN_INACTIVE_INTERVAL_MS);
     } catch {
       if (stopped || ownedController.signal.aborted) return;
@@ -62,9 +65,9 @@ export function startTwitchHypeTrainPoller(opts: {
         return;
       }
       try { opts.onError?.(); } catch { /* consumer fault */ }
-      schedule(lastSerialized.includes('"active":true')
-        ? HYPE_TRAIN_ACTIVE_INTERVAL_MS
-        : HYPE_TRAIN_INACTIVE_INTERVAL_MS);
+      const wait = errorBackoffMs;
+      errorBackoffMs = Math.min(errorBackoffMs * 2, HYPE_TRAIN_ERROR_BACKOFF_MAX_MS);
+      schedule(wait);
     } finally {
       if (controller === ownedController) controller = null;
     }
@@ -82,6 +85,7 @@ export function startTwitchHypeTrainPoller(opts: {
     clearTimer();
     controller?.abort();
     controller = null;
+    errorBackoffMs = HYPE_TRAIN_INACTIVE_INTERVAL_MS;
     void poll();
   });
 

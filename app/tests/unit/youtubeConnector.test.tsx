@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
-import { createYouTubeConnector, parseRuns, YOUTUBE_DELIVERY_INTERVAL_MS } from '@/lib/connectors/youtube';
+import { createYouTubeConnector, parseRuns } from '@/lib/connectors/youtube';
 import { NO_COSMETICS, buildParsedMessage } from '@/lib/multichatMessageModel';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import type { ParsedMessage } from '@/lib/kick';
@@ -57,8 +57,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   /* The main normalization fixture carries an explicit Aug 2024 provider
      timestamp. Put this suite's browser-source baseline just before it so these
-     tests exercise current-session parsing/pacing; startup-history suppression is
-     covered separately by connectorStartupHistory.test.ts with an old+new pair. */
+     tests exercise current-session parsing/delivery; startup-history suppression
+     is covered separately by connectorStartupHistory.test.ts with an old+new pair. */
   vi.setSystemTime(1_700_000_000_000);
 });
 
@@ -69,16 +69,10 @@ afterEach(() => {
 });
 
 describe('YouTube InnerTube ingestion', () => {
-  it('paces current-session additions one message at a time in provider order', async () => {
+  it('emits one continuation immediately in provider order for shared MultiChat batching', async () => {
     const fixture = connectFixture();
 
     await vi.advanceTimersByTimeAsync(1100);
-    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal']);
-
-    await vi.advanceTimersByTimeAsync(YOUTUBE_DELIVERY_INTERVAL_MS);
-    expect(fixture.messages.map(message => message.id)).toEqual(['yt-normal', 'yt-fallback']);
-
-    await vi.advanceTimersByTimeAsync(1500);
     expect(fixture.messages.map(message => message.id)).toEqual([
       'yt-normal', 'yt-fallback', 'yt-super-chat', 'yt-super-sticker', 'yt-membership', 'yt-gift',
     ]);

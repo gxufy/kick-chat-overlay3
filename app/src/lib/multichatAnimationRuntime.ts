@@ -62,7 +62,7 @@ export function recordRuntimeAnimationBatch(
   } else if (batchSize >= AUTO_ANIMATION_BYPASS_BATCH_SIZE) {
     autoBypassUntil = Math.max(autoBypassUntil, now + AUTO_ANIMATION_BYPASS_HOLD_MS);
     animate = false;
-  } else if (runtimeVisualEffectsReduced(now)) {
+  } else if (runtimeVisualEffectsReduced()) {
     /* Actual Chromium/OBS frame pressure is a stronger signal than message count:
        keep content current and temporarily skip entrance work until frames recover. */
     autoBypassUntil = Math.max(autoBypassUntil, now + AUTO_ANIMATION_BYPASS_HOLD_MS);

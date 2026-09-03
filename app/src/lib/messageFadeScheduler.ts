@@ -1,3 +1,5 @@
+import { runtimeVisualEffectsReduced } from './multichatPerformanceRuntime';
+
 export interface FadeScheduledMessage {
   id: string;
   timestamp?: number;
@@ -32,6 +34,11 @@ export const MESSAGE_FADE_TRANSITION_MS = 700;
  * Each cadence tick starts at most one expired row. The row then gets the full
  * bChat-style eased exit window before it is removed, so opacity and layout can
  * settle together instead of disappearing first and snapping the gap closed.
+ *
+ * Under measured browser pressure the content is removed on that same cadence
+ * without starting the grid/opacity/transform transition. This is load shedding,
+ * not message dropping: only an already-expired visual effect is skipped, and the
+ * normal 700 ms exit automatically returns once Chromium recovers.
  */
 export function createMessageFadeScheduler<T extends FadeScheduledMessage>(
   options: SchedulerOptions<T>,
@@ -84,22 +91,27 @@ export function createMessageFadeScheduler<T extends FadeScheduledMessage>(
     );
 
     if (expired) {
-      fading.add(expired.id);
-      options.onFadingChange(new Set(fading));
       const id = expired.id;
-      const removalTimer = setTimer(() => {
-        removalTimers.delete(id);
-        if (stopped) return;
-        fading.delete(id);
+      if (runtimeVisualEffectsReduced()) {
         options.onRemove(id);
         options.onFadingChange(new Set(fading));
-        scheduleNext();
-      }, transitionMs);
-      removalTimers.set(id, removalTimer);
+      } else {
+        fading.add(id);
+        options.onFadingChange(new Set(fading));
+        const removalTimer = setTimer(() => {
+          removalTimers.delete(id);
+          if (stopped) return;
+          fading.delete(id);
+          options.onRemove(id);
+          options.onFadingChange(new Set(fading));
+          scheduleNext();
+        }, transitionMs);
+        removalTimers.set(id, removalTimer);
+      }
     }
 
     // If several rows are already expired this resolves to the *next* cadence
-    // boundary, so only one begins its exit per 200 ms.
+    // boundary, so only one begins its exit/removal per 200 ms.
     scheduleNext();
   }
 

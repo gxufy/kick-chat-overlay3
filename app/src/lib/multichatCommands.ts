@@ -157,7 +157,7 @@ export const MULTICHAT_COMMANDS: readonly MultichatCommand[] = [
     syntax: '!multichat animation <on|off|auto>',
     summary: 'Controls chat entrance animations at runtime without reloading the source.',
     detail:
-      'on restores the animation selected in the overlay URL, off makes new chat rows appear immediately, and auto keeps the configured animation for normal traffic but bypasses it during heavy 200 ms chat batches until the burst settles. Runtime-only; a browser-source reload resets it to on.',
+      'auto is the default after a browser-source load: normal traffic uses the configured animation, while heavy 200 ms batches or measured browser-frame pressure temporarily bypass expensive entrance work and recover automatically. on force-enables the configured entrance animation and off disables it.',
   },
   {
     name: 'events',

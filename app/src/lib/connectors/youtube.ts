@@ -1,11 +1,14 @@
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 import { isMessageFromCurrentOverlaySession } from '../startupMessageBaseline';
+import { normalizeChatChannel } from '../channelValidation';
 
 const OFFLINE_RECHECK_MS = 60_000;
 const POLL_FLOOR_MS = 800;
-const YOUTUBE_SEEN_MAX = 512;
+const YOUTUBE_SEEN_MAX = 2_048;
 const RETRY_START_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
+const SHARED_RECONNECT_START_MS = 5_000;
+const SHARED_RECONNECT_MAX_MS = 60_000;
 
 /**
  * Kept as a compatibility export for older tests/importers. YouTube no longer
@@ -223,18 +226,21 @@ export interface YouTubeConnectorOpts extends ConnectorCallbacks {
 }
 
 /**
- * Anonymous InnerTube connector.
- *
- * The provider continuation is the batching boundary: normalize every action in
- * one response immediately, then wait for YouTube's next continuation timeout.
- * MultiChat's shared 200 ms presentation clock owns visual pacing. This mirrors
- * the efficient provider-loop shape used by unified-chat-lite without importing
- * its Python runtime into our Node/OBS architecture.
+ * Production browsers subscribe to one server-side YouTube hub per channel.
+ * The hub owns discovery/polling (including a simultaneous live Short) while
+ * this connector keeps the mature message/event parser in the browser. Older
+ * environments without a standards-complete EventSource keep the direct
+ * InnerTube polling path for backwards compatibility.
  */
 export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
+  const channel = normalizeChatChannel('youtube', opts.channel);
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let backoff = RETRY_START_MS;
+  let es: EventSource | null = null;
+  let sharedReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let sharedReconnectDelay = SHARED_RECONNECT_START_MS;
+  let lastChannelInfo = '';
   const startedAt = Date.now();
   const seen = new Set<string>();
   const seenOrder: string[] = [];
@@ -256,17 +262,110 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
 
   function emitMessage(message: UnifiedMessage): void {
     if (!remember(message.id)) return;
-    /* The first continuation contains history. Remember old ids for dedupe, but
-     * only current-session rows enter commands/rendering. */
     if (!isMessageFromCurrentOverlaySession(message.timestamp, startedAt)) return;
     opts.onMessage(message);
+  }
+
+  function handleAction(
+    action: any,
+    deletedIds: Set<string>,
+    deletedAuthors: Set<string>,
+  ) {
+    const item = action.addChatItemAction?.item;
+    if (item) {
+      const id = itemId(item);
+      const senderId = itemSenderId(item);
+      if ((id && deletedIds.has(id)) || (senderId && deletedAuthors.has(senderId))) {
+        if (id) remember(id);
+        return;
+      }
+      const message = item.liveChatTextMessageRenderer
+        ? buildMessage(item.liveChatTextMessageRenderer)
+        : buildSystemMessage(item);
+      if (message) emitMessage(message);
+      return;
+    }
+
+    const deleteId = action.markChatItemAsDeletedAction?.targetItemId ?? action.removeChatItemAction?.targetItemId;
+    if (deleteId) { opts.onDelete({ id: String(deleteId) }); return; }
+    const banned = action.markChatItemsByAuthorAsDeletedAction?.externalChannelId
+      ?? action.removeChatItemByAuthorAction?.externalChannelId;
+    if (banned) { opts.onDelete({ senderId: String(banned) }); return; }
+
+    const banner = action.addBannerToLiveChatCommand?.bannerRenderer?.liveChatBannerRenderer;
+    if (banner) {
+      const inner = banner.contents?.liveChatTextMessageRenderer;
+      const message = inner ? buildMessage(inner) : null;
+      if (message) opts.onPin({ message });
+      return;
+    }
+    if (action.removeBannerForLiveChatCommand) opts.onPin(null);
+  }
+
+  function handleActions(actions: any[]): void {
+    const deletedIds = new Set<string>();
+    const deletedAuthors = new Set<string>();
+    for (const action of actions) {
+      const id = action.markChatItemAsDeletedAction?.targetItemId ?? action.removeChatItemAction?.targetItemId;
+      if (id) deletedIds.add(String(id));
+      const author = action.markChatItemsByAuthorAsDeletedAction?.externalChannelId
+        ?? action.removeChatItemByAuthorAction?.externalChannelId;
+      if (author) deletedAuthors.add(String(author));
+    }
+    for (const action of actions) handleAction(action, deletedIds, deletedAuthors);
+  }
+
+  function supportsSharedHub(): boolean {
+    if (typeof EventSource === 'undefined') return false;
+    return typeof (EventSource as any).OPEN === 'number';
+  }
+
+  function scheduleSharedReconnect(): void {
+    if (stopped || sharedReconnectTimer) return;
+    const wait = sharedReconnectDelay;
+    sharedReconnectDelay = Math.min(sharedReconnectDelay * 2, SHARED_RECONNECT_MAX_MS);
+    sharedReconnectTimer = setTimeout(() => {
+      sharedReconnectTimer = null;
+      connectShared();
+    }, wait);
+  }
+
+  function connectShared(): void {
+    if (stopped) return;
+    opts.onStatus('connecting');
+    const query = new URLSearchParams({ channel, since: String(startedAt) });
+    es = new EventSource(`/api/youtube/stream?${query.toString()}`);
+    es.onmessage = (event) => {
+      let data: any;
+      try { data = JSON.parse(event.data); } catch { return; }
+      if (data?.type === 'status') {
+        if (data.status === 'connected') sharedReconnectDelay = SHARED_RECONNECT_START_MS;
+        if (data.channelId && data.videoId) {
+          const key = `${data.channelId}:${data.videoId}`;
+          if (key !== lastChannelInfo) {
+            lastChannelInfo = key;
+            opts.onChannelInfo?.({ channelId: String(data.channelId), videoId: String(data.videoId) });
+          }
+        }
+        if (['connecting', 'connected', 'offline', 'error'].includes(data.status)) {
+          opts.onStatus(data.status, data.detail);
+        }
+        return;
+      }
+      if (data?.type === 'actions' && Array.isArray(data.actions)) handleActions(data.actions);
+    };
+    es.onerror = () => {
+      es?.close();
+      es = null;
+      scheduleSharedReconnect();
+    };
   }
 
   async function bootstrap() {
     if (stopped) return;
     opts.onStatus('connecting');
     try {
-      const response = await fetch(`/api/youtube/live?channel=${encodeURIComponent(opts.channel)}`);
+      const response = await fetch(`/api/youtube/live?channel=${encodeURIComponent(channel)}`);
       const data = await response.json();
       if (data.offline) {
         opts.onStatus('offline', 'Channel is not live');
@@ -321,18 +420,7 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
         }
 
         const actions: any[] = Array.isArray(cont.actions) ? cont.actions : [];
-        /* Deletions in the same provider response win even when the add appears
-         * earlier in the action list, so a row is never flashed for one frame. */
-        const deletedIds = new Set<string>();
-        const deletedAuthors = new Set<string>();
-        for (const action of actions) {
-          const id = action.markChatItemAsDeletedAction?.targetItemId ?? action.removeChatItemAction?.targetItemId;
-          if (id) deletedIds.add(String(id));
-          const author = action.markChatItemsByAuthorAsDeletedAction?.externalChannelId
-            ?? action.removeChatItemByAuthorAction?.externalChannelId;
-          if (author) deletedAuthors.add(String(author));
-        }
-        for (const action of actions) handleAction(action, deletedIds, deletedAuthors);
+        handleActions(actions);
 
         const next = nextContinuation(cont);
         if (!next.continuation) {
@@ -350,47 +438,23 @@ export function createYouTubeConnector(opts: YouTubeConnectorOpts): Connector {
     }, delayMs);
   }
 
-  function handleAction(
-    action: any,
-    deletedIds: Set<string>,
-    deletedAuthors: Set<string>,
-  ) {
-    const item = action.addChatItemAction?.item;
-    if (item) {
-      const id = itemId(item);
-      const senderId = itemSenderId(item);
-      if ((id && deletedIds.has(id)) || (senderId && deletedAuthors.has(senderId))) {
-        if (id) remember(id);
+  return {
+    start() {
+      if (!channel) {
+        opts.onStatus('error', 'Invalid YouTube channel');
         return;
       }
-      const message = item.liveChatTextMessageRenderer
-        ? buildMessage(item.liveChatTextMessageRenderer)
-        : buildSystemMessage(item);
-      if (message) emitMessage(message);
-      return;
-    }
-
-    const deleteId = action.markChatItemAsDeletedAction?.targetItemId ?? action.removeChatItemAction?.targetItemId;
-    if (deleteId) { opts.onDelete({ id: String(deleteId) }); return; }
-    const banned = action.markChatItemsByAuthorAsDeletedAction?.externalChannelId
-      ?? action.removeChatItemByAuthorAction?.externalChannelId;
-    if (banned) { opts.onDelete({ senderId: String(banned) }); return; }
-
-    const banner = action.addBannerToLiveChatCommand?.bannerRenderer?.liveChatBannerRenderer;
-    if (banner) {
-      const inner = banner.contents?.liveChatTextMessageRenderer;
-      const message = inner ? buildMessage(inner) : null;
-      if (message) opts.onPin({ message });
-      return;
-    }
-    if (action.removeBannerForLiveChatCommand) opts.onPin(null);
-  }
-
-  return {
-    start() { void bootstrap(); },
+      if (supportsSharedHub()) connectShared();
+      else void bootstrap();
+    },
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      timer = null;
+      if (sharedReconnectTimer) clearTimeout(sharedReconnectTimer);
+      sharedReconnectTimer = null;
+      es?.close();
+      es = null;
     },
   };
 }

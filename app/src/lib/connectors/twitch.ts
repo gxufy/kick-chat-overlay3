@@ -1,11 +1,10 @@
-
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
+import { normalizeChatChannel } from '../channelValidation';
 import { loadFFZRoomBadges } from '../twitchEmotes';
 import { fetchTwitchProfile } from '../twitchProfileClient';
 import { resolveTwitchCommunityBadges } from '../communityBadges';
 
 const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
-
 
 const PRIORITY_BADGES = ['predictions', 'admin', 'global_mod', 'staff', 'twitchbot', 'broadcaster', 'lead_moderator', 'moderator', 'vip'];
 
@@ -88,7 +87,6 @@ export function parseTwitchEmotes(rawTag: string, text: string): UnifiedEmote[] 
   return emotes.sort((a, b) => a.begin - b.begin);
 }
 
-
 function parseBadges(rawTag: string, badgeMap: Record<string, string>): UnifiedBadge[] {
   if (!rawTag) return [];
   const all = rawTag.split(',').filter(Boolean).map(b => {
@@ -133,7 +131,6 @@ export function parseBadgeMap(value: unknown): Record<string, string> | null {
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
-
 function prefixText(prefix: string, text: string, emotes: UnifiedEmote[]): { text: string; emotes: UnifiedEmote[] } {
   if (!text) return { text: prefix, emotes: [] };
   const shift = [...prefix].length + 2;
@@ -162,7 +159,7 @@ export interface TwitchConnectorOpts extends ConnectorCallbacks {
 }
 
 export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
-  const channel = opts.channel.toLowerCase().replace(/^#/, '');
+  const channel = normalizeChatChannel('twitch', opts.channel).toLowerCase();
   let ws: WebSocket | null = null;
   let stopped = false;
   let backoff = 1000;
@@ -173,16 +170,18 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   let generation = 0;
   const deliveredMessages = new Map<string, UnifiedMessage>();
 
-  fetch(`/api/twitch/badges?channel=${encodeURIComponent(channel)}`)
-    .then(r => r.ok ? r.json() : null)
-    .then(value => {
-      const parsed = parseBadgeMap(value);
-      if (parsed) {
-        badgeMap = parsed;
-        opts.onBadgeMap?.(badgeMap);
-      }
-    })
-    .catch(() => { /* fall back to bare types */ });
+  if (channel) {
+    fetch(`/api/twitch/badges?channel=${encodeURIComponent(channel)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(value => {
+        const parsed = parseBadgeMap(value);
+        if (parsed) {
+          badgeMap = parsed;
+          opts.onBadgeMap?.(badgeMap);
+        }
+      })
+      .catch(() => { /* fall back to bare types */ });
+  }
 
   function remember(message: UnifiedMessage): void {
     deliveredMessages.set(message.id, message);
@@ -280,7 +279,6 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
     enrichCommunityBadges(message);
   }
 
-  
   function usernoticeCategory(msgId: string): UnifiedMessage['category'] {
     if (['sub','resub','primepaidupgrade','giftpaidupgrade','anongiftpaidupgrade','standardpayforward','communitypayforward','sharedchatnotice'].includes(msgId)) return 'subscription';
     if (['subgift','submysterygift','anonsubgift','anonsubmysterygift'].includes(msgId)) return 'gift';
@@ -321,7 +319,6 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
         let emotes = parseTwitchEmotes(p.tags['emotes'] ?? '', text);
         const bits = p.tags['bits'];
         if (bits) {
-
           const author = p.tags['display-name'] || (p.prefix ?? '').split('!')[0];
           const pref = prefixText(`${author} cheered ${bits} bits`, text, emotes);
           deliver(buildMessage(p, 'system', pref.text, pref.emotes, 'cheer'));
@@ -390,7 +387,13 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
   }
 
   return {
-    start() { connect(); },
+    start() {
+      if (!channel) {
+        opts.onStatus('error', 'Invalid Twitch channel');
+        return;
+      }
+      connect();
+    },
     stop() {
       stopped = true;
       generation += 1;

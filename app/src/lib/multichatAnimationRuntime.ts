@@ -1,4 +1,8 @@
-import { recordPerformanceBatch, runtimeVisualEffectsReduced } from './multichatPerformanceRuntime';
+import {
+  recordPerformanceBatch,
+  resetPerformanceRuntimeForTests,
+  runtimeVisualEffectsReduced,
+} from './multichatPerformanceRuntime';
 
 export type MultichatRuntimeAnimationMode = 'on' | 'off' | 'auto';
 
@@ -87,4 +91,5 @@ export function resetRuntimeAnimationState(): void {
   runtimeMode = 'auto';
   autoBypassUntil = 0;
   lastBatchAnimationEnabled = true;
+  resetPerformanceRuntimeForTests();
 }

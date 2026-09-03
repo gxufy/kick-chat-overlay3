@@ -125,7 +125,14 @@ export function ensureStartupDebugPanel(): HTMLElement | null {
 }
 
 export function reportStartupAcceptedMessage(message: UnifiedMessage): void {
-  if (message.kind !== 'chat' || !startupDebugEnabled() || FIRST_ACCEPTED.has(message.platform)) return;
+  const configured = configuredPlatforms();
+  if (
+    message.kind !== 'chat'
+    || !startupDebugEnabled()
+    || !configured.includes(message.platform)
+    || FIRST_ACCEPTED.has(message.platform)
+  ) return;
+
   const acceptedAt = Date.now();
   const rawTimestamp = Number(message.timestamp);
   const messageAt = Number.isFinite(rawTimestamp) && rawTimestamp > 0 ? rawTimestamp : null;

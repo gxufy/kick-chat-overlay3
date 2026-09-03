@@ -74,10 +74,10 @@ describe('!multichat animation', () => {
     expect(notices.at(-1)).toBe('Usage: !multichat animation <on|off|auto>');
   });
 
-  it('rejects invalid animation modes', () => {
+  it('rejects invalid animation modes without leaving adaptive default mode', () => {
     const { notices, runner } = harness();
     expect(runner.handle(moderator('!multichat animation sometimes', 'invalid'))).toBeNull();
-    expect(getRuntimeAnimationMode()).toBe('on');
+    expect(getRuntimeAnimationMode()).toBe('auto');
     expect(notices).toEqual([]);
   });
 });

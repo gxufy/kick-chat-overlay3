@@ -45,6 +45,7 @@ describe('connector startup history baseline', () => {
 
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
+      status: 200,
       json: async () => ({
         data: {
           /* Kick returns newest first; fetchKickHistory reverses into display order. */
@@ -64,7 +65,7 @@ describe('connector startup history baseline', () => {
           ],
         },
       }),
-    })) as typeof fetch);
+    } as Response)));
 
     const connector = createKickConnector({
       channel: 'streamer',
@@ -141,7 +142,7 @@ describe('connector startup history baseline', () => {
           };
 
       return { ok: true, status: 200, json: async () => data } as Response;
-    }) as typeof fetch);
+    }));
 
     const connector = createYouTubeConnector({
       channel: 'streamer',

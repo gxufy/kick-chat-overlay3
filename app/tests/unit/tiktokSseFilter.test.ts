@@ -16,7 +16,13 @@ describe('TikTok SSE session cutoff', () => {
     expect(shouldSendTikTokSseEvent({ type: 'gift', timestamp: 10_000 }, since)).toBe(true);
     expect(shouldSendTikTokSseEvent({ type: 'chat', timestamp: 10_001 }, since)).toBe(true);
     expect(shouldSendTikTokSseEvent({ type: 'status', status: 'connected' }, since)).toBe(true);
-    expect(shouldSendTikTokSseEvent({ type: 'delete', id: 'x' }, since)).toBe(true);
+    expect(shouldSendTikTokSseEvent({ type: 'delete', id: 'legacy-without-timestamp' }, since)).toBe(true);
+  });
+
+  it('uses the same session boundary for buffered moderation tombstones', () => {
+    const since = 10_000;
+    expect(shouldSendTikTokSseEvent({ type: 'delete', id: 'old', timestamp: 9_999 }, since)).toBe(false);
+    expect(shouldSendTikTokSseEvent({ type: 'delete', id: 'current', timestamp: 10_000 }, since)).toBe(true);
   });
 
   it('preserves legacy subscribers that do not provide a since timestamp', () => {

@@ -79,6 +79,12 @@ export function tikTokBufferedEventMatchesDelete(
 
 function applyDeleteToRecovery(ch: Channel, deletion: { id?: string; senderId?: string }) {
   ch.recent = ch.recent.filter((entry) => !tikTokBufferedEventMatchesDelete(entry.data, deletion));
+  /* Keep the moderation action itself in the recovery window. If an OBS browser
+   * already rendered the row and its SSE connection drops exactly while TikTok
+   * deletes it, the reconnect must receive the tombstone as well as avoid
+   * replaying the deleted row. The timestamp lets a genuinely new browser source
+   * skip old tombstones through the existing `since=` boundary. */
+  broadcast(ch, { type: 'delete', ...deletion, timestamp: Date.now() }, true);
 }
 
 function extractBadges(user: any): string[] {
@@ -144,13 +150,11 @@ function createChannel(user: string): Channel {
       const deletion = { id: msgId?.toString() };
       if (!deletion.id) continue;
       applyDeleteToRecovery(ch, deletion);
-      broadcast(ch, { type: 'delete', ...deletion }, false);
     }
     for (const userId of data.deleteUserIdsList ?? []) {
       const deletion = { senderId: userId?.toString() };
       if (!deletion.senderId) continue;
       applyDeleteToRecovery(ch, deletion);
-      broadcast(ch, { type: 'delete', ...deletion }, false);
     }
   });
 

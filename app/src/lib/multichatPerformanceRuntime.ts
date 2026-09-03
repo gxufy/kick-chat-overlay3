@@ -246,6 +246,10 @@ export function ensurePerformanceRuntime(): void {
 }
 
 export function recordPerformanceAcceptedMessage(message: UnifiedMessage): void {
+  /* Provider-age collection is diagnostic-only; the always-on adaptive guard is
+     driven by real presentation batches and frames, so ordinary users do not pay
+     per-message bookkeeping for a panel they cannot see. */
+  if (!perfDebugEnabled()) return;
   const timestamp = Number(message.timestamp);
   if (Number.isFinite(timestamp) && timestamp > 0) {
     ageSamples.push({ platform: message.platform, ageMs: Math.max(0, Date.now() - timestamp) });
@@ -290,6 +294,15 @@ export function resetPerformanceRuntimeForTests(): void {
   observer?.disconnect();
   observer = null;
   observedContainer = null;
+  if (resizeBound && typeof window !== 'undefined') {
+    window.removeEventListener('resize', applyRowBudget);
+    resizeBound = false;
+  }
+  rowLimit = ROW_LIMIT_MAX;
+  domRows = 0;
+  renderedRows = 0;
+  prunedRows = 0;
+  lastPanelAt = 0;
   if (typeof document !== 'undefined') {
     document.documentElement.removeAttribute(PRESSURE_ATTR);
     document.getElementById(PANEL_ID)?.remove();

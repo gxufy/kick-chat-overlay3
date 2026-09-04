@@ -45,14 +45,12 @@ export function googleFontsUrl(specs: readonly string[]): string {
   return `https://fonts.googleapis.com/css2?${families}&display=swap`;
 }
 
-/**
- * A Google Fonts request as an `@import` rule for an inline `<style>`.
- */
+/** A Google Fonts request as an `@import` rule for an inline `<style>`. */
 export function googleFontsImportCss(specs: readonly string[]): string {
   return `@import url('${googleFontsUrl(specs)}');`;
 }
 
-const LOCAL_OR_SYSTEM_FONT_KEYS = new Set(['default', 'geist', 'segoe', 'impact', 'alsina']);
+const GOOGLE_FONT_PREFIX = 'google:';
 const CUSTOM_FONT_MAX_LENGTH = 80;
 
 /**
@@ -72,13 +70,21 @@ export function normalizeGoogleFontFamily(value: unknown): string | null {
   return /^[A-Za-z0-9][A-Za-z0-9 _-]*$/.test(normalized) ? normalized : null;
 }
 
+/** Encode a validated custom family into the renderer's internal font value. */
+export function googleFontValue(value: unknown): string | null {
+  const family = normalizeGoogleFontFamily(value);
+  return family ? `${GOOGLE_FONT_PREFIX}${family}` : null;
+}
+
 /**
- * Return the free-form Google family represented by `font=`, or null when the
- * value names one of MultiChat's existing preset/local/system faces.
+ * Return the explicitly selected Google family represented by `font=`, or null.
+ * Legacy unrecognized font values intentionally remain unrecognized so old URLs
+ * keep their previous local/Open-Sans fallback and do not suddenly make a new
+ * network request.
  */
 export function customGoogleFontFamily(font: string | undefined): string | null {
-  if (!font || OVERLAY_FONT_SPECS[font] || LOCAL_OR_SYSTEM_FONT_KEYS.has(font)) return null;
-  return normalizeGoogleFontFamily(font);
+  if (!font?.startsWith(GOOGLE_FONT_PREFIX)) return null;
+  return normalizeGoogleFontFamily(font.slice(GOOGLE_FONT_PREFIX.length));
 }
 
 function customGoogleFontSpec(family: string): string {
@@ -95,9 +101,9 @@ function quotedCssFamily(family: string): string {
 }
 
 /**
- * The stylesheet URL the overlay needs for a given `font=` value, or `null`.
- * Presets retain their exact historical specs; a safe free-form family gets a
- * single-family Google Fonts request.
+ * The stylesheet URL the overlay needs for a given internal `font` value, or
+ * `null`. Presets retain their exact historical specs; only a `google:` value
+ * produced from the explicit googleFont= setting can create a free-form request.
  */
 export function overlayFontUrl(font: string | undefined): string | null {
   const preset = font === undefined ? undefined : OVERLAY_FONT_SPECS[font];
@@ -112,7 +118,7 @@ export function overlayFontUrl(font: string | undefined): string | null {
  *
  * Custom families also carry a narrowly scoped `!important` declaration. The
  * renderer's inline font-family intentionally falls back for unknown legacy
- * values, so this lets a validated free-form Google family override that inline
+ * values, so this lets a validated explicit Google family override that inline
  * fallback without changing the preset resolution table or old URLs.
  */
 export function overlayFontCss(font: string | undefined): string | null {

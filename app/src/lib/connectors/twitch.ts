@@ -1,5 +1,6 @@
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
 import { normalizeChatChannel } from '../channelValidation';
+import { parseTwitchGifTag } from '../twitchGif';
 import { loadFFZRoomBadges } from '../twitchEmotes';
 import { fetchTwitchProfile } from '../twitchProfileClient';
 import { resolveTwitchCommunityBadges } from '../communityBadges';
@@ -253,6 +254,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
           ...(tags['reply-parent-user-id'] ? { senderId: tags['reply-parent-user-id'] } : {}),
         }
       : undefined;
+    const gifUrl = kind === 'chat' ? parseTwitchGifTag(tags['gifs']) : undefined;
     const message: UnifiedMessage = {
       platform: 'twitch',
       id: tags['id'] || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -265,6 +267,7 @@ export function createTwitchConnector(opts: TwitchConnectorOpts): Connector {
       timestamp: parseInt(tags['tmi-sent-ts']) || Date.now(),
       kind,
       category,
+      ...(gifUrl ? { gifUrl } : {}),
       ...(reply ? { reply } : {}),
       ...(effectiveSourceRoomId ? { sourceChannel: { roomId: effectiveSourceRoomId } } : {}),
       ...(sharedChat ? { sharedChat: true } : {}),

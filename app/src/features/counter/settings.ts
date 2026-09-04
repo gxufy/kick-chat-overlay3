@@ -59,6 +59,15 @@ export const COUNTER_CATALOG: SettingCatalog<ViewerCounterStyle> = [
     default: DEFAULT_STYLE.align,
   },
   {
+    key: 'googleFont',
+    param: 'font',
+    type: 'text',
+    label: 'Google font',
+    description: 'Optional Google Fonts family name. Blank keeps the default DejaVu Sans counter font.',
+    placeholder: 'Press Start 2P',
+    default: DEFAULT_STYLE.googleFont,
+  },
+  {
     key: 'textShadow',
     param: 'textShadow',
     type: 'select',

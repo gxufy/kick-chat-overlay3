@@ -1,0 +1,68 @@
+name: Cleanup merged branches
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: cleanup-merged-branches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete only branches already integrated into main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
+
+          while IFS= read -r ref; do
+            branch="${ref#origin/}"
+            [[ "$branch" == "main" || "$branch" == "HEAD" ]] && continue
+
+            open_prs=$(gh pr list --state open --head "$branch" --limit 100 --json number --jq 'length')
+            if [[ "$open_prs" != "0" ]]; then
+              echo "KEEP (open PR): $branch"
+              continue
+            fi
+
+            safe=false
+            if git merge-base --is-ancestor "$ref" origin/main 2>/dev/null; then
+              safe=true
+              echo "MERGED BY ANCESTRY: $branch"
+            elif git diff --quiet "$ref" origin/main; then
+              safe=true
+              echo "IDENTICAL TREE: $branch"
+            else
+              tip=$(git rev-parse "$ref")
+              if gh pr list --state merged --head "$branch" --limit 100 --json headRefOid --jq '.[].headRefOid' | grep -Fxq "$tip"; then
+                safe=true
+                echo "MERGED PR TIP: $branch"
+              fi
+            fi
+
+            if [[ "$safe" != "true" ]]; then
+              echo "KEEP (unique/unverified commits): $branch"
+              continue
+            fi
+
+            echo "DELETE: $branch"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin/)

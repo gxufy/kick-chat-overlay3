@@ -5,3 +5,13 @@
 html, body {
   background: transparent;
 }
+
+/* bChat-style emote spacing: adjacent emote wrappers use their natural rendered
+ * width instead of MultiChat's old negative right-margin compaction. This is
+ * especially noticeable for 7TV, whose parser intentionally emits adjacent
+ * emotes without inserting a text-space between them. Keep zero-width layers
+ * stacked by ChatOverlay; only the outer inline spacing is neutralized here. */
+.ck-body img.ck-emote,
+.ck-body .ck-zw {
+  margin-right: 0 !important;
+}

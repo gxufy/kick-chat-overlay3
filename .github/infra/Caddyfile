@@ -2,8 +2,8 @@
 gxufy.com {
 	encode gzip
 
-	# SSE (TikTok live chat stream) — disable buffering so events flush
-	@sse path /api/tiktok/*
+	# Long-lived chat SSE — disable buffering so events flush immediately.
+	@sse path /api/tiktok/* /api/youtube/stream
 	reverse_proxy @sse localhost:3000 {
 		flush_interval -1
 	}
@@ -24,8 +24,8 @@ www.gxufy.com {
 multichat-gxufy.com, www.multichat-gxufy.com {
 	encode gzip
 
-	# SSE (TikTok live chat stream) — disable buffering so events flush
-	@sse path /api/tiktok/*
+	# Long-lived chat SSE — disable buffering so events flush immediately.
+	@sse path /api/tiktok/* /api/youtube/stream
 	reverse_proxy @sse localhost:3000 {
 		flush_interval -1
 	}

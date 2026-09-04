@@ -39,10 +39,11 @@ describe('serialization', () => {
     const params = new URLSearchParams(query);
     expect(params.get('combined')).toBe('true');
     expect(params.get('icons')).toBe('true');
-    expect(params.get('bg')).toBe('true');
-    expect(params.get('textShadow')).toBe('small');
+    expect(params.get('bg')).toBe('false');
+    expect(params.get('textShadow')).toBe('large');
     expect(params.get('stroke')).toBe('none');
     expect(params.has('align')).toBe(false);
+    expect(params.has('font')).toBe(false);
   });
 
   it('emits align once it differs from its default', () => {
@@ -53,11 +54,27 @@ describe('serialization', () => {
     expect(new URLSearchParams(query).get('align')).toBe('center');
   });
 
-  it('emits no typography or label params', () => {
+  it('serializes an explicitly selected Google Font through font=google:', () => {
+    const query = buildViewerCounterQuery(
+      { twitch: 'someone' },
+      { ...DEFAULT_STYLE, googleFont: '  Press   Start 2P ' },
+    );
+    expect(new URLSearchParams(query).get('font')).toBe('google:Press Start 2P');
+  });
+
+  it('drops unsafe custom font names rather than serializing them', () => {
+    const query = buildViewerCounterQuery(
+      { twitch: 'someone' },
+      { ...DEFAULT_STYLE, googleFont: "Bad'; color:red" },
+    );
+    expect(new URLSearchParams(query).has('font')).toBe(false);
+  });
+
+  it('emits no removed typography or label params', () => {
     const params = new URLSearchParams(
       buildViewerCounterQuery({ kick: 'someone' }, DEFAULT_STYLE),
     );
-    for (const removed of ['font', 'textSize', 'label', 'showLabel', 'weight', 'metric']) {
+    for (const removed of ['textSize', 'label', 'showLabel', 'weight', 'metric']) {
       expect(params.has(removed)).toBe(false);
     }
   });
@@ -82,6 +99,7 @@ describe('round trip', () => {
     { combined: false, icons: false, bg: false, textShadow: 'large', stroke: 'thicker', align: 'right' },
     { combined: true, icons: false, bg: true, textShadow: 'none', stroke: 'medium', align: 'center' },
     { combined: false, icons: true, bg: false, textShadow: 'medium', stroke: 'thin', align: 'left' },
+    { ...DEFAULT_STYLE, googleFont: 'Bebas Neue' },
   ];
 
   it.each(styles)('parse(serialize(style)) === style', (style) => {
@@ -126,19 +144,30 @@ describe('tolerance', () => {
       twitch: ['a', 'b'],
       textShadow: ['large', 'none'],
       combined: ['false'],
+      font: ['google:Press Start 2P'],
     });
     expect(config.channels.twitch).toBeUndefined();
     expect(config.style.textShadow).toBe(DEFAULT_STYLE.textShadow);
+    expect(config.style.googleFont).toBeUndefined();
     /* An array is not the literal string 'false', so the true-default holds. */
     expect(config.style.combined).toBe(true);
   });
 
-  it('ignores removed legacy parameters', () => {
+  it('keeps legacy bare font values ignored', () => {
     const withLegacy = parseQuery(
       'twitch=a&font=7&textSize=2&label=Viewers&showLabel=true&weight=700&metric=followers',
     );
     expect(withLegacy.style).toEqual(DEFAULT_STYLE);
     expect(withLegacy.channels).toEqual({ twitch: 'a' });
+  });
+
+  it('accepts only explicit safe google: font values', () => {
+    expect(parseQuery('twitch=a&font=google:Press%20Start%202P').style.googleFont)
+      .toBe('Press Start 2P');
+    expect(parseQuery('twitch=a&font=Press%20Start%202P').style.googleFont)
+      .toBeUndefined();
+    expect(parseQuery("twitch=a&font=google:Bad'%3Bcolor:red").style.googleFont)
+      .toBeUndefined();
   });
 
   it('treats booleans as true unless explicitly "false"', () => {

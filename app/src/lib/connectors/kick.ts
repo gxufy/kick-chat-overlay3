@@ -1,6 +1,7 @@
 import Pusher from 'pusher-js';
 import { getKickChannel, type KickChannel } from '../kick';
 import type { Connector, ConnectorCallbacks, UnifiedBadge, UnifiedEmote, UnifiedMessage } from '../types';
+import { isMessageFromCurrentOverlaySession } from '../startupMessageBaseline';
 
 const KICK_EMOTE_RE = /\[(?:emote|emoji):(\w+):([^\]]*)\]/g;
 export const KICK_HISTORY_MAX = 40;
@@ -27,22 +28,35 @@ function safeImage(value: unknown): string | undefined {
   }
 }
 
+/** Count Unicode code points without allocating the array that Array.from creates. */
+function codePointLength(value: string): number {
+  let length = 0;
+  for (const _ of value) length++;
+  return length;
+}
+
 /** Replace Kick's native emote tokens while recording codepoint offsets. */
 export function parseKickEmotes(content: string): { text: string; emotes: UnifiedEmote[] } {
   const emotes: UnifiedEmote[] = [];
   let text = '';
   let last = 0;
+  let textCodePoints = 0;
   for (const match of content.matchAll(KICK_EMOTE_RE)) {
-    text += content.slice(last, match.index);
+    const prefix = content.slice(last, match.index);
+    text += prefix;
+    textCodePoints += codePointLength(prefix);
+
     const name = match[2] || 'emote';
-    const begin = Array.from(text).length;
+    const nameCodePoints = codePointLength(name);
+    const begin = textCodePoints;
     emotes.push({
       begin,
-      end: begin + Array.from(name).length,
+      end: begin + nameCodePoints,
       text: name,
       url: `https://files.kick.com/emotes/${match[1]}/fullsize`,
     });
     text += name;
+    textCodePoints += nameCodePoints;
     last = match.index! + match[0].length;
   }
   text += content.slice(last);
@@ -175,6 +189,7 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
   let watchdog: ReturnType<typeof setInterval> | null = null;
   let historyAbort: AbortController | null = null;
   let stopped = false;
+  const startedAt = Date.now();
   let bootstrappingHistory = true;
   const pendingLive: UnifiedMessage[] = [];
   const seen = new Set<string>();
@@ -193,6 +208,11 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
 
   function deliver(message: UnifiedMessage): void {
     if (!message.id || !remember(message.id)) return;
+    /* Kick's history endpoint is only a race-closure source now. Rows that were
+     * already present when this overlay instance started establish the baseline
+     * but never enter the render/command pipeline. A message that arrives during
+     * bootstrap still survives because its provider timestamp is >= startedAt. */
+    if (!isMessageFromCurrentOverlaySession(message.timestamp, startedAt)) return;
     opts.onMessage(message);
   }
 
@@ -329,7 +349,7 @@ export function createKickConnector(opts: KickConnectorOpts): Connector {
       const history = await fetchKickHistory(channel, historyAbort.signal);
       if (!stopped) history.forEach(deliver);
     } catch {
-      // History is optional context; the live socket remains authoritative.
+      // History is optional race closure; live Pusher traffic remains authoritative.
     } finally {
       clearTimeout(historyTimeout);
       historyAbort = null;

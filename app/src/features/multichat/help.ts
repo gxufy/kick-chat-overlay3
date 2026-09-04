@@ -13,7 +13,7 @@ import {
   MULTICHAT_COMMAND_ALIAS,
   MULTICHAT_COMMAND_TRIGGER,
 } from '@/lib/multichatCommands';
-import { MULTICHAT_OBS_SIZE, MULTICHAT_OBS_ALTERNATE } from './obs';
+import { MULTICHAT_OBS_RECOMMENDED } from './obs';
 import type { ToolHelpSection } from '@/features/registry';
 
 const size = (s: { width: number; height: number }) => `${s.width} × ${s.height}`;
@@ -26,14 +26,9 @@ export const MULTICHAT_HELP: readonly ToolHelpSection[] = [
       'Copy the URL below the preview, then add it to your scene as a Browser Source.',
     entries: [
       {
-        syntax: `${size(MULTICHAT_OBS_SIZE)}`,
+        syntax: `${size(MULTICHAT_OBS_RECOMMENDED)}`,
         summary: 'Recommended browser-source size.',
-        detail: 'Comfortable for several visible messages at the default text size.',
-      },
-      {
-        syntax: `${size(MULTICHAT_OBS_ALTERNATE)}`,
-        summary: 'Wider, shorter alternative.',
-        detail: 'Fewer visible messages, less vertical space used in the scene.',
+        detail: 'The single recommended size for the MultiChat browser source.',
       },
       {
         syntax: 'Shutdown source when not visible',

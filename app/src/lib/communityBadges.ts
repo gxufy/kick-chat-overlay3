@@ -13,7 +13,9 @@ type ProviderName =
   | 'polandbot'
   | 'bchat'
   | 'folhinha'
-  | 'dankchat';
+  | 'dankchat'
+  | 'chatty'
+  | 'chatsen';
 
 type Assignment = {
   provider: ProviderName;
@@ -22,6 +24,7 @@ type Assignment = {
   url: string;
   userIds: string[];
   usernames: string[];
+  backgroundColor?: string;
 };
 
 type Registry = {
@@ -70,6 +73,11 @@ function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'badge';
 }
 
+function badgeBackgroundColor(value: unknown): string {
+  const raw = asString(value);
+  return /^#[0-9a-f]{6}$/i.test(raw) ? raw : '';
+}
+
 function strings(value: unknown): string[] {
   return asArray(value).map(asId).filter(Boolean);
 }
@@ -85,9 +93,11 @@ function assignment(
   url: string,
   userIds: string[] = [],
   usernames: string[] = [],
+  backgroundColor = '',
 ): Assignment | null {
   const image = httpsUrl(url);
   if (!image) return null;
+  const normalizedBackgroundColor = badgeBackgroundColor(backgroundColor);
   return {
     provider,
     id: id || slug(title),
@@ -95,6 +105,7 @@ function assignment(
     url: image,
     userIds: unique(userIds),
     usernames: unique(usernames.map((name) => name.toLowerCase())),
+    ...(normalizedBackgroundColor ? { backgroundColor: normalizedBackgroundColor } : {}),
   };
 }
 
@@ -234,7 +245,7 @@ async function loadFFZ(): Promise<Assignment[]> {
     const image = asString(urls['4']) || asString(urls['3']) || asString(urls['2']) || asString(urls['1']);
     const title = asString(raw.title) || `FFZ ${id}`;
     const owners = id ? strings(users[id]) : [];
-    const item = assignment('ffz', id || slug(title), title, image, [], owners);
+    const item = assignment('ffz', id || slug(title), title, image, [], owners, asString(raw.color));
     return item ? [item] : [];
   });
 }
@@ -340,13 +351,47 @@ async function loadFolhinha(): Promise<Assignment[]> {
 }
 
 async function loadDankChat(): Promise<Assignment[]> {
-  const body = await requestJson('https://proxy.itsboshytime.com/proxy?url=https://flxrs.com/api/badges');
+  const body = await requestJson('/api/twitch/dankchat-badges');
   return asArray(body).flatMap((raw, index) => {
     if (!isRecord(raw)) return [];
     const title = asString(raw.type) || 'DankChat';
     const item = assignment(
       'dankchat',
       `dankchat-${index}`,
+      title,
+      asString(raw.url),
+      strings(raw.users),
+    );
+    return item ? [item] : [];
+  });
+}
+
+async function loadChatty(): Promise<Assignment[]> {
+  const body = await requestJson('/api/twitch/chatty-badges');
+  return asArray(body).flatMap((raw, index) => {
+    if (!isRecord(raw)) return [];
+    const title = asString(raw.title) || 'Chatty';
+    const item = assignment(
+      'chatty',
+      asString(raw.id) || `chatty-${index}`,
+      title,
+      asString(raw.url),
+      strings(raw.users),
+      strings(raw.usernames),
+      asString(raw.color),
+    );
+    return item ? [item] : [];
+  });
+}
+
+async function loadChatsen(): Promise<Assignment[]> {
+  const body = await requestJson('/api/twitch/chatsen-badges');
+  return asArray(body).flatMap((raw, index) => {
+    if (!isRecord(raw)) return [];
+    const title = asString(raw.title) || 'Chatsen';
+    const item = assignment(
+      'chatsen',
+      asString(raw.id) || `chatsen-${index}`,
       title,
       asString(raw.url),
       strings(raw.users),
@@ -369,6 +414,8 @@ const PROVIDERS: ReadonlyArray<() => Promise<Assignment[]>> = [
   loadBChat,
   loadFolhinha,
   loadDankChat,
+  loadChatty,
+  loadChatsen,
 ];
 
 function addToIndex(map: Map<string, Assignment[]>, key: string, badge: Assignment): void {
@@ -429,12 +476,31 @@ function dedupe(assignments: Assignment[]): Assignment[] {
 }
 
 function applyProviderMultiplicity(assignments: Assignment[]): Assignment[] {
-  const blue = assignments.filter((badge) => badge.provider === 'bluzyrino');
-  if (blue.length <= 1) return assignments;
-  const keep = blue[blue.length - 1];
-  return assignments.filter((badge) => badge.provider !== 'bluzyrino' || badge === keep);
-}
+  let out = assignments;
 
+  const blue = out.filter((badge) => badge.provider === 'bluzyrino');
+  if (blue.length > 1) {
+    const keep = blue[blue.length - 1];
+    out = out.filter((badge) => badge.provider !== 'bluzyrino' || badge === keep);
+  }
+
+  /* Turteg's /v1/ffz/badges feed mirrors the FFZ badge family. Treat the
+     official FrankerFaceZ API as canonical and allow only one FFZ-family badge
+     per chatter, regardless of badge id, image size, CDN URL, or which identity
+     index matched it. This prevents a visually identical FFZ badge from being
+     rendered twice when the mirror and official API describe the same user. */
+  const officialFfz = out.filter((badge) => badge.provider === 'ffz');
+  const mirroredFfz = out.filter((badge) => badge.provider === 'turteg');
+  if (officialFfz.length || mirroredFfz.length) {
+    const keep = officialFfz[officialFfz.length - 1]
+      ?? mirroredFfz[mirroredFfz.length - 1];
+    out = out.filter(
+      (badge) => (badge.provider !== 'ffz' && badge.provider !== 'turteg') || badge === keep,
+    );
+  }
+
+  return out;
+}
 
 export async function resolveTwitchCommunityBadges(
   userId: string,
@@ -456,6 +522,7 @@ export async function resolveTwitchCommunityBadges(
   return applyProviderMultiplicity(dedupe(matches)).map((badge) => ({
     type: `community:${badge.provider}:${slug(badge.id)}`,
     url: badge.url,
+    ...(badge.backgroundColor ? { backgroundColor: badge.backgroundColor } : {}),
   }));
 }
 

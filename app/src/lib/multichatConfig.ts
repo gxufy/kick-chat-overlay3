@@ -3,35 +3,32 @@
  * Owns two responsibilities that used to live in two different files:
  *
  *   1. Parsing — the overlay query schema, moved verbatim from
- *      pages/multichat.tsx. Every parameter, default, numeric alias, boolean
- *      coercion, and transform is byte-for-byte the same, so every overlay URL
- *      already pasted into OBS keeps rendering identically.
- *   2. Serialization — buildMultichatQuery, moved verbatim from the
- *      URLSearchParams assembly the original generator page held. Parameter
- *      order, inclusion rules, and encoding are preserved exactly, because the
- *      copied URL string is part of the compatibility surface.
+ *      pages/multichat.tsx. Every parameter, numeric alias, boolean coercion,
+ *      and transform stays centralized here.
+ *   2. Serialization — buildMultichatQuery, moved from the URLSearchParams
+ *      assembly the original generator page held.
  *
- * TWO DELIBERATELY SEPARATE DEFAULT SETS
+ * SHARED SHADOW DEFAULT
  *
- * The overlay parser and the generator start from different values, and both
- * are load-bearing:
+ * Both overlay URLs with an omitted textShadow parameter and newly generated
+ * website widgets now start at `large`, matching the bChat-strength shadow the
+ * renderer maps to the full-opacity default.
  *
- *   - MULTICHAT_OVERLAY_DEFAULTS — what a /multichat URL resolves to when a
- *     parameter is absent. textShadow is 'large' here. Changing it would
- *     restyle every existing overlay URL that omits the parameter.
- *   - MULTICHAT_GENERATOR_DEFAULTS — what the generator's controls begin at.
- *     textShadow is 'small' here, and the generator always serializes the
- *     parameter explicitly, so a generated URL never relies on the overlay
- *     default.
+ * RETIRED PIN PARAMETERS
  *
- * These are not reconciled, and neither is a bug. They are separate concepts:
- * one is "what an omitted parameter means", the other is "where the UI starts".
+ * showPinEnabled and pinPlatforms remain accepted in the schema and retained in
+ * the public style types so old links and callers do not fail validation, but
+ * they normalize to disabled values and are no longer serialized by the site.
+ * This makes old `showPinEnabled=true` URLs harmless instead of leaving a hidden
+ * path that can turn pins back on.
  *
  * Browser-safe — no server-only imports, no secrets.
  */
 import { z } from 'zod';
+import { googleFontValue } from './overlayFonts';
+import { DEFAULT_TWITCH_GIF_SIZE_PX, normalizeTwitchGifSize } from './twitchGifConfig';
 
-/** Platforms that can carry a channel and appear in pinPlatforms. */
+/** Supported chat platforms. */
 export const MULTICHAT_PLATFORMS = ['kick', 'twitch', 'youtube', 'tiktok'] as const;
 
 export type MultichatPlatform = (typeof MULTICHAT_PLATFORMS)[number];
@@ -141,22 +138,27 @@ export const MultichatQuerySchema = z.object({
   tiktok: z.string().optional(),
   sevenTVCosmeticsEnabled: z.string().optional().transform(v => v !== 'false'),
   sevenTVEmotesEnabled: z.string().optional().transform(v => v !== 'false'),
+  /* Third-party/community badges (Chatterino, FFZ community, Homies, etc.). */
+  showCommunityBadges: z.string().optional().transform(v => v !== 'false'),
   textShadow: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_TEXT_SHADOWS, 'large')),
   textSize: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_TEXT_SIZES, 'medium')),
   animation: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_ANIMATIONS, 'slide')),
-  showPinEnabled: z.string().optional().transform(v => v === 'true'),
-  /* compatibility-only: parsed for URL compatibility, read by no runtime code */
+  /* Retired compatibility parameter: pins can no longer be enabled by a URL. */
+  showPinEnabled: z.string().optional().transform(() => false),
+  /* Platform event cards/popups. Omitted means ON for backward compatibility. */
   showSystemMsgs: z.string().optional().transform(v => v !== 'false'),
   
   mentionColor: z.string().optional().transform(v => v !== 'false'),
   /* chat background: 'transparent' (default) or a hex color like 191919 */
   bgColor: z.string().optional().transform(v =>
     /^[0-9a-fA-F]{6}$/.test(v ?? '') ? `#${v}` : ''),
-  /* channel-point redeems (kick/twitch highlighted messages).
-     compatibility-only: parsed, read by no runtime code */
+  /* Event visibility controls. Omitted means ON for backward compatibility. */
+  showHypeTrains: z.string().optional().transform(v => v !== 'false'),
+  showFirstMessages: z.string().optional().transform(v => v !== 'false'),
+  /* Channel-point / reward redeems (currently Twitch + Kick). */
   showRedeems: z.string().optional().transform(v => v !== 'false'),
   
   sourceTag: z.string().optional().transform(v =>
@@ -165,13 +167,16 @@ export const MultichatQuerySchema = z.object({
       : 'icon') as MultichatSourceTag),
   /* profile pictures (yt/tiktok) — off by default */
   showAvatars: z.string().optional().transform(v => v === 'true'),
-  /* Note the asymmetry, preserved: an unrecognized font passes through as-is,
-     where every other enum falls back to its default. */
+  /* Preset aliases remain accepted, while a custom family passes through to
+     the safe Google Fonts resolver in overlayFonts.ts. */
   font: z.string().optional().transform(v =>
     (numericAliases(MULTICHAT_FONTS.slice(0, 12))[v ?? ''] ?? v?.trim()) || 'opensans'),
   stroke: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_STROKES, 'none')),
   emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
+  /* Twitch native GIF messages are explicitly opt-in. */
+  gifs: z.string().optional().transform(v => v === '1' || v === 'true'),
+  gifSize: z.string().optional().transform(v => normalizeTwitchGifSize(v)),
   fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
   
   msgBold: z.string().optional().transform(v => v !== 'false'),
@@ -188,17 +193,8 @@ export const MultichatQuerySchema = z.object({
   modAction: z.string().optional().transform(v => v !== 'false'),
   userBL: z.string().optional().transform(v => v ?? ''),
   prefixBL: z.string().optional().transform(v => v ?? ''),
-  /* per-platform pins: CSV of kick,twitch,youtube,tiktok
-   * - absent → default to all four (backward compat)
-   * - present but empty → [] (no pins at all)
-   * - valid names → only those; invalid ignored, duplicates removed */
-  pinPlatforms: z.string().optional().transform(v => {
-    const all = ['kick', 'twitch', 'youtube', 'tiktok'];
-    if (v === undefined) return all;       // param absent → default
-    if (v === '') return [];                // param explicitly empty → none
-    const picked = [...new Set(v.split(',').map(s => s.trim().toLowerCase()).filter(s => all.includes(s)))];
-    return picked.length ? picked : all;    // no valid names → fallback to all
-  }),
+  /* Retired compatibility parameter: platform pin selections are ignored. */
+  pinPlatforms: z.string().optional().transform(() => [] as string[]),
   hideNames: z.string().optional().transform(v => v === 'true'),
   botNames: z.string().optional().transform(v => v ?? ''),
   /* compatibility-only: parsed, read by no runtime code */
@@ -215,8 +211,6 @@ export type MultichatConfig = z.infer<typeof MultichatQuerySchema>;
 export const MULTICHAT_UNREAD_PARAMS = [
   'ttsEnabled',
   'showAvatars',
-  'showSystemMsgs',
-  'showRedeems',
 ] as const;
 
 /**
@@ -280,21 +274,26 @@ export type MultichatChannels = {
 /**
  * The generator's style state, in the same shapes the controls hold it.
  *
- * Strings stay strings (`fade`, `emoteScale`) because the generator stores
- * them as raw input text and its emptiness is meaningful when deciding
+ * Strings stay strings (`fade`, `emoteScale`, `gifSize`) because the generator
+ * stores them as raw input text and its emptiness is meaningful when deciding
  * whether to emit the parameter at all.
  */
 export type MultichatGeneratorStyle = {
   sevenTVEmotesEnabled: boolean;
   sevenTVCosmeticsEnabled: boolean;
+  /** Show third-party/community badges while preserving native platform badges. */
+  showCommunityBadges: boolean;
   textSize: string;
   font: string;
+  /** Optional Google Fonts family; when non-empty it overrides the preset font. */
+  googleFont: string;
   textShadow: string;
   stroke: string;
   animation: string;
   /** Raw seconds input. Emitted only when `fadeEnabled` and non-empty. */
   fade: string;
   fadeEnabled: boolean;
+  /** Retired compatibility field. Always false in current defaults/output. */
   showPinEnabled: boolean;
   /** False emits `sourceTag=none`; true emits nothing. */
   platformIcons: boolean;
@@ -303,6 +302,10 @@ export type MultichatGeneratorStyle = {
   bgColor: string;
   /** Raw input. Emitted only when non-empty. */
   emoteScale: string;
+  /** Display Twitch's native GIF-tag messages instead of their fallback text. */
+  gifs: boolean;
+  /** Raw GIF maximum height in pixels. */
+  gifSize: string;
   msgBold: boolean;
   msgCaps: boolean;
   
@@ -311,15 +314,19 @@ export type MultichatGeneratorStyle = {
   smoothScroll: boolean;
   /** Include Twitch Shared Chat partner rows and show source-streamer avatars. */
   sharedChatEnabled: boolean;
+  /** Show normalized platform event cards/popups across every provider. */
+  showSystemMsgs: boolean;
+  /** Show Twitch Hype Train banner when the provider exposes one. */
+  showHypeTrains: boolean;
+  /** Show provider-tagged first-message / first-time-chatter messages. */
+  showFirstMessages: boolean;
+  /** Show channel-point / reward redemption messages where supported. */
+  showRedeems: boolean;
   modAction: boolean;
   paintShadows: boolean;
   /** '' means unset. A leading '#' is stripped when emitted. */
   fontColor: string;
-  /**
-   * Platforms that should show pins, after the caller has applied its own
-   * gating. Omitted when all four are present (the overlay default), emitted
-   * as '' when none are, and as CSV for any subset.
-   */
+  /** Retired compatibility field. Always empty in current defaults/output. */
   pinPlatforms: readonly string[];
   hideNames: boolean;
   botNames: string;
@@ -328,36 +335,41 @@ export type MultichatGeneratorStyle = {
 };
 
 /**
- * Where the generator's controls begin.
- *
- * Distinct from MULTICHAT_OVERLAY_DEFAULTS on purpose: `textShadow` is 'small'
- * here and 'large' there. The generator always writes the parameter
- * explicitly, so the two never have to agree. See the module header.
+ * Where the generator's controls begin. The site and overlay now both start
+ * with the full-strength `large` text shadow.
  */
 export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   sevenTVEmotesEnabled: true,
   sevenTVCosmeticsEnabled: true,
+  showCommunityBadges: true,
   textSize: 'medium',
   font: 'opensans',
-  textShadow: 'small',
+  googleFont: '',
+  textShadow: 'large',
   stroke: 'none',
   animation: 'slide',
   fade: '30',
   fadeEnabled: true,
-  showPinEnabled: true,
+  showPinEnabled: false,
   platformIcons: true,
   mentionColor: true,
   bgColor: '',
   emoteScale: '',
+  gifs: false,
+  gifSize: String(DEFAULT_TWITCH_GIF_SIZE_PX),
   msgBold: true,
   msgCaps: false,
   msgSlideIn: false,
   smoothScroll: false,
   sharedChatEnabled: false,
+  showSystemMsgs: true,
+  showHypeTrains: true,
+  showFirstMessages: true,
+  showRedeems: true,
   modAction: true,
   paintShadows: true,
   fontColor: '',
-  pinPlatforms: ['kick', 'youtube', 'tiktok'],
+  pinPlatforms: [],
   hideNames: false,
   botNames: '',
   userBL: '',
@@ -374,10 +386,6 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
  *
  * Identical to MultichatGeneratorStyle except that `platformIcons: boolean` is
  * replaced by the full `sourceTag` enum. This is the shape the generator holds.
- * The legacy shape is untouched and no longer held by any page: it remains as
- * the pinned compatibility surface, because its boolean can only express 'icon'
- * (by omitting the parameter) and 'none', and the byte-for-byte output of both
- * branches is what keeps already-copied OBS URLs rendering identically.
  */
 export type MultichatWorkspaceStyle = Omit<MultichatGeneratorStyle, 'platformIcons'> & {
   /** 'icon' omits the parameter, matching the overlay's own default. */
@@ -404,12 +412,9 @@ export function multichatSourceTagOf(
 }
 
 /**
- * Where the workspace controls begin.
- *
- * Derived from MULTICHAT_GENERATOR_DEFAULTS rather than restated: every field is
- * spread from it, and only `platformIcons` is swapped for the `sourceTag` it
- * already means. textShadow therefore stays 'small' here, still distinct from
- * the overlay's omission default of 'large'.
+ * Where the workspace controls begin. It inherits the large shadow and retired
+ * pin values from MULTICHAT_GENERATOR_DEFAULTS; only smooth scrolling and the
+ * source-tag representation differ.
  */
 export const MULTICHAT_WORKSPACE_DEFAULTS: MultichatWorkspaceStyle = (() => {
   const { platformIcons, ...shared } = MULTICHAT_GENERATOR_DEFAULTS;
@@ -431,27 +436,9 @@ export const MULTICHAT_GENERATOR_DEFAULT_CHANNELS: MultichatChannels = {
 /**
  * Build the MultiChat overlay query string the generator copies.
  *
- * Moved verbatim from the original generator page: the key insertion order, the
- * include-versus-omit rules, the boolean spellings, and the encoding are all
- * part of the compatibility surface and are reproduced exactly.
- *
- * Quirks preserved deliberately, not cleaned up:
- *   - `kick` is only trimmed; a leading '@' survives. The other three platforms
- *     have theirs stripped.
- *   - With no platform filled at all, `kick=yourchannel` is emitted as a
- *     placeholder so the previewed URL stays valid.
- *   - `hideNames` is always emitted, even when false; most other booleans are
- *     emitted only on their non-default side.
- *
- * The returned string carries no leading '?' and no fragment. Callers append
- * `#twitchConnectionId=…` themselves, so this function never handles the
- * connection id.
- *
- * Accepts either style shape. A legacy MultichatGeneratorStyle serializes
- * exactly as it always has; a MultichatWorkspaceStyle can additionally emit
- * `sourceTag=dot` and `sourceTag=label`, in the same slot, which the boolean
- * could not reach. This remains the only MultiChat serializer — no caller
- * appends or rewrites parameters afterwards.
+ * Retired pin fields are intentionally ignored: new links do not carry pin
+ * toggles or platform selections, while the parser still accepts old params.
+ * The returned string carries no leading '?' and no fragment.
  */
 export function buildMultichatQuery(
   channels: MultichatChannels,
@@ -460,16 +447,18 @@ export function buildMultichatQuery(
   const { kick: channel, twitch, youtube, tiktok } = channels;
   const {
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
-    textSize, font, textShadow, stroke, animation,
-    fade, fadeEnabled: fadeBool, showPinEnabled: showPin,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, modAction,
-    paintShadows, fontColor, pinPlatforms: effectivePinPlats, hideNames,
+    showCommunityBadges,
+    textSize, font, googleFont, textShadow, stroke, animation,
+    fade, fadeEnabled: fadeBool,
+    mentionColor, bgColor, emoteScale, gifs, gifSize, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, showSystemMsgs, showHypeTrains, showFirstMessages, showRedeems, modAction,
+    paintShadows, fontColor, hideNames,
     botNames, userBL, prefixBL,
   } = style;
   /* Both shapes collapse to one tag. 'icon' omits the parameter, which is what
      the legacy platformIcons=true branch did, so legacy output is unchanged. */
   const sourceTag = multichatSourceTagOf(style);
   const workspaceStyle = 'sourceTag' in style;
+  const selectedFont = googleFontValue(googleFont) ?? font;
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -480,15 +469,16 @@ export function buildMultichatQuery(
     ...(!channel.trim() && !twitch.trim() && !youtube.trim() && !tiktok.trim() ? { kick: 'yourchannel' } : {}),
     sevenTVEmotesEnabled:    String(sevenTVE),
     sevenTVCosmeticsEnabled: String(sevenTVC),
-    textSize, font, textShadow, stroke, animation,
+    ...(showCommunityBadges ? {} : { showCommunityBadges: 'false' }),
+    textSize, font: selectedFont, textShadow, stroke, animation,
     ...(fadeBool && fade !== '' ? { fade } : {}),
-    showPinEnabled:        String(showPin),
     /* Same slot the legacy sourceTag=none occupied — position is part of the
        compatibility surface, so dot/label land here too rather than at the end. */
     ...(sourceTag === 'icon' ? {} : { sourceTag }),
     ...(mentionColor ? {} : { mentionColor: 'false' }),
     ...(bgColor ? { bgColor: bgColor.replace('#', '') } : {}),
     ...(emoteScale !== '' ? { emoteScale } : {}),
+    ...(gifs ? { gifs: 'true', ...(gifSize.trim() ? { gifSize: String(normalizeTwitchGifSize(gifSize)) } : {}) } : {}),
     ...(msgBold ? {} : { msgBold: 'false' }),
     ...(msgCaps ? { msgCaps: 'true' } : {}),
     
@@ -497,13 +487,13 @@ export function buildMultichatQuery(
       ? (smoothScroll ? {} : { smoothScroll: '0' })
       : (smoothScroll ? { smoothScroll: '1' } : {})),
     ...(sharedChatEnabled ? { sharedChatEnabled: '1' } : {}),
+    ...(showSystemMsgs ? {} : { showSystemMsgs: 'false' }),
+    ...(showHypeTrains ? {} : { showHypeTrains: 'false' }),
+    ...(showFirstMessages ? {} : { showFirstMessages: 'false' }),
+    ...(showRedeems ? {} : { showRedeems: 'false' }),
     ...(modAction ? {} : { modAction: 'false' }),
     ...(paintShadows ? {} : { paintShadows: 'false' }),
     ...(fontColor ? { fontColor: fontColor.replace('#', '') } : {}),
-    /* per-platform pins: omit when all four selected (overlay default),
-       encode '' when none selected, encode CSV for subsets */
-    ...(effectivePinPlats.length === 0 ? { pinPlatforms: '' } : {}),
-    ...(effectivePinPlats.length > 0 && effectivePinPlats.length < 4 ? { pinPlatforms: effectivePinPlats.join(',') } : {}),
     hideNames:   String(hideNames),
     ...(botNames.trim() ? { botNames: botNames.trim() } : {}),
     ...(userBL.trim() ? { userBL: userBL.trim() } : {}),

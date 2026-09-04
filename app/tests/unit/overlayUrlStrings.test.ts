@@ -1,22 +1,8 @@
 /* The generated URLs, as literal strings.
  *
- * Every other URL test in this suite asserts an *identity*: that the page's URL
- * equals what the serializer produces. That is the right check for "the page has
- * no second implementation", and it is worth nothing against the failure this file
- * is for — the serializer itself changing shape. An identity test passes happily
- * while a parameter is renamed, reordered, or dropped, because both sides move
- * together, and the URLs that break are the ones already pasted into scene
- * collections nobody is going to edit.
- *
- * So these are the strings, written out. A diff here is not a failure to fix by
- * updating the expectation; it is notice that existing OBS sources are about to
- * change behaviour, and the expectation moves only once that is intended.
- *
- * Every string below was captured from the serializer rather than composed by
- * hand, including the parts that look like mistakes: the Counter emits its
- * channels in twitch, youtube, kick, tiktok order, `bgColor` and `fontColor` drop
- * the `#`, and an empty generator emits `kick=yourchannel` so the preview URL
- * stays valid. Those are the compatibility surface.
+ * Every other URL test in this suite asserts an identity: that the page's URL
+ * equals what the serializer produces. These literal assertions additionally
+ * lock the current public URL shape after intentional default changes.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -44,8 +30,8 @@ function keys(query: string): string[] {
 describe('MultiChat, complete strings', () => {
   const MC_DEFAULT_TAIL =
     '&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium' +
-    '&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30' +
-    '&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false';
+    '&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30' +
+    '&hideNames=false';
 
   it('one Kick channel at every default', () => {
     expect(
@@ -58,14 +44,12 @@ describe('MultiChat, complete strings', () => {
   });
 
   it('the descriptor produces that same string through its own adapter', () => {
-    /* The page calls the descriptor, not the raw serializer, so the adapter is
-       part of the compatibility surface too. */
     expect(multichatTool.serialize({ kick: 'somechannel' } as never, multichatTool.defaults)).toBe(
       `kick=somechannel${MC_DEFAULT_TAIL}`.replace(/^&/, ''),
     );
   });
 
-  it('all four channels, every control off its default', () => {
+  it('all four channels, every active control off its default', () => {
     const flipped: MultichatSerializableStyle = {
       ...multichatTool.defaults,
       sevenTVEmotesEnabled: false,
@@ -106,16 +90,14 @@ describe('MultiChat, complete strings', () => {
       `${BASE}/multichat?kick=kickname&twitch=twitchname&youtube=handle&tiktok=tiktokname` +
         '&sevenTVEmotesEnabled=false&sevenTVCosmeticsEnabled=false&textSize=large' +
         '&font=roboto&textShadow=none&stroke=thick&animation=none&fade=5' +
-        '&showPinEnabled=false&sourceTag=label&mentionColor=false&bgColor=112233' +
+        '&sourceTag=label&mentionColor=false&bgColor=112233' +
         '&emoteScale=1.5&msgBold=false&msgCaps=true&modAction=false&paintShadows=false' +
-        '&fontColor=ff0000&pinPlatforms=&hideNames=true' +
+        '&fontColor=ff0000&hideNames=true' +
         '&botNames=nightbot%2C+streamelements&userBL=someone&prefixBL=%21%2C+%3F',
     );
   });
 
   it('omits fade entirely when the fade switch is off', () => {
-    /* And omits pinPlatforms when all four are selected, because that is the
-       overlay's own default and the shortest URL is the compatible one. */
     expect(
       buildMultichatQuery(
         { ...NO_CHANNELS, kick: 'k' },
@@ -127,22 +109,27 @@ describe('MultiChat, complete strings', () => {
       ),
     ).toBe(
       'kick=k&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium' +
-        '&font=opensans&textShadow=small&stroke=none&animation=slide' +
-        '&showPinEnabled=true&hideNames=false',
+        '&font=opensans&textShadow=large&stroke=none&animation=slide' +
+        '&hideNames=false',
     );
   });
 
   it('substitutes a placeholder channel when nothing is typed', () => {
-    /* The preview URL has to stay parseable while the user is still typing, so
-       an empty generator emits a placeholder rather than a channel-less URL. */
     expect(buildMultichatQuery(NO_CHANNELS, multichatTool.defaults)).toBe(
       `kick=yourchannel${MC_DEFAULT_TAIL}`.replace(/^&/, ''),
     );
   });
 
-  it('carries a connection fragment strictly after the query', () => {
-    /* The fragment is a live credential, which is why it is never a query
-       parameter: query strings reach the server and its logs, fragments do not. */
+  it('retired pin fields never reappear in generated URLs', () => {
+    const query = buildMultichatQuery(
+      { ...NO_CHANNELS, kick: 'k' },
+      { ...multichatTool.defaults, showPinEnabled: true, pinPlatforms: ['twitch'] },
+    );
+    expect(query).not.toContain('showPinEnabled');
+    expect(query).not.toContain('pinPlatforms');
+  });
+
+  it('buildOverlayUrl still places an explicit fragment strictly after the query', () => {
     expect(
       buildOverlayUrl({
         baseUrl: BASE,
@@ -163,8 +150,8 @@ describe('Counter, complete strings', () => {
         query: buildViewerCounterQuery({ kick: 'somechannel' }, counterTool.defaults),
       }),
     ).toBe(
-      `${BASE}/counter?kick=somechannel&combined=true&icons=true&bg=true` +
-        '&textShadow=small&stroke=none',
+      `${BASE}/counter?kick=somechannel&combined=true&icons=true&bg=false` +
+        '&textShadow=large&stroke=none',
     );
   });
 
@@ -179,8 +166,8 @@ describe('Counter, complete strings', () => {
             ...counterTool.defaults,
             combined: false,
             icons: false,
-            bg: false,
-            textShadow: 'large',
+            bg: true,
+            textShadow: 'none',
             stroke: 'thin',
             align: 'right',
           },
@@ -188,7 +175,7 @@ describe('Counter, complete strings', () => {
       }),
     ).toBe(
       `${BASE}/counter?twitch=twitchname&youtube=handle&kick=kickname&tiktok=tiktokname` +
-        '&combined=false&icons=false&bg=false&textShadow=large&stroke=thin&align=right',
+        '&combined=false&icons=false&bg=true&textShadow=none&stroke=thin&align=right',
     );
   });
 
@@ -197,9 +184,6 @@ describe('Counter, complete strings', () => {
   });
 
   it('never carries a connection fragment', () => {
-    /* The Counter has no connection, so its URL must never gain a credential —
-       and it is built from parts each time rather than appended to, so deriving
-       the string twice cannot append twice. */
     const once = buildOverlayUrl({ baseUrl: BASE, route: counterTool.overlayRoute, query: 'kick=a' });
     expect(once).toBe(
       buildOverlayUrl({ baseUrl: BASE, route: counterTool.overlayRoute, query: 'kick=a' }),
@@ -209,12 +193,9 @@ describe('Counter, complete strings', () => {
 });
 
 describe('nothing malformed can reach a URL', () => {
-  it('a partial style serializes to defaults, never to "undefined"', () => {
-    /* Observed in the wild as combined=undefined&icons=undefined&bg=undefined,
-       which parses back as ON for each — so a user who switched Combined off and
-       copied the URL got one that reads as on. */
+  it('a partial counter style serializes to current defaults, never to "undefined"', () => {
     const query = buildViewerCounterQuery({ kick: 'k' }, {});
-    expect(query).toBe('kick=k&combined=true&icons=true&bg=true&textShadow=small&stroke=none');
+    expect(query).toBe('kick=k&combined=true&icons=true&bg=false&textShadow=large&stroke=none');
   });
 
   it('emits no undefined, null, or NaN in either tool', () => {
@@ -230,8 +211,6 @@ describe('nothing malformed can reach a URL', () => {
   });
 
   it('every emitted pair has a key', () => {
-    /* Values may legitimately be empty — pinPlatforms= is how "no pins" is
-       encoded — but a keyless pair is always a bug. */
     for (const query of [
       buildMultichatQuery(
         { kick: 'a', twitch: 'b', youtube: 'c', tiktok: 'd' },
@@ -268,8 +247,6 @@ describe('nothing malformed can reach a URL', () => {
       expect(url, String(fragment)).not.toContain('##');
       expect(url.split('#').length, String(fragment)).toBeLessThanOrEqual(2);
     }
-    /* The two spellings converge, so a caller that includes the # and one that
-       does not cannot produce two different OBS URLs. */
     expect(overlayFragment({ fragment: 'conn=1' })).toBe(overlayFragment({ fragment: '#conn=1' }));
   });
 });
@@ -314,9 +291,7 @@ describe('what the overlay reads back', () => {
     expect(parsed.style).toEqual(style);
   });
 
-  it('every literal string above still parses', () => {
-    /* A string can be stable and wrong. These are the same URLs asserted at the
-       top of the file, run back through the overlay's own parser. */
+  it('every representative current string still parses', () => {
     const urls = [
       buildMultichatQuery({ ...NO_CHANNELS, kick: 'somechannel' }, multichatTool.defaults),
       buildMultichatQuery(NO_CHANNELS, multichatTool.defaults),
@@ -332,8 +307,6 @@ describe('what the overlay reads back', () => {
   });
 
   it('parameter order is stable across repeated builds', () => {
-    /* Not cosmetic: someone comparing a freshly generated URL against the one
-       already in OBS needs the two comparable by eye. */
     const build = () =>
       buildMultichatQuery(
         { kick: 'a', twitch: 'b', youtube: 'c', tiktok: 'd' },

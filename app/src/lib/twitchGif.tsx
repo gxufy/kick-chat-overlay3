@@ -28,6 +28,7 @@ export function renderTwitchGif(url: string, size: number): React.ReactNode {
   const px = normalizeTwitchGifSize(size);
   return (
     <img
+      key="twitch-native-gif"
       className="ck-twitch-gif"
       src={url}
       alt="GIF"

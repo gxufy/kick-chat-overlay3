@@ -1,5 +1,3 @@
-
-
 /**
  * Google Fonts `family=` specifications, keyed by `font=` value.
  *
@@ -49,40 +47,80 @@ export function googleFontsUrl(specs: readonly string[]): string {
 
 /**
  * A Google Fonts request as an `@import` rule for an inline `<style>`.
- *
- * `<link rel="stylesheet">` inside `next/head` is unsupported — Next warns "Do
- * not add stylesheets using next/head" on every render in development. The
- * fonts each route needs differ (the homepage wants one UI face, the Classic
- * generator additionally wants all nine picker faces, an overlay wants only the
- * one family its URL selected), so there is no single global set to hoist into
- * `_document`, and hoisting the union would make every overlay fetch nine faces
- * it never draws. An `@import` in an inline style requests exactly the same
- * sheet through a mechanism `next/head` does support. Pair it with the
- * preconnects below so the extra hop costs no extra connection setup.
  */
 export function googleFontsImportCss(specs: readonly string[]): string {
   return `@import url('${googleFontsUrl(specs)}');`;
 }
 
+const LOCAL_OR_SYSTEM_FONT_KEYS = new Set(['default', 'geist', 'segoe', 'impact', 'alsina']);
+const CUSTOM_FONT_MAX_LENGTH = 80;
+
+/**
+ * Normalize a user-entered Google Fonts family without allowing CSS/URL syntax
+ * to escape into the inline stylesheet. Family names may contain letters,
+ * numbers, spaces, underscores, and hyphens. Diacritics are folded so the same
+ * name is used in both the Google request and CSS font-family declaration.
+ */
+export function normalizeGoogleFontFamily(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized || normalized.length > CUSTOM_FONT_MAX_LENGTH) return null;
+  return /^[A-Za-z0-9][A-Za-z0-9 _-]*$/.test(normalized) ? normalized : null;
+}
+
+/**
+ * Return the free-form Google family represented by `font=`, or null when the
+ * value names one of MultiChat's existing preset/local/system faces.
+ */
+export function customGoogleFontFamily(font: string | undefined): string | null {
+  if (!font || OVERLAY_FONT_SPECS[font] || LOCAL_OR_SYSTEM_FONT_KEYS.has(font)) return null;
+  return normalizeGoogleFontFamily(font);
+}
+
+function customGoogleFontSpec(family: string): string {
+  /* Request the family without forcing a variable/weight axis. Google Fonts
+     serves its normal face when available and the browser may synthesize the
+     overlay's 400/800 weights when the family does not publish both. */
+  return family.replace(/ /g, '+');
+}
+
+function quotedCssFamily(family: string): string {
+  /* normalizeGoogleFontFamily already rejects quotes/backslashes; keeping this
+     separate documents that only validated names reach CSS. */
+  return `'${family}', 'Open Sans', Arial, system-ui, sans-serif`;
+}
+
 /**
  * The stylesheet URL the overlay needs for a given `font=` value, or `null`.
- *
- * Only the selected family is requested rather than all nine, so an overlay
- * fetches one face instead of a combined sheet it will not use. `null` means the
- * family needs no network request at all — see the module header for the three
- * cases that covers.
+ * Presets retain their exact historical specs; a safe free-form family gets a
+ * single-family Google Fonts request.
  */
 export function overlayFontUrl(font: string | undefined): string | null {
-  const spec = font === undefined ? undefined : OVERLAY_FONT_SPECS[font];
-  return spec === undefined ? null : googleFontsUrl([spec]);
+  const preset = font === undefined ? undefined : OVERLAY_FONT_SPECS[font];
+  if (preset !== undefined) return googleFontsUrl([preset]);
+  const custom = customGoogleFontFamily(font);
+  return custom ? googleFontsUrl([customGoogleFontSpec(custom)]) : null;
 }
 
 /**
  * The same request as `overlayFontUrl`, as CSS for an inline `<style>`, or
- * `null` when the family needs no network request. See `googleFontsImportCss`
- * for why the overlay emits a style rule rather than a stylesheet link.
+ * `null` when the family needs no network request.
+ *
+ * Custom families also carry a narrowly scoped `!important` declaration. The
+ * renderer's inline font-family intentionally falls back for unknown legacy
+ * values, so this lets a validated free-form Google family override that inline
+ * fallback without changing the preset resolution table or old URLs.
  */
 export function overlayFontCss(font: string | undefined): string | null {
-  const spec = font === undefined ? undefined : OVERLAY_FONT_SPECS[font];
-  return spec === undefined ? null : googleFontsImportCss([spec]);
+  const preset = font === undefined ? undefined : OVERLAY_FONT_SPECS[font];
+  if (preset !== undefined) return googleFontsImportCss([preset]);
+
+  const custom = customGoogleFontFamily(font);
+  if (!custom) return null;
+  const family = quotedCssFamily(custom);
+  return `${googleFontsImportCss([customGoogleFontSpec(custom)])}\n#chat_container { font-family: ${family} !important; }\n[data-testid="twitch-hype-train"] { font-family: ${family} !important; }`;
 }

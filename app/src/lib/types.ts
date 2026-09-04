@@ -66,6 +66,8 @@ export interface UnifiedMessage {
   redeem?: boolean | string;
   /** Provider says this is the chatter's first message (currently Twitch first-msg). */
   firstMessage?: boolean;
+  /** Twitch native GIF asset extracted from the provider's `gifs` IRC tag. */
+  gifUrl?: string;
   
   avatar?: string;
   /** Provider-native reply preview (currently Kick + Twitch). */

@@ -12,18 +12,26 @@ describe('MultiChat Twitch media and Google Font config', () => {
     expect(MultichatQuerySchema.parse({ gifs: 'true', gifSize: '9999' }).gifSize).toBe(512);
   });
 
-  it('keeps arbitrary font family text available to the renderer', () => {
+  it('preserves legacy unknown font values without turning them into an explicit custom selection', () => {
     expect(MultichatQuerySchema.parse({ font: 'Press Start 2P' }).font).toBe('Press Start 2P');
   });
 
-  it('serializes Google font override through the existing font parameter', () => {
+  it('serializes Google font override explicitly through the existing font parameter', () => {
     const query = buildMultichatQuery(
       { kick: '', twitch: 'streamer', youtube: '', tiktok: '' },
       { ...MULTICHAT_WORKSPACE_DEFAULTS, googleFont: 'Press Start 2P' },
     );
     const params = new URLSearchParams(query);
-    expect(params.get('font')).toBe('Press Start 2P');
+    expect(params.get('font')).toBe('google:Press Start 2P');
     expect(params.has('googleFont')).toBe(false);
+  });
+
+  it('falls back to the selected preset when the custom family is unsafe', () => {
+    const query = buildMultichatQuery(
+      { kick: '', twitch: 'streamer', youtube: '', tiktok: '' },
+      { ...MULTICHAT_WORKSPACE_DEFAULTS, font: 'lato', googleFont: "Bad'; color:red" },
+    );
+    expect(new URLSearchParams(query).get('font')).toBe('lato');
   });
 
   it('emits GIF size only while GIF rendering is enabled', () => {

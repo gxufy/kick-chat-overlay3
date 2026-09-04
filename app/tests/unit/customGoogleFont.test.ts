@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   customGoogleFontFamily,
+  googleFontValue,
   normalizeGoogleFontFamily,
   overlayFontCss,
   overlayFontUrl,
@@ -18,16 +19,20 @@ describe('custom Google Fonts', () => {
     expect(normalizeGoogleFontFamily('')).toBeNull();
   });
 
-  it('does not reinterpret existing preset/local faces as custom Google families', () => {
+  it('requires explicit custom selection and leaves legacy bare values alone', () => {
     expect(customGoogleFontFamily('opensans')).toBeNull();
     expect(customGoogleFontFamily('geist')).toBeNull();
     expect(customGoogleFontFamily('segoe')).toBeNull();
-    expect(customGoogleFontFamily('Press Start 2P')).toBe('Press Start 2P');
+    expect(customGoogleFontFamily('Press Start 2P')).toBeNull();
+    expect(googleFontValue('Press Start 2P')).toBe('google:Press Start 2P');
+    expect(customGoogleFontFamily('google:Press Start 2P')).toBe('Press Start 2P');
   });
 
-  it('loads one safe custom family and overrides the renderer fallback', () => {
-    const url = overlayFontUrl('Press Start 2P');
-    const css = overlayFontCss('Press Start 2P');
+  it('loads one safe explicitly selected family and overrides the renderer fallback', () => {
+    const font = googleFontValue('Press Start 2P');
+    expect(font).toBe('google:Press Start 2P');
+    const url = overlayFontUrl(font ?? undefined);
+    const css = overlayFontCss(font ?? undefined);
     expect(url).toContain('family=Press+Start+2P');
     expect(css).toContain('family=Press+Start+2P');
     expect(css).toContain("#chat_container { font-family: 'Press Start 2P'");
@@ -37,5 +42,6 @@ describe('custom Google Fonts', () => {
     expect(overlayFontUrl('opensans')).toContain('Open+Sans');
     expect(overlayFontCss('opensans')).not.toContain('#chat_container');
     expect(overlayFontCss("Bad'; color:red")).toBeNull();
+    expect(googleFontValue("Bad'; color:red")).toBeNull();
   });
 });

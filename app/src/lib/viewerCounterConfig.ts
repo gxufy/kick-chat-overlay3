@@ -72,9 +72,8 @@ export type CounterAlign = (typeof ALIGNMENTS)[number];
 /*
  * Size and weight stay fixed so the counter keeps its compact geometry and
  * existing OBS sizing. The default family remains the self-hosted DejaVu face,
- * but users may now explicitly select a safe Google Fonts family. The custom
- * family is independent of MultiChat's chat font and is serialized only on the
- * counter URL itself.
+ * but an explicit `font=google:<family>` URL may opt into a safe Google Fonts
+ * family. That optional extension is independent of MultiChat's chat font.
  */
 
 /** Default family — DejaVuSans-Bold, the previous fixed face. */
@@ -98,8 +97,8 @@ export type ViewerCounterStyle = {
   textShadow: CounterTextShadow;
   stroke: CounterStroke;
   align: CounterAlign;
-  /** Optional safe Google Fonts family name. Blank keeps DejaVu Sans. */
-  googleFont: string;
+  /** Optional safe Google Fonts family. Omitted keeps DejaVu Sans. */
+  googleFont?: string;
 };
 
 /** Channel names per platform, normalized (no leading '@'). */
@@ -119,7 +118,6 @@ export const DEFAULT_STYLE: ViewerCounterStyle = {
   textShadow: 'large',
   stroke: 'none',
   align: 'left',
-  googleFont: '',
 };
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +178,7 @@ function keepEnum<T extends string>(
 export function normalizeCounterStyle(
   style: Partial<ViewerCounterStyle>,
 ): ViewerCounterStyle {
+  const googleFont = normalizeGoogleFontFamily(style.googleFont);
   return {
     combined:
       typeof style.combined === 'boolean' ? style.combined : DEFAULT_STYLE.combined,
@@ -192,7 +191,7 @@ export function normalizeCounterStyle(
     ),
     stroke: keepEnum<CounterStroke>(style.stroke, STROKES, DEFAULT_STYLE.stroke),
     align: keepEnum<CounterAlign>(style.align, ALIGNMENTS, DEFAULT_STYLE.align),
-    googleFont: normalizeGoogleFontFamily(style.googleFont) ?? DEFAULT_STYLE.googleFont,
+    ...(googleFont ? { googleFont } : {}),
   };
 }
 
@@ -225,6 +224,7 @@ export function parseViewerCounterConfig(
     const name = normalizeChannel(query[platform]);
     if (name) channels[platform] = name;
   }
+  const googleFont = customGoogleFontFamily(one(query.font));
 
   return {
     channels,
@@ -239,7 +239,7 @@ export function parseViewerCounterConfig(
       ),
       stroke: pickEnum(query.stroke, STROKES, DEFAULT_STYLE.stroke),
       align: pickEnum(query.align, ALIGNMENTS, DEFAULT_STYLE.align),
-      googleFont: customGoogleFontFamily(one(query.font)) ?? DEFAULT_STYLE.googleFont,
+      ...(googleFont ? { googleFont } : {}),
       /* `textSize`, `label`, `showLabel`, `weight`, and `metric` from older
          builds are deliberately not read. Legacy bare `font=` values remain
          ignored too; only the explicit `font=google:<family>` form opts into a
@@ -253,7 +253,7 @@ export function parseViewerCounterConfig(
  *
  * The long-standing style params are always emitted so existing copied URLs
  * keep their familiar shape; `align` and the optional Google font are emitted
- * only when they differ from defaults, keeping short URLs short.
+ * only when selected, keeping default URLs byte-for-byte familiar.
  */
 export function buildViewerCounterQuery(
   channels: ViewerCounterChannels,
@@ -281,9 +281,9 @@ export function buildViewerCounterQuery(
      missing runtime value. Normalization makes each missing field inherit its
      authoritative default before serialization.
 
-     Normalizing a complete style is a no-op, so every already-copied URL and
-     every existing caller serializes byte-identically except for newly selected
-     custom Google fonts. */
+     Normalizing a complete legacy style is a no-op, so every already-copied URL
+     and every existing caller serializes byte-identically unless a custom Google
+     font is explicitly selected. */
   const safe = normalizeCounterStyle(style);
 
   params.set('combined', String(safe.combined));

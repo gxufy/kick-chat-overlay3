@@ -8,7 +8,7 @@
  *
  * What changed underneath, and why it matters:
  *
- *   - Controls are rendered from the tool catalogs (24 MultiChat, 6 Counter)
+ *   - Controls are rendered from the tool catalogs (27 MultiChat, 6 Counter)
  *     rather than hand-written <select>s and hardcoded <option> lists. The
  *     Classic page previously restated every label and option, so a catalog entry
  *     could change without this page noticing. Now it cannot.
@@ -131,10 +131,13 @@ const VC = counterTool.catalog;
 
 const MC_TEXT_SIZE = selectSetting(MC, 'textSize');
 const MC_FONT = selectSetting(MC, 'font');
+const MC_GOOGLE_FONT = textSetting(MC, 'googleFont');
 const MC_STROKE = selectSetting(MC, 'stroke');
 const MC_TEXT_SHADOW = selectSetting(MC, 'textShadow');
 const MC_ANIMATION = selectSetting(MC, 'animation');
 const MC_EMOTE_SCALE = textSetting(MC, 'emoteScale');
+const MC_GIFS = toggleSetting(MC, 'gifs');
+const MC_GIF_SIZE = textSetting(MC, 'gifSize');
 const MC_SOURCE_TAG = selectSetting(MC, 'sourceTag');
 const MC_SEVENTV_EMOTES = toggleSetting(MC, 'sevenTVEmotesEnabled');
 const MC_SEVENTV_COSMETICS = toggleSetting(MC, 'sevenTVCosmeticsEnabled');
@@ -1199,6 +1202,7 @@ export default function ClassicGenerator({
               optionStyle: (v) =>
                 FONT_FAMILIES[v] ? { fontFamily: FONT_FAMILIES[v] } : undefined,
             })}
+            {chat(MC_GOOGLE_FONT)}
             {chat(MC_STROKE, { segmented: true })}
             {chat(MC_TEXT_SHADOW, { segmented: true })}
             {chat(MC_FONT_COLOR)}
@@ -1222,6 +1226,8 @@ export default function ClassicGenerator({
             <p className="col-heading">Behaviour</p>
             {chat(MC_SEVENTV_EMOTES)}
             {chat(MC_SEVENTV_COSMETICS)}
+            {chat(MC_GIFS)}
+            {chat(MC_GIF_SIZE)}
             {chat(MC_COMMUNITY_BADGES)}
             {chat(MC_PAINT_SHADOWS)}
             {chat(MC_MSG_BOLD)}

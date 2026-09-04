@@ -4,6 +4,11 @@
  *
  * Browser-safe — no server-only imports, no secrets.
  */
+import {
+  customGoogleFontFamily,
+  googleFontValue,
+  normalizeGoogleFontFamily,
+} from './overlayFonts';
 
 /* ------------------------------------------------------------------ */
 /* Platforms                                                           */
@@ -61,18 +66,18 @@ export type CounterStroke = (typeof STROKES)[number];
 export type CounterAlign = (typeof ALIGNMENTS)[number];
 
 /* ------------------------------------------------------------------ */
-/* Fixed typography — the counter's own visual identity                */
+/* Typography                                                          */
 /* ------------------------------------------------------------------ */
 
 /*
- * The counter has one font, one size, and one weight, all fixed here and
- * used by both the standalone overlay and the generator preview through
- * ViewerCounterDisplay. They are deliberately not configurable and are
- * deliberately independent of the MultiChat overlay's font and size
- * controls, so restyling chat can never change a generated counter URL.
+ * Size and weight stay fixed so the counter keeps its compact geometry and
+ * existing OBS sizing. The default family remains the self-hosted DejaVu face,
+ * but users may now explicitly select a safe Google Fonts family. The custom
+ * family is independent of MultiChat's chat font and is serialized only on the
+ * counter URL itself.
  */
 
-/** Fixed family — DejaVuSans-Bold, the previous default. */
+/** Default family — DejaVuSans-Bold, the previous fixed face. */
 export const COUNTER_FONT_FAMILY = "'DejaVu Sans', sans-serif";
 
 /** Fixed size in pixels — the previous 'medium' default. */
@@ -93,6 +98,8 @@ export type ViewerCounterStyle = {
   textShadow: CounterTextShadow;
   stroke: CounterStroke;
   align: CounterAlign;
+  /** Optional safe Google Fonts family name. Blank keeps DejaVu Sans. */
+  googleFont: string;
 };
 
 /** Channel names per platform, normalized (no leading '@'). */
@@ -112,6 +119,7 @@ export const DEFAULT_STYLE: ViewerCounterStyle = {
   textShadow: 'large',
   stroke: 'none',
   align: 'left',
+  googleFont: '',
 };
 
 /* ------------------------------------------------------------------ */
@@ -184,6 +192,7 @@ export function normalizeCounterStyle(
     ),
     stroke: keepEnum<CounterStroke>(style.stroke, STROKES, DEFAULT_STYLE.stroke),
     align: keepEnum<CounterAlign>(style.align, ALIGNMENTS, DEFAULT_STYLE.align),
+    googleFont: normalizeGoogleFontFamily(style.googleFont) ?? DEFAULT_STYLE.googleFont,
   };
 }
 
@@ -230,10 +239,11 @@ export function parseViewerCounterConfig(
       ),
       stroke: pickEnum(query.stroke, STROKES, DEFAULT_STYLE.stroke),
       align: pickEnum(query.align, ALIGNMENTS, DEFAULT_STYLE.align),
-      /* `font`, `textSize`, `label`, `showLabel`, `weight`, and `metric` from
-         older builds are deliberately not read. Typography is fixed and the
-         label feature is gone, so those params are harmlessly ignored and an
-         old copied URL still loads and renders normally. */
+      googleFont: customGoogleFontFamily(one(query.font)) ?? DEFAULT_STYLE.googleFont,
+      /* `textSize`, `label`, `showLabel`, `weight`, and `metric` from older
+         builds are deliberately not read. Legacy bare `font=` values remain
+         ignored too; only the explicit `font=google:<family>` form opts into a
+         custom network font, so old copied URLs stay backward-compatible. */
     },
   };
 }
@@ -242,9 +252,8 @@ export function parseViewerCounterConfig(
  * Build the `/counter` query string for a config.
  *
  * The long-standing style params are always emitted so existing copied URLs
- * keep their familiar shape; `align` is emitted only when it differs from its
- * default, keeping short URLs short. No typography or label params are
- * emitted — the counter's font, size, and weight are fixed.
+ * keep their familiar shape; `align` and the optional Google font are emitted
+ * only when they differ from defaults, keeping short URLs short.
  */
 export function buildViewerCounterQuery(
   channels: ViewerCounterChannels,
@@ -273,8 +282,8 @@ export function buildViewerCounterQuery(
      authoritative default before serialization.
 
      Normalizing a complete style is a no-op, so every already-copied URL and
-     every existing caller serializes byte-identically except where a caller was
-     relying on the old pill-background default. */
+     every existing caller serializes byte-identically except for newly selected
+     custom Google fonts. */
   const safe = normalizeCounterStyle(style);
 
   params.set('combined', String(safe.combined));
@@ -285,6 +294,11 @@ export function buildViewerCounterQuery(
 
   if (safe.align !== DEFAULT_STYLE.align) {
     params.set('align', safe.align);
+  }
+
+  const customFont = googleFontValue(safe.googleFont);
+  if (customFont) {
+    params.set('font', customFont);
   }
 
   return params.toString();

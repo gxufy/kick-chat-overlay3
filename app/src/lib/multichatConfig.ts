@@ -25,6 +25,7 @@
  * Browser-safe — no server-only imports, no secrets.
  */
 import { z } from 'zod';
+import { googleFontValue } from './overlayFonts';
 import { DEFAULT_TWITCH_GIF_SIZE_PX, normalizeTwitchGifSize } from './twitchGifConfig';
 
 /** Supported chat platforms. */
@@ -457,7 +458,7 @@ export function buildMultichatQuery(
      the legacy platformIcons=true branch did, so legacy output is unchanged. */
   const sourceTag = multichatSourceTagOf(style);
   const workspaceStyle = 'sourceTag' in style;
-  const selectedFont = googleFont.trim() || font;
+  const selectedFont = googleFontValue(googleFont) ?? font;
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),

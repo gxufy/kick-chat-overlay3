@@ -25,6 +25,8 @@
  * Browser-safe — no server-only imports, no secrets.
  */
 import { z } from 'zod';
+import { googleFontValue } from './overlayFonts';
+import { DEFAULT_TWITCH_GIF_SIZE_PX, normalizeTwitchGifSize } from './twitchGifConfig';
 
 /** Supported chat platforms. */
 export const MULTICHAT_PLATFORMS = ['kick', 'twitch', 'youtube', 'tiktok'] as const;
@@ -165,13 +167,16 @@ export const MultichatQuerySchema = z.object({
       : 'icon') as MultichatSourceTag),
   /* profile pictures (yt/tiktok) — off by default */
   showAvatars: z.string().optional().transform(v => v === 'true'),
-  /* Note the asymmetry, preserved: an unrecognized font passes through as-is,
-     where every other enum falls back to its default. */
+  /* Preset aliases remain accepted, while a custom family passes through to
+     the safe Google Fonts resolver in overlayFonts.ts. */
   font: z.string().optional().transform(v =>
     (numericAliases(MULTICHAT_FONTS.slice(0, 12))[v ?? ''] ?? v?.trim()) || 'opensans'),
   stroke: z.string().optional().transform(v =>
     fromEnum(v, MULTICHAT_STROKES, 'none')),
   emoteScale: z.string().optional().transform(v => { const n = parseFloat(v ?? ''); return isNaN(n) ? 1 : n; }),
+  /* Twitch native GIF messages are explicitly opt-in. */
+  gifs: z.string().optional().transform(v => v === '1' || v === 'true'),
+  gifSize: z.string().optional().transform(v => normalizeTwitchGifSize(v)),
   fade: z.string().optional().transform(v => { const n = parseInt(v ?? ''); return isNaN(n) ? (false as const) : n; }),
   
   msgBold: z.string().optional().transform(v => v !== 'false'),
@@ -269,8 +274,8 @@ export type MultichatChannels = {
 /**
  * The generator's style state, in the same shapes the controls hold it.
  *
- * Strings stay strings (`fade`, `emoteScale`) because the generator stores
- * them as raw input text and its emptiness is meaningful when deciding
+ * Strings stay strings (`fade`, `emoteScale`, `gifSize`) because the generator
+ * stores them as raw input text and its emptiness is meaningful when deciding
  * whether to emit the parameter at all.
  */
 export type MultichatGeneratorStyle = {
@@ -280,6 +285,8 @@ export type MultichatGeneratorStyle = {
   showCommunityBadges: boolean;
   textSize: string;
   font: string;
+  /** Optional Google Fonts family; when non-empty it overrides the preset font. */
+  googleFont: string;
   textShadow: string;
   stroke: string;
   animation: string;
@@ -295,6 +302,10 @@ export type MultichatGeneratorStyle = {
   bgColor: string;
   /** Raw input. Emitted only when non-empty. */
   emoteScale: string;
+  /** Display Twitch's native GIF-tag messages instead of their fallback text. */
+  gifs: boolean;
+  /** Raw GIF maximum height in pixels. */
+  gifSize: string;
   msgBold: boolean;
   msgCaps: boolean;
   
@@ -333,6 +344,7 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   showCommunityBadges: true,
   textSize: 'medium',
   font: 'opensans',
+  googleFont: '',
   textShadow: 'large',
   stroke: 'none',
   animation: 'slide',
@@ -343,6 +355,8 @@ export const MULTICHAT_GENERATOR_DEFAULTS: MultichatGeneratorStyle = {
   mentionColor: true,
   bgColor: '',
   emoteScale: '',
+  gifs: false,
+  gifSize: String(DEFAULT_TWITCH_GIF_SIZE_PX),
   msgBold: true,
   msgCaps: false,
   msgSlideIn: false,
@@ -434,9 +448,9 @@ export function buildMultichatQuery(
   const {
     sevenTVEmotesEnabled: sevenTVE, sevenTVCosmeticsEnabled: sevenTVC,
     showCommunityBadges,
-    textSize, font, textShadow, stroke, animation,
+    textSize, font, googleFont, textShadow, stroke, animation,
     fade, fadeEnabled: fadeBool,
-    mentionColor, bgColor, emoteScale, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, showSystemMsgs, showHypeTrains, showFirstMessages, showRedeems, modAction,
+    mentionColor, bgColor, emoteScale, gifs, gifSize, msgBold, msgCaps, msgSlideIn, smoothScroll, sharedChatEnabled, showSystemMsgs, showHypeTrains, showFirstMessages, showRedeems, modAction,
     paintShadows, fontColor, hideNames,
     botNames, userBL, prefixBL,
   } = style;
@@ -444,6 +458,7 @@ export function buildMultichatQuery(
      the legacy platformIcons=true branch did, so legacy output is unchanged. */
   const sourceTag = multichatSourceTagOf(style);
   const workspaceStyle = 'sourceTag' in style;
+  const selectedFont = googleFontValue(googleFont) ?? font;
 
   const params = new URLSearchParams({
     ...(channel.trim() ? { kick: channel.trim() } : {}),
@@ -455,7 +470,7 @@ export function buildMultichatQuery(
     sevenTVEmotesEnabled:    String(sevenTVE),
     sevenTVCosmeticsEnabled: String(sevenTVC),
     ...(showCommunityBadges ? {} : { showCommunityBadges: 'false' }),
-    textSize, font, textShadow, stroke, animation,
+    textSize, font: selectedFont, textShadow, stroke, animation,
     ...(fadeBool && fade !== '' ? { fade } : {}),
     /* Same slot the legacy sourceTag=none occupied — position is part of the
        compatibility surface, so dot/label land here too rather than at the end. */
@@ -463,6 +478,7 @@ export function buildMultichatQuery(
     ...(mentionColor ? {} : { mentionColor: 'false' }),
     ...(bgColor ? { bgColor: bgColor.replace('#', '') } : {}),
     ...(emoteScale !== '' ? { emoteScale } : {}),
+    ...(gifs ? { gifs: 'true', ...(gifSize.trim() ? { gifSize: String(normalizeTwitchGifSize(gifSize)) } : {}) } : {}),
     ...(msgBold ? {} : { msgBold: 'false' }),
     ...(msgCaps ? { msgCaps: 'true' } : {}),
     

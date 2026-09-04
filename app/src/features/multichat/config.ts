@@ -9,7 +9,7 @@
  * for compatibility, but normalization always forces them off and this tool no
  * longer contributes a Twitch connection fragment to generated URLs.
  *
- * Browser-safe — no server-only imports, no secrets.
+ * Browser-safe — no server-only imports. 
  */
 import {
   MULTICHAT_ANIMATIONS,
@@ -141,6 +141,7 @@ export function normalizeMultichatStyle(
     showCommunityBadges: keepBoolean(style.showCommunityBadges, d.showCommunityBadges),
     textSize: keepEnum(style.textSize, MULTICHAT_TEXT_SIZES, d.textSize as MultichatTextSize),
     font: keepEnum(style.font, MULTICHAT_FONTS, d.font as MultichatFont),
+    googleFont: keepString(style.googleFont, d.googleFont),
     textShadow: keepEnum(
       style.textShadow,
       MULTICHAT_TEXT_SHADOWS,
@@ -155,6 +156,8 @@ export function normalizeMultichatStyle(
     mentionColor: keepBoolean(style.mentionColor, d.mentionColor),
     bgColor: keepString(style.bgColor, d.bgColor),
     emoteScale: keepString(style.emoteScale, d.emoteScale),
+    gifs: keepBoolean(style.gifs, d.gifs),
+    gifSize: keepString(style.gifSize, d.gifSize),
     msgBold: keepBoolean(style.msgBold, d.msgBold),
     msgCaps: keepBoolean(style.msgCaps, d.msgCaps),
     msgSlideIn: keepBoolean(style.msgSlideIn, d.msgSlideIn),

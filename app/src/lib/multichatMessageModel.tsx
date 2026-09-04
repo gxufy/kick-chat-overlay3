@@ -45,9 +45,8 @@ import {
 import { handleAssetError } from './render/imageFallback';
 import { runtimeEventMessageVisible } from './multichatEventRuntime';
 import { ensureStartupDebugPanel, reportStartupAcceptedMessage } from './startupDebug';
+import { DEFAULT_TWITCH_GIF_SIZE_PX, renderTwitchGif } from './twitchGif';
 import type { Platform, UnifiedMessage } from './types';
-
-
 
 /**
  * The cosmetic data a conversion reads from.
@@ -78,6 +77,10 @@ export type MessageStyleConfig = {
   /** Omitted means on, preserving existing callers and old overlay URLs. */
   showCommunityBadges?: boolean;
   paintShadows: boolean;
+  /** Twitch native GIF messages are opt-in so old overlays keep their text body. */
+  gifs?: boolean;
+  /** Independent Twitch GIF cap in pixels. */
+  gifSize?: number;
 };
 
 /** The subset of overlay configuration that decides whether a message is shown. */
@@ -92,7 +95,6 @@ export type MessageFilterConfig = {
   showFirstMessages: boolean;
   showRedeems: boolean;
 };
-
 
 const KNOWN_BOTS: ReadonlySet<string> = new Set([
   'streamelements', 'streamlabs', 'nightbot', 'moobot',
@@ -299,6 +301,16 @@ export function buildParsedMessage(
   const displayNameKey = displayUsername.toLowerCase();
   mentions.colors.set(upstreamNameKey, displayColor);
   if (displayNameKey !== upstreamNameKey) mentions.colors.set(displayNameKey, displayColor);
+  const message = um.platform === 'twitch' && um.kind === 'chat' && cfg.gifs && um.gifUrl
+    ? [renderTwitchGif(um.gifUrl, cfg.gifSize ?? DEFAULT_TWITCH_GIF_SIZE_PX)]
+    : renderMessageText(
+        um,
+        (um.platform === 'kick' || um.platform === 'twitch' || um.platform === 'youtube') && cfg.sevenTVEmotesEnabled
+          ? cosmetics.emotes[um.platform] ?? []
+          : [],
+        mentions,
+      );
+
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,
@@ -321,13 +333,6 @@ export function buildParsedMessage(
 
       ...(isYouTubeOwner(um) ? { namePill: '#ffd600|#111111' } : {}),
     },
-    // Kick, Twitch and YouTube can all carry a platform-scoped 7TV set.
-    message: renderMessageText(
-      um,
-      (um.platform === 'kick' || um.platform === 'twitch' || um.platform === 'youtube') && cfg.sevenTVEmotesEnabled
-        ? cosmetics.emotes[um.platform] ?? []
-        : [],
-      mentions,
-    ),
+    message,
   };
 }

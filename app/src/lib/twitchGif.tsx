@@ -2,6 +2,8 @@ import React from 'react';
 import { handleAssetError } from './render/imageFallback';
 import { normalizeTwitchGifSize } from './twitchGifConfig';
 
+export { DEFAULT_TWITCH_GIF_SIZE_PX } from './twitchGifConfig';
+
 /**
  * Twitch's GIF tag can contain provider metadata before the actual asset URL.
  * Extract only an HTTPS URL and reject anything that cannot be parsed safely.

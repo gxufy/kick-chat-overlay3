@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 const CHATTY_BADGES_URL = 'https://tduva.com/res/badges';
 const REQUEST_TIMEOUT_MS = 5_000;
 const GENERIC_ERROR = { error: 'Unable to load Chatty badges.' };
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36';
 
 type ChattyBadge = {
   id: string;
@@ -49,7 +50,9 @@ function parseBadges(value: unknown): ChattyBadge[] | null {
     const version = stringValue(raw.version);
     const id = version ? `${baseId}-${version}` : baseId;
     const title = stringValue(raw.meta_title) || baseId;
-    const url = safeHttpsUrl(raw.image_url_2) ?? safeHttpsUrl(raw.image_url);
+    const url = safeHttpsUrl(raw.image_url_4)
+      ?? safeHttpsUrl(raw.image_url_2)
+      ?? safeHttpsUrl(raw.image_url);
     const users = stringList(raw.userids);
     const usernames = stringList(raw.usernames);
     const color = stringValue(raw.color);
@@ -77,7 +80,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const response = await fetch(CHATTY_BADGES_URL, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        'User-Agent': BROWSER_USER_AGENT,
+      },
     });
     if (!response.ok) return res.status(502).json(GENERIC_ERROR);
 

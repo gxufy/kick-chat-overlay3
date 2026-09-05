@@ -469,14 +469,21 @@ describe('the chat settings remain the authority over what draws', () => {
     }
   });
 
-  it('has no chat setting that hides badges, so the picker must not claim one', () => {
-    /* Guards the picker's own wording. This repo's catalog has no badge
-       visibility toggle — badge art always draws — so a chip or hint promising
-       that a setting gates badges would be describing a control that does not
-       exist. Asserted against the catalog rather than remembered. */
+  it('has only the intentional community-badge visibility setting, not a global badge switch', () => {
+    /* The catalog intentionally exposes one badge-related control: community
+       badges can be hidden while native platform badges remain visible. There is
+       still no global showBadges switch, so the preview picker must not imply it
+       can suppress every badge source. */
     const keys = MULTICHAT_CATALOG.map((setting) => String(setting.key));
     expect(keys).not.toContain('showBadges');
-    expect(keys.some((key) => /badge/i.test(key))).toBe(false);
+    expect(keys.filter((key) => /badge/i.test(key))).toEqual(['showCommunityBadges']);
+    const community = MULTICHAT_CATALOG.find(
+      (setting) => setting.key === 'showCommunityBadges',
+    );
+    expect(community?.type).toBe('toggle');
+    expect(community?.description).toMatch(/third-party/i);
+    expect(community?.description).toMatch(/native platform badges/i);
+    expect(community?.description).toMatch(/unaffected/i);
   });
 });
 

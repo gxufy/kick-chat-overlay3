@@ -1,8 +1,9 @@
-/* POST /api/youtube/chat — proxy one get_live_chat poll.
- * Body: { apiKey, clientVersion, continuation }
- * Returns the raw InnerTube JSON; parsing happens client-side.
+/* POST /api/youtube/chat — compatibility proxy for one get_live_chat poll.
+ * Production MultiChat uses the shared SSE hub, but older/direct-polling clients
+ * keep this endpoint so existing overlay URLs do not depend on a migration.
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { fetchYouTubeChat } from '../../../lib/server/youtubeUpstream';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -11,21 +12,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'missing fields' });
   }
 
-  const r = await fetch(
-    `https://www.youtube.com/youtubei/v1/live_chat/get_live_chat?key=${encodeURIComponent(apiKey)}&prettyPrint=false`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Cookie': 'SOCS=CAI',
-      },
-      body: JSON.stringify({
-        context: { client: { clientName: 'WEB', clientVersion } },
-        continuation,
-      }),
-    }
-  );
-  if (!r.ok) return res.status(502).json({ error: `innertube: ${r.status}` });
-  res.status(200).json(await r.json());
+  try {
+    return res.status(200).json(await fetchYouTubeChat(apiKey, clientVersion, continuation));
+  } catch (error: any) {
+    return res.status(502).json({ error: error?.message ?? 'YouTube chat poll failed' });
+  }
 }

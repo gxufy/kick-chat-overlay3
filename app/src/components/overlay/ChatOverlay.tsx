@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 
 import Head from 'next/head';
@@ -8,6 +8,9 @@ import { sourceTag, PROVIDERS, type SourceTagMode } from '../../lib/render';
 import type { Platform } from '../../lib/types';
 import type { TwitchHypeTrainState } from '../../lib/twitchHypeTrainClient';
 import { LOCAL_OVERLAY_FONT_CSS, overlayFontCss } from '../../lib/overlayFonts';
+import { createSmoothScrollFollower } from '../../lib/smoothScrollFollower';
+import { MESSAGE_FADE_TRANSITION_MS } from '../../lib/messageFadeScheduler';
+import { runtimeEntranceAnimationEnabled } from '../../lib/multichatAnimationRuntime';
 
 export interface PinnedState {
   msg: ParsedMessage;
@@ -93,84 +96,157 @@ const SIZE = {
 type SzKey = keyof typeof SIZE;
 
 
-function getShadowFilter(s: string) {
-  if (s === 'small')  return 'drop-shadow(2px 2px 0.2rem black)';
-  if (s === 'medium') return 'drop-shadow(2px 2px 0.35rem black)';
-  if (s === 'large')  return 'drop-shadow(2px 2px 0.5rem black)';
-  return '';
+/* bChat/UChat applies one composite drop-shadow to each chat row rather
+   than separate text shadows to the body and username. Keep our four
+   legacy strength labels, but map them onto bChat's 0-10 opacity model;
+   `large` is the exact bChat default: 2px 2px 3px at full opacity. */
+function getBChatMessageShadow(s: string) {
+  const alpha: Record<string, number> = { small: 0.4, medium: 0.7, large: 1 };
+  const opacity = alpha[s] ?? 0;
+  return opacity ? `drop-shadow(2px 2px 3px rgba(0, 0, 0, ${opacity}))` : '';
+}
+
+/* bChat's font stroke is four diagonal black text-shadows, not
+   -webkit-text-stroke. Scale the offsets for our existing thickness
+   choices so old URLs keep their useful thin/medium/thick vocabulary. */
+function getBChatStroke(s: string) {
+  const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+  const px = width[s] ?? 0;
+  return px
+    ? `${px}px ${px}px 0 black, -${px}px ${px}px 0 black, ${px}px -${px}px 0 black, -${px}px -${px}px 0 black`
+    : '';
+}
+
+/* Painted names clear inherited text-shadow in bChat. When paint
+   shadows are disabled, bChat restores a WebKit stroke directly on
+   the painted glyphs; use the selected legacy width for parity. */
+function getBChatPaintStroke(s: string) {
+  const width: Record<string, number> = { thin: 1, medium: 2, thick: 3, thicker: 4 };
+  const px = width[s] ?? 0;
+  return px ? `${px}px black` : '';
 }
 
 
-function getStroke(s: string) {
-  const m: Record<string,string> = { thin:'1px black', medium:'2px black', thick:'3px black', thicker:'4px black' };
-  return m[s] ?? '';
+const CHATIS_SLIDE_DURATION_MS = 150;
+const CHATIS_JQUERY_TICK_MS = 13;
+const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/** jQuery 1.8.2's default `swing` easing, used by ChatIS's height spacer. */
+export function chatisSwing(progress: number): number {
+  return 0.5 - Math.cos(progress * Math.PI) / 2;
 }
 
-
-function SlideGroup({ children, fontSize, lineHeight, fontFamily }: { children: React.ReactNode; fontSize:string; lineHeight:string; fontFamily:string }) {
-
-  // 1. $auxDiv appended to #chat_container (hidden), measure height
-  // 2. $animDiv inserted (empty), animated 0→naturalH over 150ms swing
-  // 3. Complete callback: remove $animDiv, insert real content
-  const [phase, setPhase] = useState<'ghost' | 'content'>('ghost');
-  const [ghostH, setGhostH] = useState(0);
+function SlideGroup({ children }: { children: React.ReactNode }) {
+  /* ChatIS does not animate the actual rows. It measures the complete hidden
+     bucket, opens an empty spacer to that exact height over 150ms with
+     jQuery's 13ms `swing` timer, then swaps the spacer for the real rows in
+     one atomic commit. Keep that literal sequence while letting the rows
+     themselves remain our React renderer. */
   const measureRef = useRef<HTMLDivElement>(null);
+  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
+  const [spacerHeight, setSpacerHeight] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+
+  useBrowserLayoutEffect(() => {
+    if (revealed || measuredHeight !== null) return;
+    const measure = measureRef.current;
+    if (!measure) return;
+
+    if (typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setRevealed(true);
+      return;
+    }
+
+    const measured = measure.getBoundingClientRect().height || measure.scrollHeight;
+    if (measured <= 0) {
+      /* jsdom has no layout, and zero-height real buckets need no spacer. */
+      setRevealed(true);
+      return;
+    }
+    setMeasuredHeight(measured);
+  }, [measuredHeight, revealed]);
 
   useEffect(() => {
-    const el = measureRef.current;
-    if (!el) return;
-    // Set width synchronously before measuring — must match container exactly
-    const container = document.getElementById('chat_container');
-    if (container) el.style.width = `${container.offsetWidth}px`;
-    // rAF 1: let browser apply width and compute layout
-    requestAnimationFrame(() => {
-      const h = el.getBoundingClientRect().height;
-      // rAF 2: trigger CSS transition 0 → h (ghost starts at 0 by default)
-      requestAnimationFrame(() => {
-        setGhostH(h);
-        // 150ms matches jQuery .animate duration; content snaps in after
-        setTimeout(() => setPhase('content'), 150);
-      });
-    });
-  }, []);
+    if (measuredHeight === null || revealed) return;
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setInterval> | null = null;
 
-  if (phase === 'content') {
-    return <>{children}</>;
-  }
+    const tick = () => {
+      const progress = Math.min(1, (Date.now() - startedAt) / CHATIS_SLIDE_DURATION_MS);
+      setSpacerHeight(measuredHeight * chatisSwing(progress));
+      if (progress >= 1) {
+        if (timer !== null) clearInterval(timer);
+        timer = null;
+        setRevealed(true);
+      }
+    };
+
+    timer = setInterval(tick, CHATIS_JQUERY_TICK_MS);
+    tick();
+    return () => {
+      if (timer !== null) clearInterval(timer);
+    };
+  }, [measuredHeight, revealed]);
+
+  /* Once revealed there is no permanent batch wrapper, just like ChatIS's
+     direct append of .chat_line nodes into #chat_container. */
+  if (revealed) return <>{children}</>;
 
   return (
-    <>
-      {/* $animDiv equivalent — animates height open to push older messages up */}
-      <div data-slide-ghost style={{
-        height: ghostH,
-        overflow: 'hidden',
-        transition: 'height 150ms ease-in-out',
-      }} />
-      {/* $auxDiv equivalent — off-screen, width set dynamically in useEffect */}
-      <div ref={measureRef} style={{
-        position:   'fixed',
-        top:        '-9999px',
-        left:       0,
-        width:      'calc(100vw - 40px)', // overridden synchronously in useEffect
-        visibility: 'hidden',
-        pointerEvents: 'none',
-        fontWeight:  800,
-        wordBreak:   'break-word',
-        fontSize,
-        lineHeight,
-        fontFamily,
-              }}>
+    <div className="gx-slide-group" data-slide-phase={measuredHeight === null ? 'measure' : 'opening'}
+      style={{ height: `${spacerHeight}px`, overflow: 'hidden' }}>
+      <div ref={measureRef} className="gx-slide-measure" data-slide-ghost aria-hidden="true">
         {children}
       </div>
-    </>
+    </div>
   );
 }
 
 function FadeGroup({ children }: { children: React.ReactNode }) {
-  const [op, setOp] = useState(0);
-  useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setOp(1))); }, []);
-  return <div style={{ opacity:op, transition:'opacity 220ms ease-in-out' }}>{children}</div>;
+  /* Pure CSS keeps the 220ms fade while removing two requestAnimationFrame
+     callbacks and a React state update for every arriving batch. */
+  return <div className="gx-fade-group">{children}</div>;
 }
+
+const MessageRow = memo(function MessageRow({
+  msg, fading, msgSlideIn, messageShadowFilter, paintStrokeVal, sz, emoteMaxH, emoteMaxW,
+  hideNames, tagMode, showAvatar, showSharedSource,
+}: {
+  msg: ParsedMessage; fading: boolean; msgSlideIn: boolean; messageShadowFilter: string; paintStrokeVal: string;
+  sz: typeof SIZE[SzKey]; emoteMaxH: string; emoteMaxW: string;
+  hideNames: boolean; tagMode: SourceTagMode; showAvatar: boolean; showSharedSource: boolean;
+}) {
+  const exitEasing = 'cubic-bezier(0.4, 0, 0.2, 1)';
+  const exitTransition = [
+    `grid-template-rows ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+    `opacity ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+    `transform ${MESSAGE_FADE_TRANSITION_MS}ms ${exitEasing}`,
+  ].join(', ');
+
+  return (
+    <div className={['gx-message-row', msgSlideIn ? 'gx-message-slide-in' : ''].filter(Boolean).join(' ')} style={{
+      margin: '0 10px',
+      display: 'grid',
+      gridTemplateRows: fading ? '0fr' : '1fr',
+      opacity: fading ? 0 : 1,
+      transform: fading ? 'translate3d(0, -6px, 0)' : 'translate3d(0, 0, 0)',
+      transformOrigin: 'top center',
+      transition: exitTransition,
+      willChange: fading ? 'grid-template-rows, opacity, transform' : undefined,
+      ...(messageShadowFilter ? { filter: messageShadowFilter } : {}),
+    }}>
+      <div className="gx-message-row-inner" style={{ minHeight: 0, overflow: 'hidden' }}>
+        <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
+          paintStroke={paintStrokeVal} hideNames={hideNames}
+          tagMode={tagMode} showAvatar={showAvatar} showSharedSource={showSharedSource} />
+      </div>
+    </div>
+  );
+});
+
+type RenderBatch = { id: number; messageIds: string[]; animate: boolean };
 
 export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage, showLoader, sourceTagExplicit = false, sourceTagOverride, hypeTrain, hypeTrainEnding = false, sharedChatEnabled }: Props) {
   /* Fully typed by MultichatConfig — the schema already declares every field
@@ -180,8 +256,9 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
 
   const szKey      = (cfg.textSize in SIZE ? cfg.textSize : 'medium') as SzKey;
   const sz         = SIZE[szKey];
-  const filterVal  = getShadowFilter(cfg.textShadow);
-  const strokeVal  = getStroke(cfg.stroke ?? 'none');
+  const messageShadowFilter = getBChatMessageShadow(cfg.textShadow);
+  const strokeVal = getBChatStroke(cfg.stroke ?? 'none');
+  const paintStrokeVal = cfg.paintShadows === false ? getBChatPaintStroke(cfg.stroke ?? 'none') : '';
   const fontFamily = FONT_FAMILIES[cfg.font ?? 'opensans'] ?? FONT_FAMILIES.opensans;
   /* Naming a family does not load it. Only the selected face is requested, and
      system faces and the self-hosted Alsina yield null — see lib/overlayFonts. */
@@ -217,110 +294,85 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
     if (!smoothRuntime) return;
     const el = chatContainerRef.current;
     if (!el || typeof MutationObserver === 'undefined') return;
-    let raf = 0;
-    let lastScrollAt = 0;
-    const scrollNewestIntoView = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const now = Date.now();
-        const burst = now - lastScrollAt < 100;
-        lastScrollAt = now;
-        try {
-          el.scrollTo({ top: el.scrollHeight, behavior: burst ? 'auto' : 'smooth' });
-        } catch {
-          el.scrollTop = el.scrollHeight;
-        }
-      });
-    };
-    const observer = new MutationObserver(scrollNewestIntoView);
+
+    /* One continuously moving rAF target gives burst chat a stable frame cadence.
+       Native smooth scrolling restarts its easing curve on every mutation, while
+       the old burst fallback snapped to `auto`; both are visible as uneven speed
+       when messages arrive faster than the animation can settle. */
+    const follower = createSmoothScrollFollower(el);
+    const observer = new MutationObserver(() => follower.wake());
     observer.observe(el, { childList: true });
+    follower.wake();
     return () => {
-      cancelAnimationFrame(raf);
       observer.disconnect();
+      follower.stop();
     };
   }, [smoothRuntime]);
 
-  
-  const seqRef = useRef(0);
-  /* Batches retain only membership. Their current ParsedMessage values come from
-     `messagesById`, so late badge/paint/emote data repaints an existing row without
-     creating another batch or replaying its entrance animation. */
-  const [batches, setBatches] = useState<{ id: number; messageIds: string[] }[]>([]);
-  const seenIdsRef = useRef<Set<string>>(new Set());
+  /* The parent already commits connector arrivals on the fixed 200 ms clock.
+     Derive batch membership during that same render instead of committing the
+     messages first and then running an effect that calls setBatches for a second
+     React commit. Refs preserve immutable batch identity across repaint-only
+     updates without scheduling any additional render. */
+  const batchStateRef = useRef<{
+    sequence: number;
+    seen: Set<string>;
+    batches: RenderBatch[];
+  }>({ sequence: 0, seen: new Set<string>(), batches: [] });
   const messagesById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const batches = useMemo(() => {
+    const state = batchStateRef.current;
+    const liveIds = new Set(messages.map((message) => message.id));
+    let next = state.batches
+      .map((batch) => ({ ...batch, messageIds: batch.messageIds.filter((id) => liveIds.has(id)) }))
+      .filter((batch) => batch.messageIds.length > 0);
 
-  useEffect(() => {
     const newMessageIds = messages
-      .filter((message) => !seenIdsRef.current.has(message.id))
+      .filter((message) => !state.seen.has(message.id))
       .map((message) => message.id);
-    newMessageIds.forEach((id) => seenIdsRef.current.add(id));
-    if (seenIdsRef.current.size > 500) {
-      seenIdsRef.current = new Set(messages.map((message) => message.id));
+    for (const id of newMessageIds) state.seen.add(id);
+
+    if (newMessageIds.length) {
+      next = [...next, {
+        id: ++state.sequence,
+        messageIds: newMessageIds,
+        animate: runtimeEntranceAnimationEnabled(),
+      }];
     }
-    if (!newMessageIds.length) return;
-    const id = ++seqRef.current;
-    setBatches((previous) => {
-      const next = [...previous, { id, messageIds: newMessageIds }];
-      let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
-      while (total > 100 && next.length) {
-        total -= next[0].messageIds.length;
-        next.shift();
-      }
-      return next;
-    });
+
+    if (state.seen.size > 500) state.seen = new Set(liveIds);
+    let total = next.reduce((sum, batch) => sum + batch.messageIds.length, 0);
+    while (total > 100 && next.length) {
+      total -= next[0].messageIds.length;
+      next.shift();
+    }
+    state.batches = next;
+    return next;
   }, [messages]);
 
-  /* Sync deletions while preserving batch identity for every surviving row. */
-  useEffect(() => {
-    const ids = new Set(messages.map((message) => message.id));
-    setBatches((previous) => previous
-      .map((batch) => ({
-        ...batch,
-        messageIds: batch.messageIds.filter((id) => ids.has(id)),
-      }))
-      .filter((batch) => batch.messageIds.length));
-  }, [messages]);
-
-  const renderMsg = (msg: ParsedMessage) => (
-    <div key={msg.id} className={cfg.msgSlideIn ? 'gx-message-slide-in' : undefined} style={{
-      margin: '0 10px',
-
-      opacity: fadingIds.has(msg.id) ? 0 : 1,
-      transition: fadingIds.has(msg.id) ? 'opacity 400ms linear' : 'none',
-      ...(smoothRuntime && filterVal ? { filter: filterVal } : {}),
-
-    }}>
-      <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        stroke={strokeVal} hideNames={cfg.hideNames??false}
-        tagMode={tagMode}
-        showAvatar={cfg.showAvatars ?? false}
-        showSharedSource={showSharedSource} />
-    </div>
+  const renderMsg = (msg: ParsedMessage, animate = true) => (
+    <MessageRow key={msg.id}
+      msg={msg}
+      fading={fadingIds.has(msg.id)}
+      msgSlideIn={animate && (cfg.msgSlideIn ?? false)}
+      messageShadowFilter={messageShadowFilter}
+      paintStrokeVal={paintStrokeVal}
+      sz={sz}
+      emoteMaxH={emoteMaxH}
+      emoteMaxW={emoteMaxW}
+      hideNames={cfg.hideNames ?? false}
+      tagMode={tagMode}
+      showAvatar={cfg.showAvatars ?? false}
+      showSharedSource={showSharedSource}
+    />
   );
 
-  return (
-    <>
-      <Head>
-        {/* The selected web font. Without this the overlay named a family it had
-            never fetched, so every Google face — including the generator's
-            default, Open Sans — fell back to generic sans-serif in OBS while the
-            generator preview, which loads them for its own UI, showed the real
-            face. `display=swap` keeps text visible while it loads. */}
-        {fontCss && (
-          <>
-            <link rel="preconnect" href="https://fonts.googleapis.com" />
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-            {/* dangerouslySetInnerHTML, not a text child: React escapes the
-                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
-                inside a <style> raw-text element, so the @import would be an
-                invalid URL token and load nothing. */}
-            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
-          </>
-        )}
-        <style>{`${LOCAL_OVERLAY_FONT_CSS}
+  /* Visual configuration is static between settings changes. Memoizing this
+     prevents message traffic from reconstructing the same large CSS string. */
+  const overlayCss = useMemo(() => `${LOCAL_OVERLAY_FONT_CSS}
           
           html, body {
             margin: 0 !important;
@@ -345,11 +397,33 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
           }
           .gx-message-slide-in {
             animation: gxMessageSlideIn 250ms ease-out;
-            will-change: transform, opacity;
             backface-visibility: hidden;
+          }
+          /* Only hint scrolling while the rAF follower is actually moving. */
+          .gx-scroll-active { will-change: scroll-position; }
+
+          .gx-slide-group {
+          position: relative;
+          width: 100%;
+        }
+        .gx-slide-measure {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+        @keyframes gxFadeGroupIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          .gx-fade-group {
+            animation: gxFadeGroupIn 220ms ease-in-out;
           }
           @media (prefers-reduced-motion: reduce) {
             .gx-message-slide-in { animation: none; }
+            .gx-message-row { transition-duration: 0ms !important; transform: none !important; }
           }
 
           
@@ -496,7 +570,28 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
             .ck-startup-spinner { animation: none; border-top-color:#6d9dff; }
           }
 
-        `}</style>
+        `, [cfg, sz, emoteMaxW, emoteMaxH]);
+
+  return (
+    <>
+      <Head>
+        {/* The selected web font. Without this the overlay named a family it had
+            never fetched, so every Google face — including the generator's
+            default, Open Sans — fell back to generic sans-serif in OBS while the
+            generator preview, which loads them for its own UI, showed the real
+            face. `display=swap` keeps text visible while it loads. */}
+        {fontCss && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            {/* dangerouslySetInnerHTML, not a text child: React escapes the
+                latter, and `&` → `&amp;` plus `'` → `&#x27;` are not decoded
+                inside a <style> raw-text element, so the @import would be an
+                invalid URL token and load nothing. */}
+            <style dangerouslySetInnerHTML={{ __html: fontCss }} />
+          </>
+        )}
+        <style>{overlayCss}</style>
       </Head>
 
       {loaderPhase !== 'hidden' && (
@@ -521,7 +616,7 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
       {cfg.showPinEnabled && pinnedMessage && (
         <PinBanner
           pinned={pinnedMessage} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-          fontFamily={fontFamily} filterVal={filterVal} strokeVal={strokeVal}
+          fontFamily={fontFamily} messageShadowFilter={messageShadowFilter} strokeVal={strokeVal} paintStrokeVal={paintStrokeVal}
           hideNames={cfg.hideNames??false} tagMode={tagMode}
         />
       )}
@@ -535,7 +630,6 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         maxHeight:  smoothRuntime ? 'calc(100vh - 20px)' : undefined,
         display:    smoothRuntime ? 'flex' : undefined,
         flexDirection: smoothRuntime ? 'column' : undefined,
-        willChange: smoothRuntime ? 'scroll-position' : undefined,
         overflow:   'hidden',
         background: 'transparent',
         color:      cfg.fontColor || 'white',
@@ -544,16 +638,15 @@ export default function ChatOverlay({ config, messages, fadingIds, pinnedMessage
         wordBreak:  'break-word',
         fontFamily,
         fontSize:   sz.fontSize,
-                ...(!smoothRuntime && filterVal ? { filter:filterVal } : {}),
-        ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
+        ...(strokeVal ? { textShadow:strokeVal } : {}),
       }}>
-        {batches.map(({ id, messageIds }) => {
+        {batches.map(({ id, messageIds, animate }) => {
           const content = messageIds
             .map((messageId) => messagesById.get(messageId))
             .filter((message): message is ParsedMessage => Boolean(message))
-            .map(renderMsg);
-          if (cfg.animation==='slide') return <SlideGroup key={id} fontSize={sz.fontSize} lineHeight={sz.lineHeight} fontFamily={fontFamily} >{content}</SlideGroup>;
-          if (cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
+            .map((message) => renderMsg(message, animate));
+          if (animate && cfg.animation==='slide') return <SlideGroup key={id}>{content}</SlideGroup>;
+          if (animate && cfg.animation==='fade')  return <FadeGroup  key={id}>{content}</FadeGroup>;
           return <div key={id}>{content}</div>;
         })}
       </div>
@@ -595,10 +688,10 @@ function HypeTrainBar({ state, ending, fontFamily }: {
  * A different msg.id restarts the complete cycle.
  * Parent-driven unmount (pinnedMessage null / showPinEnabled false)
  * clears both timers in useEffect cleanup. */
-function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, strokeVal, hideNames, tagMode }: {
+function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, messageShadowFilter, strokeVal, paintStrokeVal, hideNames, tagMode }: {
   pinned: PinnedState; sz: typeof SIZE[SzKey];
   emoteMaxH:string; emoteMaxW:string; fontFamily:string;
-  filterVal:string; strokeVal:string;
+  messageShadowFilter:string; strokeVal:string; paintStrokeVal:string;
   hideNames:boolean;
   /* Follows the overlay's mode rather than a hardcoded 'icon', so sourceTag=none
      leaves no marker here either. */
@@ -643,8 +736,7 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
     overflow:'hidden',
     opacity,
     transition:'opacity 400ms ease-in-out',
-    ...(filterVal ? { filter:filterVal } : {}),
-    ...(strokeVal ? { WebkitTextStroke:strokeVal } : {}),
+    ...(strokeVal ? { textShadow:strokeVal } : {}),
   };
 
   if (!mounted) return null;
@@ -654,9 +746,11 @@ function PinBanner({ pinned, sz, emoteMaxH, emoteMaxW, fontFamily, filterVal, st
       <div style={{ display:'flex', alignItems:'center', gap:4, paddingBottom:4, opacity:0.6, fontSize:'0.7em' }}>
         <PinSVG /> <span style={{ fontWeight:700 }}>Pinned Message</span>
       </div>
+      <div className="gx-message-row" style={messageShadowFilter ? { filter:messageShadowFilter } : undefined}>
       <MsgLine msg={msg} sz={sz} emoteMaxH={emoteMaxH} emoteMaxW={emoteMaxW}
-        stroke={strokeVal} hideNames={hideNames}
+        paintStroke={paintStrokeVal} hideNames={hideNames}
         tagMode={tagMode} showAvatar={false} showSharedSource={false} />
+    </div>
       {pinnedBy && (
         <div style={{ paddingTop:4, opacity:0.5, fontSize:'0.55em', fontWeight:600 }}>
           Pinned by {pinnedBy}
@@ -672,9 +766,9 @@ const CATEGORY_ICON: Record<string, string> = {
   milestone: '🔥', follow: '❤️', announcement: '📣',
 };
 
-function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, showAvatar, showSharedSource }: {
+function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, paintStroke, hideNames, tagMode, showAvatar, showSharedSource }: {
   msg: ParsedMessage; sz: typeof SIZE[SzKey];
-  emoteMaxH:string; emoteMaxW:string; stroke:string;
+  emoteMaxH:string; emoteMaxW:string; paintStroke:string;
   hideNames:boolean;
   tagMode:SourceTagMode; showAvatar:boolean; showSharedSource:boolean;
 }) {
@@ -682,21 +776,22 @@ function MsgLine({ msg, sz, emoteMaxH, emoteMaxW, stroke, hideNames, tagMode, sh
   const pill = msg.identity.namePill?.split('|');
   const nameStyle: React.CSSProperties = pill
     ? { background:pill[0], color:pill[1], borderRadius:'0.4em', padding:'0 0.35em',
-        WebkitTextStroke:'0px', textShadow:'none',
-        }    : isPaint
-    /* backgroundImage, not the background shorthand: the shorthand resets
-       backgroundSize, so the paint only sized correctly because React happened
-       to emit the two in declaration order. 100% 100% rather than cover
-       matters for image paints — cover crops the art to the glyph box, this
-       stretches it across the name the way 7TV serves it. Gradients are
-       unaffected either way. The name carries no text-shadow: the paint's own
-       drop-shadow filter is the shadow, and an inherited one muddies it. */
-    ? { backgroundImage:msg.identity.background, filter:msg.identity.filter,
+        WebkitTextStroke:'0px', textShadow:'none' }
+    : isPaint
+    /* bChat's paint branch is deliberately isolated from the ordinary
+       font stroke: the gradient clips to transparent glyphs, its own
+       7TV shadow filter stays on the name, and inherited text-shadow is
+       cleared. If paint shadows are disabled, bChat restores a direct
+       WebKit stroke on the painted glyph instead. The row-level black
+       drop-shadow remains outside this span, so it composes with the
+       paint exactly once. */
+    ? { backgroundImage:msg.identity.background,
+        filter:msg.identity.filter || undefined,
         WebkitTextFillColor:'transparent', WebkitBackgroundClip:'text',
         backgroundClip:'text', backgroundSize:'100% 100%',
         backgroundRepeat:'no-repeat',
-        WebkitTextStroke:'0px', textShadow:'none' }
-    : { color:msg.identity.color, };
+        WebkitTextStroke:paintStroke || '0px', textShadow:'none' }
+    : { color:msg.identity.color };
 
   const visualPlatform = msg.displayPlatform ?? msg.platform;
   const tag = visualPlatform ? sourceTag(visualPlatform, tagMode) : null;

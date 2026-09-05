@@ -2,16 +2,18 @@
  *
  * This was previously a closure inside the overlay route's connect effect, which
  * meant nothing else could perform the conversion without reimplementing it.
- * Four appearance settings are applied *here* rather than in ChatOverlay:
+ * Five appearance settings are applied *here* rather than in ChatOverlay:
  *
  *   sevenTVEmotesEnabled     decides whether third-party emotes are swapped into
  *                            the text at all (by passing an empty emote list)
  *   sevenTVCosmeticsEnabled  decides whether a paint or 7TV badge is attached
+ *   showCommunityBadges      decides whether third-party/community badge nodes
+ *                            are rendered while leaving native badges untouched
  *   paintShadows             decides whether a paint contributes drop-shadows
  *   mentionColor             decides whether @tokens become coloured strongs
  *
  * A caller that skipped this step and built ParsedMessage values by hand would
- * therefore be unable to respond to any of those four, however faithfully it
+ * therefore be unable to respond to any of those settings, however faithfully it
  * copied the rest. That is why the generator's preview renders fixtures through
  * this function instead of shipping pre-rendered nodes: the settings have to pass
  * through the same code on the way to the screen.
@@ -41,9 +43,10 @@ import {
   type MentionContext,
 } from './render';
 import { handleAssetError } from './render/imageFallback';
+import { runtimeEventMessageVisible } from './multichatEventRuntime';
+import { ensureStartupDebugPanel, reportStartupAcceptedMessage } from './startupDebug';
+import { DEFAULT_TWITCH_GIF_SIZE_PX, renderTwitchGif } from './twitchGif';
 import type { Platform, UnifiedMessage } from './types';
-
-
 
 /**
  * The cosmetic data a conversion reads from.
@@ -71,7 +74,13 @@ export type MessageCosmetics = {
 export type MessageStyleConfig = {
   sevenTVEmotesEnabled: boolean;
   sevenTVCosmeticsEnabled: boolean;
+  /** Omitted means on, preserving existing callers and old overlay URLs. */
+  showCommunityBadges?: boolean;
   paintShadows: boolean;
+  /** Twitch native GIF messages are opt-in so old overlays keep their text body. */
+  gifs?: boolean;
+  /** Independent Twitch GIF cap in pixels. */
+  gifSize?: number;
 };
 
 /** The subset of overlay configuration that decides whether a message is shown. */
@@ -83,9 +92,9 @@ export type MessageFilterConfig = {
   /** Space-separated text prefixes to hide. */
   prefixBL: string;
   showSystemMsgs: boolean;
+  showFirstMessages: boolean;
   showRedeems: boolean;
 };
-
 
 const KNOWN_BOTS: ReadonlySet<string> = new Set([
   'streamelements', 'streamlabs', 'nightbot', 'moobot',
@@ -111,6 +120,7 @@ const KNOWN_BOTS: ReadonlySet<string> = new Set([
 export function buildMessageFilter(
   cfg: MessageFilterConfig,
 ): (um: UnifiedMessage) => boolean {
+  ensureStartupDebugPanel();
   const extraBots = new Set(
     (cfg.botNames || '')
       .split(',')
@@ -131,7 +141,9 @@ export function buildMessageFilter(
        connector, not typed by the chatter, so blacklisting "!" should not hide a
        subscription. */
     if (um.kind === 'chat' && prefixBlacklist.some((p) => um.text.startsWith(p))) return false;
+    if (!runtimeEventMessageVisible(um)) return false;
     if (um.kind === 'system' && !cfg.showSystemMsgs) return false;
+    if (um.firstMessage && !cfg.showFirstMessages) return false;
     if (um.redeem && !cfg.showRedeems) return false;
     return true;
   };
@@ -189,6 +201,49 @@ export function buildPaintStyle(
   return { background, filter: shadows.join(' ') };
 }
 
+const BADGES_BY_ID = new WeakMap<SevenTVBadge[], Map<string, SevenTVBadge>>();
+const PAINTS_BY_ID = new WeakMap<SevenTVPaint[], Map<string, SevenTVPaint>>();
+const READABLE_COLOR_CACHE_MAX = 256;
+const READABLE_COLORS = new Map<string, string>();
+
+function badgeById(badges: SevenTVBadge[], id: string): SevenTVBadge | undefined {
+  let lookup = BADGES_BY_ID.get(badges);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVBadge>();
+    for (const badge of badges) if (!lookup.has(badge.id)) lookup.set(badge.id, badge);
+    BADGES_BY_ID.set(badges, lookup);
+  }
+  return lookup.get(id);
+}
+
+function paintById(paints: SevenTVPaint[], id: string): SevenTVPaint | undefined {
+  let lookup = PAINTS_BY_ID.get(paints);
+  if (!lookup) {
+    lookup = new Map<string, SevenTVPaint>();
+    for (const paint of paints) if (!lookup.has(paint.id)) lookup.set(paint.id, paint);
+    PAINTS_BY_ID.set(paints, lookup);
+  }
+  return lookup.get(id);
+}
+
+/**
+ * Chatter colors repeat heavily, especially on Twitch. Normalizing a dark color
+ * performs regex parsing plus RGB/HSL conversion, so keep a small bounded cache
+ * keyed by the exact upstream string. Invalid/non-hex colors are safe too:
+ * readableColor returns them byte-for-byte and the exact key preserves that.
+ */
+function cachedReadableColor(color: string): string {
+  const cached = READABLE_COLORS.get(color);
+  if (cached !== undefined) return cached;
+  const resolved = readableColor(color);
+  if (READABLE_COLORS.size >= READABLE_COLOR_CACHE_MAX) {
+    const oldest = READABLE_COLORS.keys().next().value as string | undefined;
+    if (oldest !== undefined) READABLE_COLORS.delete(oldest);
+  }
+  READABLE_COLORS.set(color, resolved);
+  return resolved;
+}
+
 /**
  * Convert one normalized message into the renderable form ChatOverlay consumes.
  *
@@ -205,7 +260,11 @@ export function buildParsedMessage(
   mentions: MentionContext,
   timestamp: number,
 ): ParsedMessage {
-  const badgeNodes = renderBadges(um, cosmetics.channel?.subscriber_badges ?? []);
+  reportStartupAcceptedMessage(um);
+  const badgeMessage = cfg.showCommunityBadges === false
+    ? { ...um, badges: um.badges.filter((badge) => !badge.type.startsWith('community:')) }
+    : um;
+  const badgeNodes = renderBadges(badgeMessage, cosmetics.channel?.subscriber_badges ?? []);
   let background = '';
   let filter = '';
 
@@ -217,7 +276,7 @@ export function buildParsedMessage(
     const entitlement = cosmetics.entitlements[`${um.platform}:${um.senderId}`];
     if (entitlement) {
       if (entitlement.badge) {
-        const badge = cosmetics.badges.find((b) => b.id === entitlement.badge);
+        const badge = badgeById(cosmetics.badges, entitlement.badge);
         if (badge) {
           badgeNodes.push(
             <img key="7tv-badge" className="ck-badge-img" src={badge.image} alt="7tv badge" onError={handleAssetError} />,
@@ -225,7 +284,7 @@ export function buildParsedMessage(
         }
       }
       if (entitlement.paint) {
-        const paint = cosmetics.paints.find((p) => p.id === entitlement.paint);
+        const paint = paintById(cosmetics.paints, entitlement.paint);
         if (paint) ({ background, filter } = buildPaintStyle(paint, cfg.paintShadows));
       }
     }
@@ -236,10 +295,22 @@ export function buildParsedMessage(
   // mention map: remember every chatter's color under both upstream and display
   // spellings so presentation cleanup does not change mention resolution.
   const displayColor = um.color
-    ? readableColor(um.color)
+    ? cachedReadableColor(um.color)
     : fallbackColor(um.platform, um.username, um.senderId);
-  mentions.colors.set(um.username.toLowerCase(), displayColor);
-  mentions.colors.set(displayUsername.toLowerCase(), displayColor);
+  const upstreamNameKey = um.username.toLowerCase();
+  const displayNameKey = displayUsername.toLowerCase();
+  mentions.colors.set(upstreamNameKey, displayColor);
+  if (displayNameKey !== upstreamNameKey) mentions.colors.set(displayNameKey, displayColor);
+  const message = um.platform === 'twitch' && um.kind === 'chat' && cfg.gifs && um.gifUrl
+    ? [renderTwitchGif(um.gifUrl, cfg.gifSize ?? DEFAULT_TWITCH_GIF_SIZE_PX)]
+    : renderMessageText(
+        um,
+        (um.platform === 'kick' || um.platform === 'twitch' || um.platform === 'youtube') && cfg.sevenTVEmotesEnabled
+          ? cosmetics.emotes[um.platform] ?? []
+          : [],
+        mentions,
+      );
+
   return {
     id: `${um.platform}:${um.id}`,
     platform: um.platform,
@@ -262,13 +333,6 @@ export function buildParsedMessage(
 
       ...(isYouTubeOwner(um) ? { namePill: '#ffd600|#111111' } : {}),
     },
-    // Kick, Twitch and YouTube can all carry a platform-scoped 7TV set.
-    message: renderMessageText(
-      um,
-      (um.platform === 'kick' || um.platform === 'twitch' || um.platform === 'youtube') && cfg.sevenTVEmotesEnabled
-        ? cosmetics.emotes[um.platform] ?? []
-        : [],
-      mentions,
-    ),
+    message,
   };
 }

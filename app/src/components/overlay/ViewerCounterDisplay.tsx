@@ -11,6 +11,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
+  googleFontValue,
+  normalizeGoogleFontFamily,
+  overlayFontUrl,
+} from '../../lib/overlayFonts';
+import {
   COUNTER_FONT_FAMILY,
   COUNTER_FONT_SIZE_PX,
   COUNTER_FONT_WEIGHT,
@@ -33,10 +38,9 @@ const UNAVAILABLE_MARK = '—';
 const ROLL_DURATION_MS = 600;
 
 /*
- * Typography is fixed, not configurable: the counter keeps its own visual
- * identity and never mirrors the MultiChat overlay's font or size controls.
- * Both the standalone overlay and the generator preview render through this
- * component, so both get exactly these values.
+ * Size and weight stay fixed so the counter's geometry remains stable. The
+ * family defaults to DejaVu Sans and may be replaced by the counter's own
+ * explicitly selected Google Fonts family; it never inherits MultiChat's font.
  */
 const FONT_SIZE = COUNTER_FONT_SIZE_PX;
 
@@ -48,13 +52,10 @@ const PAD_Y = Math.round(FONT_SIZE * 0.22);
 const PAD_X = Math.round(FONT_SIZE * 0.5);
 
 /**
- * Font and entrance-animation rules, emitted by the shared renderer so the
- * standalone overlay and the generator preview always get the same face.
- *
- * The counter renders in one family at one weight, declared at its real
- * source weight: DejaVuSans-Bold is 700. No synthesis is implied, and no
- * other face is declared, so nothing here can shadow a family the host page
- * loads for its own UI.
+ * Default font and entrance-animation rules, emitted by the shared renderer so
+ * the standalone overlay and the generator preview always get the same baseline.
+ * A validated custom Google family is imported ahead of this block at render
+ * time and applied to the pill inline, keeping legacy/default URLs network-free.
  */
 const FONT_CSS = `
 @font-face { font-family: 'DejaVu Sans'; src: url('/fonts/DejaVuSans-Bold.ttf') format('truetype'); font-weight: 700; font-display: swap; }
@@ -69,14 +70,13 @@ const ICONS: Record<ViewerPlatform, JSX.Element> = {
       <path d="M1.333 0h8v5.333H12V2.667h2.667V0h8v8H20v2.667h-2.667v2.666H20V16h2.667v8h-8v-2.667H12v-2.666H9.333V24h-8Z" />
     </svg>
   ),
-  twitch: <img src="/platform-twitch.png" alt="" style={{ height: '100%', width: 'auto' }} />,
-  youtube: (
-    <svg viewBox="0 0 24 24" style={{ height: '100%', width: 'auto' }}>
-      <path fill="#FF0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z" />
-      <path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12z" />
-    </svg>
-  ),
-  tiktok: <img src="/platform-tiktok.png" alt="" style={{ height: '100%', width: 'auto' }} />,
+  twitch: <img src="/platform-twitch.png" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
+  /* Keep YouTube in an external asset instead of an inline SVG. The overlay has
+     global SVG/path rules for chat badges and emotes; an <img> is isolated from
+     those rules, so the red lozenge cannot collapse into only the white play
+     triangle in the viewer counter. */
+  youtube: <img src="/platform-youtube.svg" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
+  tiktok: <img src="/platform-tiktok.png" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
 };
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +87,7 @@ const ICONS: Record<ViewerPlatform, JSX.Element> = {
  * Eases from the previous value to the next over {@link ROLL_DURATION_MS}.
  *
  * The effect depends only on `value`, so restyling (shadow, stroke,
- * alignment) never restarts an animation.
+ * alignment, font) never restarts an animation.
  */
 function RollingCount({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
@@ -153,6 +153,18 @@ export default function ViewerCounterDisplay({
     thicker: '4px black',
   } as Record<string, string>)[style.stroke] ?? '';
 
+  /* Defense in depth: style normally arrives through the shared normalizer, but
+     the renderer validates again so a direct caller can never inject CSS. */
+  const googleFamily = normalizeGoogleFontFamily(style.googleFont);
+  const googleValue = googleFontValue(googleFamily);
+  const googleUrl = overlayFontUrl(googleValue ?? undefined);
+  const fontFamily = googleFamily
+    ? `'${googleFamily}', ${COUNTER_FONT_FAMILY}`
+    : COUNTER_FONT_FAMILY;
+  const rendererCss = googleUrl
+    ? `@import url('${googleUrl}');\n${FONT_CSS}`
+    : FONT_CSS;
+
   const pill: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -166,7 +178,7 @@ export default function ViewerCounterDisplay({
           padding: `${PAD_Y}px ${PAD_X}px`,
         }
       : {}),
-    fontFamily: COUNTER_FONT_FAMILY,
+    fontFamily,
     fontWeight: COUNTER_FONT_WEIGHT,
     color: '#fff',
     ...(shadow ? { filter: shadow } : {}),
@@ -208,7 +220,7 @@ export default function ViewerCounterDisplay({
 
   return (
     <>
-      <style>{FONT_CSS}</style>
+      <style>{rendererCss}</style>
     <div
       style={{
         display: 'flex',

@@ -1,7 +1,15 @@
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ChatOverlay from '@/components/overlay/ChatOverlay';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import ChatOverlay, { chatisSwing } from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
+import { MESSAGE_FADE_TRANSITION_MS } from '@/lib/messageFadeScheduler';
+import {
+  AUTO_ANIMATION_BYPASS_BATCH_SIZE,
+  AUTO_ANIMATION_BYPASS_HOLD_MS,
+  recordRuntimeAnimationBatch,
+  resetRuntimeAnimationState,
+  setRuntimeAnimationMode,
+} from '@/lib/multichatAnimationRuntime';
 import type { ParsedMessage } from '@/lib/kick';
 import type { Platform } from '@/lib/types';
 
@@ -21,55 +29,76 @@ const props = (animation: 'slide' | 'fade' | 'none', platform: Platform = 'twitc
   sourceTagExplicit: true,
 });
 
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1; });
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-    const rows = this.querySelectorAll('.ck-body').length;
-    const height = rows * 40;
-    return { x: 0, y: 0, width: 500, height, top: 0, right: 500, bottom: height, left: 0, toJSON: () => ({}) };
+const rect = (height: number): DOMRect => ({
+  x: 0, y: 0, width: 600, height, top: 0, right: 600, bottom: height, left: 0,
+  toJSON: () => ({}),
+} as DOMRect);
+
+function mockSlideMeasure(height: number) {
+  return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    return (this as HTMLElement).classList.contains('gx-slide-measure') ? rect(height) : rect(0);
   });
-});
+}
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
+  resetRuntimeAnimationState();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
-describe('shared batch entrance', () => {
-  it.each(['twitch', 'kick', 'tiktok'] as const)('uses one aggregate SlideGroup for one %s flush', (platform) => {
-    const messages = [parsed(platform, 'one'), parsed(platform, 'two'), parsed(platform, 'three')];
-    const { container } = render(<ChatOverlay {...props('slide', platform)} messages={messages} />);
-    const ghosts = container.querySelectorAll('[data-slide-ghost]');
-    expect(ghosts).toHaveLength(1);
-    expect((ghosts[0] as HTMLElement).style.height).toBe('120px');
-
-    act(() => vi.advanceTimersByTime(149));
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(1);
-    act(() => vi.advanceTimersByTime(1));
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
-    expect(Array.from(container.querySelectorAll('.ck-body')).map(node => node.textContent)).toEqual(['one', 'two', 'three']);
+describe('literal ChatIS batch entrance', () => {
+  it('uses jQuery 1.8.2 swing easing', () => {
+    expect(chatisSwing(0)).toBeCloseTo(0);
+    expect(chatisSwing(0.5)).toBeCloseTo(0.5);
+    expect(chatisSwing(1)).toBeCloseTo(1);
   });
 
-  it('repaints a same-ID row without adding another entrance batch', () => {
+  it.each(['twitch', 'kick', 'tiktok'] as const)('measures one hidden %s bucket, opens empty space, then commits rows atomically', (platform) => {
+    vi.useFakeTimers();
+    mockSlideMeasure(165);
+    const messages = [parsed(platform, 'one'), parsed(platform, 'two'), parsed(platform, 'three')];
+    const { container } = render(<ChatOverlay {...props('slide', platform)} messages={messages} />);
+
+    const opening = container.querySelector('.gx-slide-group') as HTMLElement;
+    expect(opening).not.toBeNull();
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(1);
+    expect(opening.style.height).toBe('0px');
+
+    act(() => vi.advanceTimersByTime(78));
+    const midHeight = parseFloat((container.querySelector('.gx-slide-group') as HTMLElement).style.height);
+    expect(midHeight).toBeGreaterThan(0);
+    expect(midHeight).toBeLessThan(165);
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(1);
+
+    act(() => vi.advanceTimersByTime(100));
+    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+    expect(container.querySelectorAll('.gx-slide-group')).toHaveLength(0);
+    expect(container.querySelectorAll('.ck-body')).toHaveLength(3);
+  });
+
+  it('repaints a same-ID row without replaying the spacer entrance', () => {
+    vi.useFakeTimers();
+    mockSlideMeasure(55);
     const before = parsed('twitch', 'stable', 'before');
     const { container, rerender } = render(<ChatOverlay {...props('slide')} messages={[before]} />);
-    act(() => vi.advanceTimersByTime(150));
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(170));
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+
     rerender(<ChatOverlay {...props('slide')} messages={[parsed('twitch', 'stable', 'after')]} />);
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
     expect(container.textContent).toContain('after');
   });
 
   it('removes a deleted member without replaying the surviving batch', () => {
+    vi.useFakeTimers();
+    mockSlideMeasure(110);
     const one = parsed('twitch', 'one');
     const two = parsed('twitch', 'two');
     const { container, rerender } = render(<ChatOverlay {...props('slide')} messages={[one, two]} />);
-    act(() => vi.advanceTimersByTime(150));
+    act(() => vi.advanceTimersByTime(170));
     rerender(<ChatOverlay {...props('slide')} messages={[one]} />);
-    expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
     expect(container.textContent).toContain('one');
     expect(container.textContent).not.toContain('two');
   });
@@ -79,5 +108,78 @@ describe('shared batch entrance', () => {
     const { container } = render(<ChatOverlay {...props(animation)} messages={messages} />);
     expect(container.querySelectorAll('.ck-body')).toHaveLength(2);
     expect(container.querySelectorAll('[data-slide-ghost]')).toHaveLength(0);
+  });
+
+  it('fades and collapses an expiring row in one eased exit', () => {
+    const message = parsed('twitch', 'old');
+    const { container, rerender } = render(<ChatOverlay {...props('none')} messages={[message]} />);
+    let row = container.querySelector('.gx-message-row') as HTMLElement;
+    expect(row.style.gridTemplateRows).toBe('1fr');
+    expect(row.style.opacity).toBe('1');
+
+    rerender(
+      <ChatOverlay
+        {...props('none')}
+        fadingIds={new Set([message.id])}
+        messages={[message]}
+      />,
+    );
+
+    row = container.querySelector('.gx-message-row') as HTMLElement;
+    expect(row.style.gridTemplateRows).toBe('0fr');
+    expect(row.style.opacity).toBe('0');
+    expect(row.style.transform).toBe('translate3d(0, -6px, 0)');
+    expect(row.style.transition).toContain(`grid-template-rows ${MESSAGE_FADE_TRANSITION_MS}ms`);
+    expect(row.style.transition).toContain(`opacity ${MESSAGE_FADE_TRANSITION_MS}ms`);
+    expect((row.firstElementChild as HTMLElement).style.overflow).toBe('hidden');
+  });
+
+  it('auto mode bypasses slide and row entrance animation for a heavy presentation batch', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    mockSlideMeasure(220);
+    setRuntimeAnimationMode('auto');
+    recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, Date.now());
+
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'slide', msgSlideIn: 'true' });
+    const messages = Array.from(
+      { length: AUTO_ANIMATION_BYPASS_BATCH_SIZE },
+      (_, index) => parsed('twitch', `burst-${index}`),
+    );
+    const { container } = render(
+      <ChatOverlay {...props('slide')} config={config} messages={messages} />,
+    );
+
+    expect(container.querySelector('.gx-slide-group')).toBeNull();
+    expect(container.querySelector('[data-slide-ghost]')).toBeNull();
+    expect(container.querySelectorAll('.gx-message-slide-in')).toHaveLength(0);
+    expect(container.querySelectorAll('.ck-body')).toHaveLength(AUTO_ANIMATION_BYPASS_BATCH_SIZE);
+  });
+
+  it('auto mode restores the configured entrance animation after the burst hold expires', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20_000);
+    mockSlideMeasure(55);
+    setRuntimeAnimationMode('auto');
+    recordRuntimeAnimationBatch(AUTO_ANIMATION_BYPASS_BATCH_SIZE, Date.now());
+
+    const config = MultichatQuerySchema.parse({ twitch: 'channel', animation: 'slide', msgSlideIn: 'true' });
+    const first = parsed('twitch', 'burst');
+    const { container, rerender } = render(
+      <ChatOverlay {...props('slide')} config={config} messages={[first]} />,
+    );
+    expect(container.querySelector('.gx-slide-group')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(AUTO_ANIMATION_BYPASS_HOLD_MS);
+    });
+    recordRuntimeAnimationBatch(1, Date.now());
+    const second = parsed('twitch', 'normal');
+    rerender(
+      <ChatOverlay {...props('slide')} config={config} messages={[first, second]} />,
+    );
+
+    expect(container.querySelector('.gx-slide-group')).not.toBeNull();
+    expect(container.querySelectorAll('.gx-message-slide-in').length).toBeGreaterThanOrEqual(1);
   });
 });

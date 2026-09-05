@@ -8,7 +8,7 @@
  *
  * What changed underneath, and why it matters:
  *
- *   - Controls are rendered from the tool catalogs (24 MultiChat, 6 Counter)
+ *   - Controls are rendered from the tool catalogs (27 MultiChat, 6 Counter)
  *     rather than hand-written <select>s and hardcoded <option> lists. The
  *     Classic page previously restated every label and option, so a catalog entry
  *     could change without this page noticing. Now it cannot.
@@ -65,7 +65,7 @@ import {
   googleFontsImportCss,
 } from '@/lib/overlayFonts';
 import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
-import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { MULTICHAT_OBS_RECOMMENDED, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import { multichatTool } from '@/features/multichat/config';
 import { samplePinMessage } from '@/features/multichat/samples';
 import { counterTool } from '@/features/counter/config';
@@ -131,13 +131,17 @@ const VC = counterTool.catalog;
 
 const MC_TEXT_SIZE = selectSetting(MC, 'textSize');
 const MC_FONT = selectSetting(MC, 'font');
+const MC_GOOGLE_FONT = textSetting(MC, 'googleFont');
 const MC_STROKE = selectSetting(MC, 'stroke');
 const MC_TEXT_SHADOW = selectSetting(MC, 'textShadow');
 const MC_ANIMATION = selectSetting(MC, 'animation');
 const MC_EMOTE_SCALE = textSetting(MC, 'emoteScale');
+const MC_GIFS = toggleSetting(MC, 'gifs');
+const MC_GIF_SIZE = textSetting(MC, 'gifSize');
 const MC_SOURCE_TAG = selectSetting(MC, 'sourceTag');
 const MC_SEVENTV_EMOTES = toggleSetting(MC, 'sevenTVEmotesEnabled');
 const MC_SEVENTV_COSMETICS = toggleSetting(MC, 'sevenTVCosmeticsEnabled');
+const MC_COMMUNITY_BADGES = toggleSetting(MC, 'showCommunityBadges');
 const MC_PAINT_SHADOWS = toggleSetting(MC, 'paintShadows');
 const MC_FADE_ENABLED = toggleSetting(MC, 'fadeEnabled');
 const MC_FADE = textSetting(MC, 'fade');
@@ -146,6 +150,10 @@ const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
 const MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');
 const MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');
 const MC_SHARED_CHAT = toggleSetting(MC, 'sharedChatEnabled');
+const MC_SHOW_SYSTEM_MSGS = toggleSetting(MC, 'showSystemMsgs');
+const MC_SHOW_HYPE_TRAINS = toggleSetting(MC, 'showHypeTrains');
+const MC_SHOW_FIRST_MESSAGES = toggleSetting(MC, 'showFirstMessages');
+const MC_SHOW_REDEEMS = toggleSetting(MC, 'showRedeems');
 const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
 const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
 const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
@@ -1194,6 +1202,7 @@ export default function ClassicGenerator({
               optionStyle: (v) =>
                 FONT_FAMILIES[v] ? { fontFamily: FONT_FAMILIES[v] } : undefined,
             })}
+            {chat(MC_GOOGLE_FONT)}
             {chat(MC_STROKE, { segmented: true })}
             {chat(MC_TEXT_SHADOW, { segmented: true })}
             {chat(MC_FONT_COLOR)}
@@ -1217,12 +1226,19 @@ export default function ClassicGenerator({
             <p className="col-heading">Behaviour</p>
             {chat(MC_SEVENTV_EMOTES)}
             {chat(MC_SEVENTV_COSMETICS)}
+            {chat(MC_GIFS)}
+            {chat(MC_GIF_SIZE)}
+            {chat(MC_COMMUNITY_BADGES)}
             {chat(MC_PAINT_SHADOWS)}
             {chat(MC_MSG_BOLD)}
             {chat(MC_MSG_CAPS)}
             {chat(MC_MSG_SLIDE_IN)}
             {chat(MC_SMOOTH_SCROLL)}
             {chat(MC_SHARED_CHAT)}
+            {chat(MC_SHOW_SYSTEM_MSGS)}
+            {chat(MC_SHOW_HYPE_TRAINS)}
+            {chat(MC_SHOW_FIRST_MESSAGES)}
+            {chat(MC_SHOW_REDEEMS)}
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}
@@ -1419,10 +1435,9 @@ export default function ClassicGenerator({
           <li>
             Size it{' '}
             <strong>
-              {MULTICHAT_OBS_SIZE.width} × {MULTICHAT_OBS_SIZE.height}
+              {MULTICHAT_OBS_RECOMMENDED.width} × {MULTICHAT_OBS_RECOMMENDED.height}
             </strong>
-            . {MULTICHAT_OBS_ALTERNATE.width} × {MULTICHAT_OBS_ALTERNATE.height}{' '}
-            is a wider, shorter alternative that shows fewer messages.
+            .
           </li>
           <li>
             Leave <strong>Shutdown source when not visible</strong> off — the

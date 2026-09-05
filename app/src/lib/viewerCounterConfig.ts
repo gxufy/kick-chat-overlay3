@@ -4,6 +4,11 @@
  *
  * Browser-safe — no server-only imports, no secrets.
  */
+import {
+  customGoogleFontFamily,
+  googleFontValue,
+  normalizeGoogleFontFamily,
+} from './overlayFonts';
 
 /* ------------------------------------------------------------------ */
 /* Platforms                                                           */
@@ -61,18 +66,17 @@ export type CounterStroke = (typeof STROKES)[number];
 export type CounterAlign = (typeof ALIGNMENTS)[number];
 
 /* ------------------------------------------------------------------ */
-/* Fixed typography — the counter's own visual identity                */
+/* Typography                                                          */
 /* ------------------------------------------------------------------ */
 
 /*
- * The counter has one font, one size, and one weight, all fixed here and
- * used by both the standalone overlay and the generator preview through
- * ViewerCounterDisplay. They are deliberately not configurable and are
- * deliberately independent of the MultiChat overlay's font and size
- * controls, so restyling chat can never change a generated counter URL.
+ * Size and weight stay fixed so the counter keeps its compact geometry and
+ * existing OBS sizing. The default family remains the self-hosted DejaVu face,
+ * but an explicit `font=google:<family>` URL may opt into a safe Google Fonts
+ * family. That optional extension is independent of MultiChat's chat font.
  */
 
-/** Fixed family — DejaVuSans-Bold, the previous default. */
+/** Default family — DejaVuSans-Bold, the previous fixed face. */
 export const COUNTER_FONT_FAMILY = "'DejaVu Sans', sans-serif";
 
 /** Fixed size in pixels — the previous 'medium' default. */
@@ -93,6 +97,8 @@ export type ViewerCounterStyle = {
   textShadow: CounterTextShadow;
   stroke: CounterStroke;
   align: CounterAlign;
+  /** Optional safe Google Fonts family. Omitted keeps DejaVu Sans. */
+  googleFont?: string;
 };
 
 /** Channel names per platform, normalized (no leading '@'). */
@@ -108,8 +114,8 @@ export type ViewerCounterConfig = {
 export const DEFAULT_STYLE: ViewerCounterStyle = {
   combined: true,
   icons: true,
-  bg: true,
-  textShadow: 'small',
+  bg: false,
+  textShadow: 'large',
   stroke: 'none',
   align: 'left',
 };
@@ -141,9 +147,15 @@ function pickEnum<T extends string>(
   return fallback;
 }
 
-/** Booleans default to true unless explicitly 'false'. */
-function boolTrueDefault(raw: unknown): boolean {
-  return one(raw) !== 'false';
+/**
+ * Parse a boolean with an authoritative fallback when the parameter is omitted
+ * or is not a single string. Explicit values preserve the historical rule that
+ * only the literal string 'false' disables a default-on flag.
+ */
+function boolDefault(raw: unknown, fallback: boolean): boolean {
+  const value = one(raw);
+  if (!value) return fallback;
+  return value !== 'false';
 }
 
 /** Keep an enum value if allowed, else fall back to the authoritative default. */
@@ -166,6 +178,7 @@ function keepEnum<T extends string>(
 export function normalizeCounterStyle(
   style: Partial<ViewerCounterStyle>,
 ): ViewerCounterStyle {
+  const googleFont = normalizeGoogleFontFamily(style.googleFont);
   return {
     combined:
       typeof style.combined === 'boolean' ? style.combined : DEFAULT_STYLE.combined,
@@ -178,6 +191,7 @@ export function normalizeCounterStyle(
     ),
     stroke: keepEnum<CounterStroke>(style.stroke, STROKES, DEFAULT_STYLE.stroke),
     align: keepEnum<CounterAlign>(style.align, ALIGNMENTS, DEFAULT_STYLE.align),
+    ...(googleFont ? { googleFont } : {}),
   };
 }
 
@@ -210,13 +224,14 @@ export function parseViewerCounterConfig(
     const name = normalizeChannel(query[platform]);
     if (name) channels[platform] = name;
   }
+  const googleFont = customGoogleFontFamily(one(query.font));
 
   return {
     channels,
     style: {
-      combined: boolTrueDefault(query.combined),
-      icons: boolTrueDefault(query.icons),
-      bg: boolTrueDefault(query.bg),
+      combined: boolDefault(query.combined, DEFAULT_STYLE.combined),
+      icons: boolDefault(query.icons, DEFAULT_STYLE.icons),
+      bg: boolDefault(query.bg, DEFAULT_STYLE.bg),
       textShadow: pickEnum(
         query.textShadow,
         TEXT_SHADOWS,
@@ -224,10 +239,11 @@ export function parseViewerCounterConfig(
       ),
       stroke: pickEnum(query.stroke, STROKES, DEFAULT_STYLE.stroke),
       align: pickEnum(query.align, ALIGNMENTS, DEFAULT_STYLE.align),
-      /* `font`, `textSize`, `label`, `showLabel`, `weight`, and `metric` from
-         older builds are deliberately not read. Typography is fixed and the
-         label feature is gone, so those params are harmlessly ignored and an
-         old copied URL still loads and renders normally. */
+      ...(googleFont ? { googleFont } : {}),
+      /* `textSize`, `label`, `showLabel`, `weight`, and `metric` from older
+         builds are deliberately not read. Legacy bare `font=` values remain
+         ignored too; only the explicit `font=google:<family>` form opts into a
+         custom network font, so old copied URLs stay backward-compatible. */
     },
   };
 }
@@ -236,9 +252,8 @@ export function parseViewerCounterConfig(
  * Build the `/counter` query string for a config.
  *
  * The long-standing style params are always emitted so existing copied URLs
- * keep their familiar shape; `align` is emitted only when it differs from its
- * default, keeping short URLs short. No typography or label params are
- * emitted — the counter's font, size, and weight are fixed.
+ * keep their familiar shape; `align` and the optional Google font are emitted
+ * only when selected, keeping default URLs byte-for-byte familiar.
  */
 export function buildViewerCounterQuery(
   channels: ViewerCounterChannels,
@@ -262,13 +277,13 @@ export function buildViewerCounterQuery(
      parameter is now Partial so the type matches reality and the coercion is
      explicit.
 
-     Emitting 'undefined' is worse than cosmetic: boolTrueDefault treats anything
-     other than 'false' as true, so combined=undefined parses back as ON. Someone
-     who switched Combined off and copied the URL got one that reads as on, with
-     nothing to indicate the setting was lost.
+     Emitting 'undefined' is worse than cosmetic: the parser must not guess at a
+     missing runtime value. Normalization makes each missing field inherit its
+     authoritative default before serialization.
 
-     Normalizing a complete style is a no-op, so every already-copied URL and
-     every existing caller serializes byte-identically. */
+     Normalizing a complete legacy style is a no-op, so every already-copied URL
+     and every existing caller serializes byte-identically unless a custom Google
+     font is explicitly selected. */
   const safe = normalizeCounterStyle(style);
 
   params.set('combined', String(safe.combined));
@@ -279,6 +294,11 @@ export function buildViewerCounterQuery(
 
   if (safe.align !== DEFAULT_STYLE.align) {
     params.set('align', safe.align);
+  }
+
+  const customFont = googleFontValue(safe.googleFont);
+  if (customFont) {
+    params.set('font', customFont);
   }
 
   return params.toString();

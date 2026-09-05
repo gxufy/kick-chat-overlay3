@@ -1,15 +1,8 @@
-/* MultiChat config extraction — compatibility lock.
+/* MultiChat config compatibility contract.
  *
- * Every expected value in this file was captured from the pre-extraction
- * implementation at commit 3e111a3 (the zod schema in pages/multichat.tsx and
- * the URLSearchParams assembly in components/LandingPage.tsx) using a
- * throwaway read-only harness, then embedded here as literals. None of it is
- * derived from lib/multichatConfig.ts, so these tests can actually fail if the
- * extraction changed behaviour.
- *
- * The serialized-URL assertions compare complete strings, not parsed
- * URLSearchParams, because parameter order and percent-encoding are part of
- * the compatibility surface.
+ * These tests lock the current parser and serializer behaviour, including the
+ * shared large-shadow default, retired pin parameters, community-badge toggle,
+ * legacy numeric aliases, and URL parameter ordering/encoding.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -45,19 +38,15 @@ function build(
 }
 
 /* ------------------------------------------------------------------ */
-/* 6 + 7. The two defaults, which must stay different                  */
+/* Overlay and generator defaults                                      */
 /* ------------------------------------------------------------------ */
 
-describe('overlay parse defaults (captured from HEAD)', () => {
-  it('an empty query resolves to exactly the HEAD defaults', () => {
+describe('overlay parse defaults', () => {
+  it('an empty query resolves to the current overlay defaults', () => {
     expect(parse({})).toEqual({
-      channel: undefined,
-      kick: undefined,
-      twitch: undefined,
-      youtube: undefined,
-      tiktok: undefined,
       sevenTVCosmeticsEnabled: true,
       sevenTVEmotesEnabled: true,
+      showCommunityBadges: true,
       textShadow: 'large',
       textSize: 'medium',
       animation: 'slide',
@@ -65,12 +54,16 @@ describe('overlay parse defaults (captured from HEAD)', () => {
       showSystemMsgs: true,
       mentionColor: true,
       bgColor: '',
+      showHypeTrains: true,
+      showFirstMessages: true,
       showRedeems: true,
       sourceTag: 'icon',
       showAvatars: false,
       font: 'opensans',
       stroke: 'none',
       emoteScale: 1,
+      gifs: false,
+      gifSize: 100,
       fade: false,
       msgBold: true,
       msgCaps: false,
@@ -82,55 +75,60 @@ describe('overlay parse defaults (captured from HEAD)', () => {
       modAction: true,
       userBL: '',
       prefixBL: '',
-      pinPlatforms: ['kick', 'twitch', 'youtube', 'tiktok'],
+      pinPlatforms: [],
       hideNames: false,
       botNames: '',
       ttsEnabled: true,
     });
   });
 
-  it('a bare overlay URL keeps resolving textShadow to large', () => {
+  it('a bare overlay URL resolves textShadow to large', () => {
     expect(parse({ kick: 'someone' }).textShadow).toBe('large');
     expect(MULTICHAT_OVERLAY_DEFAULTS.textShadow).toBe('large');
   });
 });
 
-describe('generator defaults (captured from HEAD useState)', () => {
-  it('the generator still begins at textShadow small', () => {
-    expect(MULTICHAT_GENERATOR_DEFAULTS.textShadow).toBe('small');
-  });
-
-  it('the two default sets are deliberately distinct, not reconciled', () => {
-    expect(MULTICHAT_GENERATOR_DEFAULTS.textShadow).not.toBe(
+describe('generator defaults', () => {
+  it('the generator begins at the same large shadow as the overlay', () => {
+    expect(MULTICHAT_GENERATOR_DEFAULTS.textShadow).toBe('large');
+    expect(MULTICHAT_GENERATOR_DEFAULTS.textShadow).toBe(
       MULTICHAT_OVERLAY_DEFAULTS.textShadow,
     );
   });
 
-  it('every other generator default matches HEAD initial state', () => {
+  it('every generator default matches the current initial state', () => {
     expect(MULTICHAT_GENERATOR_DEFAULTS).toEqual({
       sevenTVEmotesEnabled: true,
       sevenTVCosmeticsEnabled: true,
+      showCommunityBadges: true,
       textSize: 'medium',
       font: 'opensans',
-      textShadow: 'small',
+      googleFont: '',
+      textShadow: 'large',
       stroke: 'none',
       animation: 'slide',
       fade: '30',
       fadeEnabled: true,
-      showPinEnabled: true,
+      showPinEnabled: false,
       platformIcons: true,
       mentionColor: true,
       bgColor: '',
       emoteScale: '',
+      gifs: false,
+      gifSize: '100',
       msgBold: true,
       msgCaps: false,
       msgSlideIn: false,
       smoothScroll: false,
       sharedChatEnabled: false,
+      showSystemMsgs: true,
+      showHypeTrains: true,
+      showFirstMessages: true,
+      showRedeems: true,
       modAction: true,
       paintShadows: true,
       fontColor: '',
-      pinPlatforms: ['kick', 'youtube', 'tiktok'],
+      pinPlatforms: [],
       hideNames: false,
       botNames: '',
       userBL: '',
@@ -141,13 +139,13 @@ describe('generator defaults (captured from HEAD useState)', () => {
     });
   });
 
-  it('the generator always writes textShadow, so it never inherits large', () => {
-    expect(build({}, { kick: 'a' })).toContain('textShadow=small');
+  it('the generator writes the shared large shadow', () => {
+    expect(build({}, { kick: 'a' })).toContain('textShadow=large');
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* 2. Numeric alias tables, complete                                   */
+/* Numeric alias tables                                                */
 /* ------------------------------------------------------------------ */
 
 describe('legacy numeric aliases', () => {
@@ -182,7 +180,7 @@ describe('legacy numeric aliases', () => {
     expect(parse({ kick: 'a', font: 'impact' }).font).toBe('impact');
   });
 
-  it('malformed enums fall back to the HEAD default', () => {
+  it('malformed enums fall back to the current default', () => {
     expect(parse({ kick: 'a', textSize: 'gigantic' }).textSize).toBe('medium');
     expect(parse({ kick: 'a', textSize: '0' }).textSize).toBe('medium');
     expect(parse({ kick: 'a', textShadow: 'huge' }).textShadow).toBe('large');
@@ -192,8 +190,6 @@ describe('legacy numeric aliases', () => {
   });
 
   it('font is the one enum that passes unknown values straight through', () => {
-    /* HEAD quirk, preserved: font has no membership check, so an unmapped
-       value is returned verbatim rather than defaulted. */
     expect(parse({ kick: 'a', font: '13' }).font).toBe('13');
     expect(parse({ kick: 'a', font: 'comicsans' }).font).toBe('comicsans');
   });
@@ -206,10 +202,10 @@ describe('legacy numeric aliases', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 11. Number transforms and malformed input                           */
+/* Number transforms and malformed input                               */
 /* ------------------------------------------------------------------ */
 
-describe('fade (parseInt semantics, preserved)', () => {
+describe('fade (parseInt semantics)', () => {
   const cases: [string | undefined, number | false][] = [
     [undefined, false],
     ['30', 30],
@@ -230,7 +226,7 @@ describe('fade (parseInt semantics, preserved)', () => {
   }
 });
 
-describe('emoteScale (parseFloat semantics, preserved)', () => {
+describe('emoteScale (parseFloat semantics)', () => {
   const cases: [string | undefined, number][] = [
     [undefined, 1],
     ['1.5', 1.5],
@@ -256,8 +252,6 @@ describe('colour parsing', () => {
   });
 
   it('rejects an already-hashed value, a short value, and a name', () => {
-    /* HEAD quirk, preserved: '#191919' fails the bare-hex test, so a hashed
-       input parses to '' — the generator strips the '#' before emitting. */
     expect(parse({ kick: 'a', bgColor: '#191919' }).bgColor).toBe('');
     expect(parse({ kick: 'a', bgColor: '191' }).bgColor).toBe('');
     expect(parse({ kick: 'a', bgColor: 'red' }).bgColor).toBe('');
@@ -274,13 +268,15 @@ describe('boolean coercion', () => {
     const off = parse({
       kick: 'a', msgBold: 'false', ttsEnabled: 'false',
       sevenTVEmotesEnabled: 'false', sevenTVCosmeticsEnabled: 'false',
-      showSystemMsgs: 'false', mentionColor: 'false', showRedeems: 'false',
+      showCommunityBadges: 'false', showSystemMsgs: 'false', mentionColor: 'false',
+      showHypeTrains: 'false', showFirstMessages: 'false', showRedeems: 'false',
       paintShadows: 'false', modAction: 'false',
     });
     expect(off).toMatchObject({
       msgBold: false, ttsEnabled: false, sevenTVEmotesEnabled: false,
-      sevenTVCosmeticsEnabled: false, showSystemMsgs: false,
-      mentionColor: false, showRedeems: false, paintShadows: false,
+      sevenTVCosmeticsEnabled: false, showCommunityBadges: false,
+      showSystemMsgs: false, mentionColor: false, showHypeTrains: false,
+      showFirstMessages: false, showRedeems: false, paintShadows: false,
       modAction: false,
     });
   });
@@ -299,70 +295,32 @@ describe('boolean coercion', () => {
       msgCaps: 'true', hideNames: 'true',
     });
     expect(on).toMatchObject({
-      showPinEnabled: true, showAvatars: true, msgCaps: true, hideNames: true,
+      showPinEnabled: false, showAvatars: true, msgCaps: true, hideNames: true,
     });
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* 5. pinPlatforms — absent, empty, and partial stay distinct          */
+/* Retired pin parameters                                              */
 /* ------------------------------------------------------------------ */
 
-describe('pinPlatforms', () => {
-  const ALL = ['kick', 'twitch', 'youtube', 'tiktok'];
-
-  it('absent means all four', () => {
-    expect(parse({ kick: 'a' }).pinPlatforms).toEqual(ALL);
+describe('retired pin parameters', () => {
+  it('showPinEnabled is always normalized off', () => {
+    expect(parse({ kick: 'a' }).showPinEnabled).toBe(false);
+    expect(parse({ kick: 'a', showPinEnabled: 'true' }).showPinEnabled).toBe(false);
+    expect(parse({ kick: 'a', showPinEnabled: 'false' }).showPinEnabled).toBe(false);
   });
 
-  it('empty string means none', () => {
+  it('pinPlatforms is always normalized to an empty list', () => {
+    expect(parse({ kick: 'a' }).pinPlatforms).toEqual([]);
     expect(parse({ kick: 'a', pinPlatforms: '' }).pinPlatforms).toEqual([]);
-  });
-
-  it('a partial list means exactly that list, in given order', () => {
-    expect(parse({ kick: 'a', pinPlatforms: 'kick,youtube' }).pinPlatforms)
-      .toEqual(['kick', 'youtube']);
-    expect(parse({ kick: 'a', pinPlatforms: 'twitch' }).pinPlatforms)
-      .toEqual(['twitch']);
-  });
-
-  it('the three states are mutually distinguishable', () => {
-    const absent = parse({ kick: 'a' }).pinPlatforms;
-    const empty = parse({ kick: 'a', pinPlatforms: '' }).pinPlatforms;
-    const partial = parse({ kick: 'a', pinPlatforms: 'kick' }).pinPlatforms;
-    expect(absent).not.toEqual(empty);
-    expect(absent).not.toEqual(partial);
-    expect(empty).not.toEqual(partial);
-  });
-
-  it('duplicates collapse and order of first appearance is kept', () => {
-    expect(parse({ kick: 'a', pinPlatforms: 'kick,kick,twitch' }).pinPlatforms)
-      .toEqual(['kick', 'twitch']);
-  });
-
-  it('unknown names are dropped', () => {
-    expect(parse({ kick: 'a', pinPlatforms: 'kick,discord' }).pinPlatforms)
-      .toEqual(['kick']);
-  });
-
-  it('an all-unknown list falls back to all four', () => {
-    expect(parse({ kick: 'a', pinPlatforms: 'discord,irc' }).pinPlatforms)
-      .toEqual(ALL);
-  });
-
-  it('entries are trimmed and lowercased', () => {
-    expect(parse({ kick: 'a', pinPlatforms: ' kick , TWITCH ' }).pinPlatforms)
-      .toEqual(['kick', 'twitch']);
-  });
-
-  it('a trailing comma is ignored', () => {
-    expect(parse({ kick: 'a', pinPlatforms: 'kick,' }).pinPlatforms)
-      .toEqual(['kick']);
+    expect(parse({ kick: 'a', pinPlatforms: 'kick,youtube' }).pinPlatforms).toEqual([]);
+    expect(parse({ kick: 'a', pinPlatforms: 'discord,irc' }).pinPlatforms).toEqual([]);
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* 3 + 4. Unknown keys and repeated parameters                         */
+/* Unknown keys and repeated parameters                                */
 /* ------------------------------------------------------------------ */
 
 describe('unknown keys are stripped, not rejected', () => {
@@ -378,7 +336,7 @@ describe('unknown keys are stripped, not rejected', () => {
   });
 });
 
-describe('repeated (array-valued) parameters fail, as at HEAD', () => {
+describe('repeated (array-valued) parameters fail', () => {
   const cases: Record<string, string | string[]>[] = [
     { kick: ['a', 'b'] },
     { kick: 'a', textSize: ['1', '2'] },
@@ -395,33 +353,29 @@ describe('repeated (array-valued) parameters fail, as at HEAD', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 10. Compatibility-only parameters stay parsed                       */
+/* Compatibility-only parameters                                      */
 /* ------------------------------------------------------------------ */
 
 describe('compatibility-only parameters', () => {
-  it('all four remain present in a parsed config', () => {
+  it('all listed compatibility parameters remain present in a parsed config', () => {
     const cfg = parse({ kick: 'a' }) as Record<string, unknown>;
     for (const key of MULTICHAT_UNREAD_PARAMS) {
       expect(cfg).toHaveProperty(key);
     }
   });
 
-  it('their HEAD defaults are unchanged', () => {
+  it('their defaults are unchanged', () => {
     const cfg = parse({ kick: 'a' });
     expect(cfg.ttsEnabled).toBe(true);
-    expect(cfg.showSystemMsgs).toBe(true);
-    expect(cfg.showRedeems).toBe(true);
     expect(cfg.showAvatars).toBe(false);
   });
 
   it('explicit values still round-trip through the parser', () => {
     const cfg = parse({
-      kick: 'a', ttsEnabled: 'false', showSystemMsgs: 'false',
-      showRedeems: 'false', showAvatars: 'true',
+      kick: 'a', ttsEnabled: 'false', showAvatars: 'true',
     });
     expect(cfg).toMatchObject({
-      ttsEnabled: false, showSystemMsgs: false,
-      showRedeems: false, showAvatars: true,
+      ttsEnabled: false, showAvatars: true,
     });
   });
 
@@ -467,9 +421,7 @@ describe('mode detection', () => {
     expect(multichatKickChannel(parse({ kick: 'k', channel: 'c' }))).toBe('k');
   });
 
-  it('a whitespace-only channel still counts, as at HEAD', () => {
-    /* HEAD quirk, preserved: the count is a truthiness filter, so '   ' is a
-       configured channel and the route renders the overlay. */
+  it('a whitespace-only channel still counts', () => {
     const cfg = parse({ kick: '   ' });
     expect(cfg.kick).toBe('   ');
     expect(hasConfiguredMultichatChannel(cfg)).toBe(true);
@@ -481,49 +433,49 @@ describe('mode detection', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 8. Serializer — complete strings captured from the HEAD generator    */
+/* Serializer — complete strings                                      */
 /* ------------------------------------------------------------------ */
 
-describe('buildMultichatQuery matches the HEAD generator byte-for-byte', () => {
+describe('buildMultichatQuery matches the current generator byte-for-byte', () => {
   const golden: [string, Partial<MultichatGeneratorStyle>, Partial<typeof MULTICHAT_GENERATOR_DEFAULT_CHANNELS>, string][] = [
     ['initial state emits the placeholder channel', {}, {},
-      'kick=yourchannel&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=yourchannel&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['kick only', {}, { kick: 'xqc' },
-      'kick=xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['kick is trimmed', {}, { kick: '  xqc  ' },
-      'kick=xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['kick keeps a leading @, unlike the other three', {}, { kick: '@xqc' },
-      'kick=%40xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=%40xqc&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['twitch strips a leading @', {}, { twitch: '@forsen' },
-      'twitch=forsen&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'twitch=forsen&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['all four, in fixed order', {}, { kick: 'a', twitch: 'b', youtube: 'c', tiktok: 'd' },
-      'kick=a&twitch=b&youtube=c&tiktok=d&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&twitch=b&youtube=c&tiktok=d&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['whitespace-only channels still trigger the placeholder', {}, { kick: ' ', twitch: '  ' },
-      'kick=yourchannel&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=yourchannel&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['7TV off', { sevenTVEmotesEnabled: false, sevenTVCosmeticsEnabled: false }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=false&sevenTVCosmeticsEnabled=false&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=false&sevenTVCosmeticsEnabled=false&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
+    ['community badges off', { showCommunityBadges: false }, { kick: 'a' },
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&showCommunityBadges=false&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['fade disabled omits the parameter', { fadeEnabled: false }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&hideNames=false'],
     ['fade empty also omits the parameter', { fade: '' }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&hideNames=false'],
     ['platform icons off emits sourceTag=none', { platformIcons: false }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&sourceTag=none&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&sourceTag=none&hideNames=false'],
     ['bgColor drops its hash', { bgColor: '#191919' }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&bgColor=191919&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&bgColor=191919&hideNames=false'],
     ['emoteScale is emitted when non-empty', { emoteScale: '1.5' }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&emoteScale=1.5&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
-    ['no pins emits an empty pinPlatforms', { pinPlatforms: [] }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=&hideNames=false'],
-    ['all four pins omits pinPlatforms entirely', { pinPlatforms: ['kick', 'twitch', 'youtube', 'tiktok'] }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&hideNames=false'],
-    ['a single pin platform', { pinPlatforms: ['twitch'] }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=twitch&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&emoteScale=1.5&hideNames=false'],
+    ['retired pin selections are ignored', { pinPlatforms: ['twitch'] }, { kick: 'a' },
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
+    ['retired showPinEnabled is ignored', { showPinEnabled: true }, { kick: 'a' },
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['filters are trimmed and percent-encoded', { botNames: ' bot1,bot2 ', userBL: ' x,y ', prefixBL: ' !,? ' }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false&botNames=bot1%2Cbot2&userBL=x%2Cy&prefixBL=%21%2C%3F'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false&botNames=bot1%2Cbot2&userBL=x%2Cy&prefixBL=%21%2C%3F'],
     ['whitespace-only filters are omitted', { botNames: '  ', userBL: '  ' }, { kick: 'a' },
-      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false'],
+      'kick=a&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false'],
     ['encoding-sensitive values', { botNames: 'a b,c+d', userBL: 'ü/é', prefixBL: '#,%' }, { kick: 'a b&c' },
-      'kick=a+b%26c&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=small&stroke=none&animation=slide&fade=30&showPinEnabled=true&pinPlatforms=kick%2Cyoutube%2Ctiktok&hideNames=false&botNames=a+b%2Cc%2Bd&userBL=%C3%BC%2F%C3%A9&prefixBL=%23%2C%25'],
+      'kick=a+b%26c&sevenTVEmotesEnabled=true&sevenTVCosmeticsEnabled=true&textSize=medium&font=opensans&textShadow=large&stroke=none&animation=slide&fade=30&hideNames=false&botNames=a+b%2Cc%2Bd&userBL=%C3%BC%2F%C3%A9&prefixBL=%23%2C%25'],
   ];
 
   for (const [label, style, channels, expected] of golden) {
@@ -532,13 +484,14 @@ describe('buildMultichatQuery matches the HEAD generator byte-for-byte', () => {
     });
   }
 
-  it('every control off its default at once', () => {
+  it('every active control off its default at once', () => {
     expect(build(
       {
         sevenTVEmotesEnabled: false, sevenTVCosmeticsEnabled: false,
+        showCommunityBadges: false,
         textSize: 'small', font: 'alsina', textShadow: 'none',
         stroke: 'thicker', animation: 'none', fade: '7', fadeEnabled: true,
-        showPinEnabled: false, platformIcons: false, mentionColor: false,
+        showPinEnabled: true, platformIcons: false, mentionColor: false,
         bgColor: '#0a0a0a', emoteScale: '2', msgBold: false, msgCaps: true,
         modAction: false, paintShadows: false, fontColor: '#ffffff',
         hideNames: true, pinPlatforms: ['twitch', 'tiktok'],
@@ -546,31 +499,29 @@ describe('buildMultichatQuery matches the HEAD generator byte-for-byte', () => {
       },
       { kick: 'kickguy', twitch: '@twitchguy', youtube: '@ytguy', tiktok: '@ttguy' },
     )).toBe(
-      'kick=kickguy&twitch=twitchguy&youtube=ytguy&tiktok=ttguy&sevenTVEmotesEnabled=false&sevenTVCosmeticsEnabled=false&textSize=small&font=alsina&textShadow=none&stroke=thicker&animation=none&fade=7&showPinEnabled=false&sourceTag=none&mentionColor=false&bgColor=0a0a0a&emoteScale=2&msgBold=false&msgCaps=true&modAction=false&paintShadows=false&fontColor=ffffff&pinPlatforms=twitch%2Ctiktok&hideNames=true&botNames=nightbot&userBL=troll&prefixBL=%21',
+      'kick=kickguy&twitch=twitchguy&youtube=ytguy&tiktok=ttguy&sevenTVEmotesEnabled=false&sevenTVCosmeticsEnabled=false&showCommunityBadges=false&textSize=small&font=alsina&textShadow=none&stroke=thicker&animation=none&fade=7&sourceTag=none&mentionColor=false&bgColor=0a0a0a&emoteScale=2&msgBold=false&msgCaps=true&modAction=false&paintShadows=false&fontColor=ffffff&hideNames=true&botNames=nightbot&userBL=troll&prefixBL=%21',
     );
   });
 
-  it('emits no fragment and no leading question mark', () => {
-    const query = build({}, { kick: 'a' });
+  it('emits no retired pin params, fragment, or leading question mark', () => {
+    const query = build({ showPinEnabled: true, pinPlatforms: ['twitch'] }, { kick: 'a' });
     expect(query.startsWith('?')).toBe(false);
     expect(query).not.toContain('#');
+    expect(query).not.toContain('showPinEnabled');
+    expect(query).not.toContain('pinPlatforms');
     expect(query).not.toContain('twitchConnectionId');
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* 9. Round-trips, only where HEAD actually supports one               */
+/* Round-trips                                                         */
 /* ------------------------------------------------------------------ */
 
 describe('parse(build(state)) round-trips', () => {
-  /* Only asserted for fields the generator serializes losslessly. The
-     generator is lossy by design elsewhere: it emits a placeholder channel
-     when none is set, omits pinPlatforms when all four are chosen, and drops
-     fade entirely when disabled — so a full object round-trip is not a
-     property HEAD ever had. */
-  it('a fully specified state survives a round-trip', () => {
+  it('serialized active fields survive a round-trip', () => {
     const style: MultichatGeneratorStyle = {
       ...MULTICHAT_GENERATOR_DEFAULTS,
+      showCommunityBadges: false,
       textSize: 'large', font: 'impact', textShadow: 'medium',
       stroke: 'thick', animation: 'fade', fade: '12', fadeEnabled: true,
       showPinEnabled: true, platformIcons: false, mentionColor: false,
@@ -582,13 +533,14 @@ describe('parse(build(state)) round-trips', () => {
     const query = buildMultichatQuery({ kick: 'a', twitch: 'b', youtube: '', tiktok: '' }, style);
     const cfg = parse(Object.fromEntries(new URLSearchParams(query)));
 
+    expect(cfg.showCommunityBadges).toBe(false);
     expect(cfg.textSize).toBe('large');
     expect(cfg.font).toBe('impact');
     expect(cfg.textShadow).toBe('medium');
     expect(cfg.stroke).toBe('thick');
     expect(cfg.animation).toBe('fade');
     expect(cfg.fade).toBe(12);
-    expect(cfg.showPinEnabled).toBe(true);
+    expect(cfg.showPinEnabled).toBe(false);
     expect(cfg.sourceTag).toBe('none');
     expect(cfg.mentionColor).toBe(false);
     expect(cfg.bgColor).toBe('#191919');
@@ -599,7 +551,7 @@ describe('parse(build(state)) round-trips', () => {
     expect(cfg.paintShadows).toBe(false);
     expect(cfg.fontColor).toBe('#ffaa00');
     expect(cfg.hideNames).toBe(true);
-    expect(cfg.pinPlatforms).toEqual(['kick', 'twitch']);
+    expect(cfg.pinPlatforms).toEqual([]);
     expect(cfg.botNames).toBe('nightbot');
     expect(cfg.userBL).toBe('troll');
     expect(cfg.prefixBL).toBe('!');
@@ -607,24 +559,25 @@ describe('parse(build(state)) round-trips', () => {
     expect(cfg.twitch).toBe('b');
   });
 
-  it('the generator default state round-trips to the generator shadow, not the overlay one', () => {
+  it('the generator default state round-trips to the shared large shadow', () => {
     const query = build({}, { kick: 'a' });
     expect(parse(Object.fromEntries(new URLSearchParams(query))).textShadow)
-      .toBe('small');
+      .toBe('large');
   });
 
-  it('documented lossy cases do not round-trip, as at HEAD', () => {
+  it('documented lossy cases stay lossy', () => {
     /* fade disabled → parameter absent → parses back as false, not '30'. */
     const faded = parse(Object.fromEntries(new URLSearchParams(
       build({ fadeEnabled: false }, { kick: 'a' }),
     )));
     expect(faded.fade).toBe(false);
 
-    /* all four pins → parameter omitted → parses back as all four. */
-    const allPins = parse(Object.fromEntries(new URLSearchParams(
-      build({ pinPlatforms: ['kick', 'twitch', 'youtube', 'tiktok'] }, { kick: 'a' }),
+    /* retired pins are omitted by the generator and parse back disabled. */
+    const retiredPins = parse(Object.fromEntries(new URLSearchParams(
+      build({ showPinEnabled: true, pinPlatforms: ['kick', 'twitch'] }, { kick: 'a' }),
     )));
-    expect(allPins.pinPlatforms).toEqual(['kick', 'twitch', 'youtube', 'tiktok']);
+    expect(retiredPins.showPinEnabled).toBe(false);
+    expect(retiredPins.pinPlatforms).toEqual([]);
 
     /* no channel → placeholder, so the parsed channel is not the empty input. */
     const placeholder = parse(Object.fromEntries(new URLSearchParams(build())));

@@ -153,6 +153,20 @@ export const MULTICHAT_COMMANDS: readonly MultichatCommand[] = [
     detail: 'Targets the matching gxufy.com counter source generated from the same channel set.',
   },
   {
+    name: 'animation',
+    syntax: '!multichat animation <on|off|auto>',
+    summary: 'Controls chat entrance animations at runtime without reloading the source.',
+    detail:
+      'auto is the default after a browser-source load: normal traffic uses the configured animation, while heavy 200 ms batches or measured browser-frame pressure temporarily bypass expensive entrance work and recover automatically. on force-enables the configured entrance animation and off disables it.',
+  },
+  {
+    name: 'events',
+    syntax: '!multichat events <on|off|feature> [on|off]',
+    summary: 'Turns notification/event features on or off without reloading the source.',
+    detail:
+      'Use events on/off for everything, or target subs, gifts, raids, cheers, milestones, watchstreaks, follows, announcements, hypetrain, firstmessages, or redeems. Watch streaks share the milestone event category.',
+  },
+  {
     name: 'refresh',
     syntax: '!multichat refresh [emotes]',
     summary: 'Reloads 7TV, BTTV, and FFZ emotes without reloading the source.',

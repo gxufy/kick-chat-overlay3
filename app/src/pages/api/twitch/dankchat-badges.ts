@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 const DANKCHAT_BADGES_URL = 'https://flxrs.com/api/badges';
 const REQUEST_TIMEOUT_MS = 5_000;
 const GENERIC_ERROR = { error: 'Unable to load DankChat badges.' };
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36';
 
 type DankChatBadge = {
   type: string;
@@ -53,7 +54,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const response = await fetch(DANKCHAT_BADGES_URL, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        'User-Agent': BROWSER_USER_AGENT,
+      },
     });
     if (!response.ok) return res.status(502).json(GENERIC_ERROR);
 

@@ -67,6 +67,13 @@ export function previewSurfaceClass(mode: PreviewBgMode): string {
   return SURFACE_CLASS[mode];
 }
 
+const POGLY_WIDGET_URL: Record<string, string> = {
+  chat: 'https://widget.pogly.gg/4105',
+  counter: 'https://widget.pogly.gg/4106',
+};
+
+const POGLY_ICON_URL = '/images/pogly.png';
+
 export default function ClassicPreviewBackgroundControl({
   idPrefix,
   legend,
@@ -128,6 +135,23 @@ export default function ClassicPreviewBackgroundControl({
       <p className="classic-help" id={helpId}>
         Sets this preview&apos;s backdrop only. The overlay and its URL are unchanged.
       </p>
+      {POGLY_WIDGET_URL[idPrefix] ? (
+        <a
+          className="pogly-widget-button"
+          href={POGLY_WIDGET_URL[idPrefix]}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img
+            src={POGLY_ICON_URL}
+            alt="Pogly"
+            width={18}
+            height={18}
+            style={{ flex: '0 0 auto', objectFit: 'contain', marginRight: 7 }}
+          />
+          Pogly Widget
+        </a>
+      ) : null}
     </fieldset>
   );
 }

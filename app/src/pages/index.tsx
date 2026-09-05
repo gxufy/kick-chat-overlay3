@@ -1,42 +1,36 @@
-/* / — personal hub (slaiqe.com structure: hero → skill tags → product
- * cards → CTA → socials footer).
- *
- * Both cards point at /multichat, which is the generator when no channel is
- * named. The viewer counter is a panel inside that generator rather than a page
- * of its own, so its card links to the panel's anchor.
- *
- * Old bookmarked /?kick=... overlay URLs still work: this page forwards any
- * channel-param URL straight to /multichat, which serves the overlay
- * permanently. That forward is deliberately unchanged — it is the same rule that
- * makes a channel-carrying /multichat an overlay rather than a generator.
- */
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import SiteSeo from '@/components/site/SiteSeo';
 import { UI_FONT_SPECS, googleFontsImportCss } from '@/lib/overlayFonts';
 import {
   CANONICAL_COUNTER_ROUTE,
   CANONICAL_MULTICHAT_ROUTE,
 } from '@/lib/multichatRouting';
 
-/*
- * The one outbound link at the bottom of the page.
- *
- * The href is carried over from the previous small Follow button byte for byte —
- * it is a link hub the user maintains, and every individual social this page used
- * to list separately is already behind it. Only the visible text changed: the old
- * label said @Gxufy_, the X handle, which is not the name to use for what is now
- * a general follow link.
- */
 const FOLLOW_HREF = 'https://guns.lol/gxufy';
 const FOLLOW_LABEL = 'Follow @gxufy';
 
-const TAGS = ['multi-platform chat', 'viewer counters', 'OBS overlays', '7TV · BTTV · FFZ', 'no OAuth', 'real-time'];
+const TAGS = [
+  'multi-platform chat',
+  'viewer counters',
+  'OBS overlays',
+  '7TV · BTTV · FFZ',
+  'no OAuth',
+  'real-time',
+];
+
+const SITE_LINKS = [
+  ['/multichat', 'MultiChat'],
+  ['/viewer-counter', 'Viewer Counter'],
+  ['/commands', 'Commands'],
+  ['/supported-services', 'Supported Services'],
+  ['/connect', 'Contact'],
+] as const;
 
 export default function Hub() {
   const router = useRouter();
 
-  // legacy overlay URLs (/?kick=...&twitch=...) → /multichat with same params
   useEffect(() => {
     if (!router.isReady) return;
     const q = router.query;
@@ -45,21 +39,25 @@ export default function Hub() {
     }
   }, [router.isReady]);
 
+  const description =
+    'Gxufy builds multi-platform stream tools for OBS, including MultiChat and a live viewer counter for Kick, Twitch, YouTube, and TikTok.';
+
   return (
     <>
+      <SiteSeo
+        home
+        title="Gxufy 🕊️"
+        description={description}
+        path="/"
+      />
       <Head>
-        <title>Gxufy ヤ</title>
-        <meta name="description" content="I build tools that make streams smoother — multi-platform chat overlays and stream widgets that just work." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* An @import rather than a stylesheet link: next/head does not support
-            the latter. Only the one UI face this page sets type in.
-            dangerouslySetInnerHTML because React would escape `&` and `'`, and
-            a <style> element does not decode entities. */}
         <style dangerouslySetInnerHTML={{
           __html: googleFontsImportCss([UI_FONT_SPECS.montserrat]),
         }} />
       </Head>
+
       <style dangerouslySetInnerHTML={{ __html: `
         *, *::before, *::after { box-sizing: border-box; }
         :root {
@@ -70,10 +68,20 @@ export default function Hub() {
         }
         html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Montserrat', system-ui, sans-serif; }
         body { background-image: radial-gradient(ellipse 900px 420px at 50% -80px, rgba(74,132,250,0.10), transparent); }
-        a { color: var(--accent); text-decoration: none; transition: opacity .2s; } a:hover { opacity: .8; }
+        a { color: var(--accent); text-decoration: none; transition: opacity .2s; }
+        a:hover { opacity: .8; }
         .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px 60px; }
 
-        .hero { display: flex; align-items: center; gap: 28px; padding: 72px 0 40px; flex-wrap: wrap; }
+        .site-nav {
+          display: flex; flex-wrap: wrap; justify-content: center; gap: 9px 18px;
+          padding: 22px 0 0;
+        }
+        .site-nav a {
+          color: var(--muted); font-size: .76rem; font-weight: 700;
+        }
+        .site-nav a:hover { color: #fff; opacity: 1; }
+
+        .hero { display: flex; align-items: center; gap: 28px; padding: 58px 0 40px; flex-wrap: wrap; }
         .hero-avatar { width: 128px; height: 128px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent); box-shadow: 0 8px 32px rgba(74,132,250,.3); }
         .hero-text h1 { font-size: 2.6rem; font-weight: 800; margin: 0 0 6px; letter-spacing: -.04em; color: #fff; }
         .hero-text h1 span { color: var(--accent); }
@@ -97,10 +105,6 @@ export default function Hub() {
         .cb-yt { color: #ff5b5b; border: 1px solid rgba(255,68,68,.5); }
         .cb-tt { color: #25F4EE; border: 1px solid rgba(37,244,238,.5); }
 
-        /* The bottom CTA: full width of the content column, same blue design
-           language as the cards' accent, with a hover lift and a focus ring that
-           is drawn rather than inherited — the UA default ring is nearly
-           invisible against a saturated blue fill. */
         .follow-cta {
           display: block; width: 100%; box-sizing: border-box;
           background: var(--accent); color: #fff; text-align: center;
@@ -115,7 +119,7 @@ export default function Hub() {
         footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 20px 0 0; text-align: center; font-size: 0.76rem; color: var(--dim); }
 
         @media (max-width: 620px) {
-          .hero { padding-top: 48px; justify-content: center; text-align: center; }
+          .hero { padding-top: 42px; justify-content: center; text-align: center; }
           .hero-text p { max-width: none; }
           .tags { justify-content: center; }
           .cards { grid-template-columns: 1fr; }
@@ -123,23 +127,29 @@ export default function Hub() {
       ` }} />
 
       <div className="wrap">
+        <nav className="site-nav" aria-label="Gxufy pages">
+          {SITE_LINKS.map(([href, label]) => (
+            <a key={href} href={href}>{label}</a>
+          ))}
+        </nav>
+
         <div className="hero">
           <img className="hero-avatar" src="/gxufy-avatar.gif" alt="Gxufy" />
           <div className="hero-text">
             <p className="hero-kicker">overlays &amp; stream tools</p>
             <h1>wtw, I&rsquo;m <span>Gxufy</span> 🕊️</h1>
-            <p>I build tools that make streams smoother — multi-platform chat overlays and widgets that just work. No logins, no OAuth, no setup pain.</p>
+            <p>
+              I build tools that make streams smoother — multi-platform chat overlays and
+              widgets that just work. No logins, no OAuth, no setup pain.
+            </p>
           </div>
         </div>
 
         <div className="tags">
-          {TAGS.map(t => <span key={t} className="tag">{t}</span>)}
+          {TAGS.map((tag) => <span key={tag} className="tag">{tag}</span>)}
         </div>
 
         <div className="cards">
-          {/* /multichat with no channel parameters is the generator. A card link
-              carries none, so these reach the generator directly with no
-              redirect hop. */}
           <a className="card" href={CANONICAL_MULTICHAT_ROUTE}>
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
@@ -148,7 +158,7 @@ export default function Hub() {
               <span className="cb cb-yt">YouTube</span>
               <span className="cb cb-tt">TikTok</span>
             </div>
-            <h2>multichat — one overlay for every chat</h2>
+            <h2>MultiChat — one overlay for every chat</h2>
             <p>
               Combine Kick, Twitch, YouTube &amp; TikTok chat into a single OBS browser source.
               7TV / BTTV / FFZ emotes, name paints, real platform badges, pinned messages,
@@ -156,8 +166,7 @@ export default function Hub() {
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
-          {/* The counter is a panel in that same generator, so this is an anchor
-              into it rather than a separate route. */}
+
           <a className="card" href={CANONICAL_COUNTER_ROUTE}>
             <p className="card-kicker">Free tool</p>
             <div className="card-badges">
@@ -166,25 +175,25 @@ export default function Hub() {
               <span className="cb cb-yt">YouTube</span>
               <span className="cb cb-tt">TikTok</span>
             </div>
-            <h2>viewer counter — real-time counts</h2>
+            <h2>Viewer Counter — real-time counts</h2>
             <p>
-              Create an OBS viewer-count overlay for Kick, Twitch, YouTube &amp;
-              TikTok. Real-time counts with offline platforms sliding out. Its own
-              browser source, generated alongside the chat overlay.
+              Create an OBS viewer-count overlay for Kick, Twitch, YouTube &amp; TikTok.
+              Real-time counts with offline platforms sliding out, plus Google Fonts,
+              shadows, outlines, icons, and transparent output.
             </p>
             <span className="card-cta">Open the generator →</span>
           </a>
         </div>
 
-        {/* One CTA, not an announcement card wrapped around a small button. The
-            per-network icon buttons are gone: they all led to profiles this link
-            hub already lists, so they were three ways to reach the same place. */}
         <a className="follow-cta" href={FOLLOW_HREF} target="_blank" rel="noreferrer">
           {FOLLOW_LABEL}
         </a>
 
         <footer>
-          <p>© {new Date().getFullYear()} Gxufy ヤ — multichat lives at <a href={CANONICAL_MULTICHAT_ROUTE}>{CANONICAL_MULTICHAT_ROUTE}</a></p>
+          <p>
+            © {new Date().getFullYear()} Gxufy 🕊️ — MultiChat lives at{' '}
+            <a href={CANONICAL_MULTICHAT_ROUTE}>{CANONICAL_MULTICHAT_ROUTE}</a>
+          </p>
         </footer>
       </div>
     </>

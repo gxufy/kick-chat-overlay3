@@ -4,6 +4,10 @@ import ChatOverlay from '@/components/overlay/ChatOverlay';
 import { MultichatQuerySchema } from '@/lib/multichatConfig';
 import { parseTwitchHypeTrainState } from '@/lib/twitchHypeTrainClient';
 import { HYPE_TRAIN_ACTIVE_INTERVAL_MS, HYPE_TRAIN_INACTIVE_INTERVAL_MS, startTwitchHypeTrainPoller } from '@/lib/twitchHypeTrainPoller';
+import {
+  resetRuntimeEventVisibility,
+  setRuntimeEventFeatureVisible,
+} from '@/lib/multichatEventRuntime';
 
 const fetchState = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/twitchHypeTrainClient', async (importOriginal) => {
@@ -14,8 +18,13 @@ vi.mock('@/lib/twitchHypeTrainClient', async (importOriginal) => {
 beforeEach(() => {
   vi.useFakeTimers();
   fetchState.mockReset();
+  resetRuntimeEventVisibility();
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => {
+  resetRuntimeEventVisibility();
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('Twitch Hype Train response validation', () => {
   it('accepts inactive and normalized active snapshots', () => {
@@ -49,6 +58,29 @@ describe('Twitch Hype Train poller', () => {
     expect(onState).toHaveBeenCalledTimes(beforeFailure);
     await vi.advanceTimersByTimeAsync(HYPE_TRAIN_ACTIVE_INTERVAL_MS);
     expect(onState).toHaveBeenLastCalledWith({ active: false });
+    stop();
+  });
+
+  it('pauses immediately while the runtime Hype Train feature is off and resumes on command', async () => {
+    const onState = vi.fn();
+    fetchState
+      .mockResolvedValueOnce({ active: true, level: 1, progression: 10, goal: 100 })
+      .mockResolvedValueOnce({ active: true, level: 2, progression: 20, goal: 200 });
+
+    const stop = startTwitchHypeTrainPoller({ login: 'streamer', onState });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchState).toHaveBeenCalledTimes(1);
+    expect(onState).toHaveBeenLastCalledWith(expect.objectContaining({ active: true, level: 1 }));
+
+    setRuntimeEventFeatureVisible('hypetrain', false);
+    expect(onState).toHaveBeenLastCalledWith({ active: false });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchState).toHaveBeenCalledTimes(1);
+
+    setRuntimeEventFeatureVisible('hypetrain', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchState).toHaveBeenCalledTimes(2);
+    expect(onState).toHaveBeenLastCalledWith(expect.objectContaining({ active: true, level: 2 }));
     stop();
   });
 

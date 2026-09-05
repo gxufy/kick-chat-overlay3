@@ -11,6 +11,9 @@
  *     is the revamped original Classic page rendered by this same route. Nothing
  *     redirects: the canonical generator address *is* `/multichat`.
  *
+ * The page code-splits that generator branch, so this routing rule also keeps its
+ * large editing UI out of an OBS browser source's startup bundle.
+ *
  * The previous split (generator at /tools/multichat, original at
  * /classic/multichat) is gone. Both of those paths now redirect here.
  *

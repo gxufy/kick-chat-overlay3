@@ -38,27 +38,28 @@ describe('catalog integrity', () => {
     expect(visibleSettings(COUNTER_CATALOG)).toHaveLength(COUNTER_CATALOG.length);
   });
 
-  it('uses only toggle and select, though six control types now exist', () => {
+  it('uses only toggle, select, and text controls', () => {
     for (const setting of COUNTER_CATALOG) {
-      expect(['toggle', 'select']).toContain(setting.type);
+      expect(['toggle', 'select', 'text']).toContain(setting.type);
     }
   });
 
-  it('declares exactly the six counter settings, in order', () => {
+  it('declares exactly the seven counter settings, in order', () => {
     expect(COUNTER_CATALOG.map((setting) => setting.key)).toEqual([
       'combined',
       'icons',
       'bg',
       'align',
+      'googleFont',
       'textShadow',
       'stroke',
     ]);
   });
 
-  it('covers exactly the counter style fields, and no channel fields', () => {
+  it('covers exactly the counter style fields, including the optional Google font, and no channel fields', () => {
     const keys = COUNTER_CATALOG.map((setting) => setting.key).sort();
     expect(keys).toEqual(
-      (Object.keys(DEFAULT_STYLE) as (keyof ViewerCounterStyle)[]).sort(),
+      [...(Object.keys(DEFAULT_STYLE) as (keyof ViewerCounterStyle)[]), 'googleFont'].sort(),
     );
     for (const platform of ['twitch', 'youtube', 'kick', 'tiktok']) {
       expect(keys).not.toContain(platform);
@@ -67,9 +68,11 @@ describe('catalog integrity', () => {
 });
 
 describe('catalog defaults match the authoritative defaults', () => {
-  it('every catalog default equals the authoritative default', () => {
+  it('every catalog default equals the authoritative default or the blank optional-font state', () => {
     for (const setting of COUNTER_CATALOG) {
-      expect(setting.default).toBe(DEFAULT_STYLE[setting.key]);
+      expect(setting.default).toBe(
+        setting.key === 'googleFont' ? '' : DEFAULT_STYLE[setting.key],
+      );
     }
   });
 
@@ -104,14 +107,15 @@ describe('catalog serialization matches the existing serializer', () => {
 
   it('produces an identical query for every single-field change', () => {
     for (const setting of COUNTER_CATALOG) {
-      // The catalog is toggle/select only; assert it rather than assume it,
-      // so a widened union cannot quietly skip a setting here.
-      expect(['toggle', 'select']).toContain(setting.type);
-      if (setting.type !== 'toggle' && setting.type !== 'select') continue;
+      expect(['toggle', 'select', 'text']).toContain(setting.type);
       const values: (boolean | string)[] =
         setting.type === 'toggle'
           ? [true, false]
-          : setting.options.map((option) => option.value);
+          : setting.type === 'select'
+            ? setting.options.map((option) => option.value)
+            : setting.type === 'text'
+              ? ['', 'Press Start 2P']
+              : [];
 
       for (const value of values) {
         const style = counterTool.normalize({
@@ -135,6 +139,7 @@ describe('catalog serialization matches the existing serializer', () => {
       textShadow: 'large',
       stroke: 'thick',
       align: 'center',
+      googleFont: 'Press Start 2P',
     };
     for (const [param] of new URLSearchParams(
       counterTool.serialize(channels, style),

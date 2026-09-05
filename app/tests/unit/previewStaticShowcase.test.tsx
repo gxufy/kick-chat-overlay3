@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { CHAT_INTERVAL_MAX_MS } from '@/features/multichat/previewSimulator';
 import { PREVIEW_ROSTER } from '@/features/multichat/previewRoster';
@@ -44,27 +44,15 @@ describe('the curated moving Preview Data showcase', () => {
     expect(bodies().length).toBeGreaterThan(PREVIEW_ROSTER.length);
   });
 
-  it('pauses, resumes, and resets the feed without losing the roster', () => {
+  it('keeps moving while the retired utility buttons stay removed', () => {
     render(<ClassicGenerator />);
     waitForGrowth(PREVIEW_ROSTER.length);
     const delivered = bodies().length;
-    fireEvent.click(screen.getByRole('button', { name: 'PAUSE' }));
-    wait(300_000);
-    expect(bodies()).toHaveLength(delivered);
-    fireEvent.click(screen.getByRole('button', { name: 'RESUME' }));
     waitForGrowth(delivered);
     expect(bodies().length).toBeGreaterThan(delivered);
-    fireEvent.click(screen.getByRole('button', { name: 'RESET FEED' }));
-    expect(bodies()).toHaveLength(PREVIEW_ROSTER.length);
-  });
-
-  it('Reset Preview restores roster order and a running Fast feed', () => {
-    render(<ClassicGenerator />);
-    fireEvent.click(screen.getByRole('button', { name: 'LOAD MORE BADGES' }));
-    fireEvent.click(screen.getByRole('button', { name: 'PAUSE' }));
-    fireEvent.click(screen.getByRole('button', { name: 'RESET PREVIEW' }));
-    expect(screen.getByRole('button', { name: 'PAUSE' })).toBeTruthy();
-    expect(bodies()).toHaveLength(PREVIEW_ROSTER.length);
-    for (const entry of PREVIEW_ROSTER) expect(preview().textContent ?? '').toContain(entry.displayName);
+    expect(screen.queryByRole('button', { name: 'LOAD MORE BADGES' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'RESET PREVIEW' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'PAUSE' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'RESET FEED' })).toBeNull();
   });
 });

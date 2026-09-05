@@ -1,8 +1,9 @@
 /* Viewer Counter control catalog.
  *
  * Every entry mirrors a control that already exists in the current generator,
- * and every default and option list is taken from lib/viewerCounterConfig —
- * the authoritative source. Nothing here declares its own defaults.
+ * and every built-in default and option list is taken from
+ * lib/viewerCounterConfig — the authoritative source. The optional Google font
+ * field uses an empty string to mean the counter's existing DejaVu Sans default.
  *
  * Channel fields are deliberately absent: they belong to the workspace's
  * channel panel, not to a tool's appearance catalog.
@@ -57,6 +58,16 @@ export const COUNTER_CATALOG: SettingCatalog<ViewerCounterStyle> = [
     description: 'Horizontal position inside the browser source.',
     options: optionsFrom(ALIGNMENTS, titleCase),
     default: DEFAULT_STYLE.align,
+  },
+  {
+    key: 'googleFont',
+    param: 'font',
+    type: 'text',
+    label: 'Google font',
+    description:
+      'Optional Google Fonts family name. When set, this overrides the counter’s default DejaVu Sans family.',
+    placeholder: 'Press Start 2P',
+    default: '',
   },
   {
     key: 'textShadow',

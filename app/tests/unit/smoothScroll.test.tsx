@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import ChatOverlay from '@/components/overlay/ChatOverlay';
 import { buildParsedMessage } from '@/lib/multichatMessageModel';
 import { MULTICHAT_GENERATOR_DEFAULTS, MULTICHAT_WORKSPACE_DEFAULTS, MultichatQuerySchema, buildMultichatQuery } from '@/lib/multichatConfig';
@@ -35,13 +35,14 @@ describe('smooth message handling', () => {
     expect(MultichatQuerySchema.parse({ smoothScroll: '0' }).smoothScroll).toBe(false);
   });
 
-  it('keeps the height ghost when Slide is selected', async () => {
+  it('keeps Slide off the smooth-scroll follower while using the measured ChatIS spacer', () => {
     const config = MultichatQuerySchema.parse({ twitch: 'gxufy', animation: 'slide', smoothScroll: '1', msgSlideIn: '1' });
     const raw = SAMPLE_MESSAGES[0].message;
     const parsed = buildParsedMessage(raw, config, SAMPLE_COSMETICS, { enabled: config.mentionColor, colors: new Map() }, raw.timestamp);
     const { container } = render(<ChatOverlay config={config} messages={[parsed]} fadingIds={new Set()} pinnedMessage={null} showLoader={false} sourceTagExplicit />);
-    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).not.toBeNull());
-    await waitFor(() => expect(container.querySelector('[data-slide-ghost]')).toBeNull());
+    const chat = container.querySelector('#chat_container') as HTMLElement;
+    expect(chat.style.display).toBe('');
+    expect(chat.style.maxHeight).toBe('');
     expect(container.querySelector('.gx-message-slide-in')).not.toBeNull();
   });
 });

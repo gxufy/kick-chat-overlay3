@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildKickMessage, fetchKickHistory } from '@/lib/connectors/kick';
+import { buildKickMessage, fetchKickHistory, parseKickEmotes } from '@/lib/connectors/kick';
 import type { KickChannel } from '@/lib/kick';
 import { extractAssignedJson, liveViewContinuation } from '@/pages/api/youtube/live';
 
@@ -28,6 +28,15 @@ describe('provider chat parity', () => {
       { type: 'subscriber', count: 12, version: '12' },
     ]);
     expect(message.timestamp).toBe(Date.parse('2026-08-25T20:00:00Z'));
+  });
+
+  it('keeps Kick native-emote offsets codepoint-safe without rescanning built text', () => {
+    const parsed = parseKickEmotes('😀 hi [emote:123:Wave] + [emoji:456:猫] done');
+    expect(parsed.text).toBe('😀 hi Wave + 猫 done');
+    expect(parsed.emotes).toEqual([
+      { begin: 5, end: 9, text: 'Wave', url: 'https://files.kick.com/emotes/123/fullsize' },
+      { begin: 12, end: 13, text: '猫', url: 'https://files.kick.com/emotes/456/fullsize' },
+    ]);
   });
 
   it('normalizes Kick reply context using readable native-emote fallback text', () => {

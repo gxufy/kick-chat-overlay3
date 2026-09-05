@@ -8,7 +8,7 @@
  *
  * What changed underneath, and why it matters:
  *
- *   - Controls are rendered from the tool catalogs (24 MultiChat, 6 Counter)
+ *   - Controls are rendered from the tool catalogs (27 MultiChat, 7 Counter)
  *     rather than hand-written <select>s and hardcoded <option> lists. The
  *     Classic page previously restated every label and option, so a catalog entry
  *     could change without this page noticing. Now it cannot.
@@ -39,6 +39,7 @@ import Link from 'next/link';
 import OverlayPreviewFrame from '@/components/workspace/OverlayPreviewFrame';
 import ClassicChatPreview from './ClassicChatPreview';
 import ClassicCounterPreview from './ClassicCounterPreview';
+import ClassicBadgeOrderVisibility from './ClassicBadgeOrderVisibility';
 import ClassicSetting, { type SettingRange } from './ClassicSetting';
 import ClassicTwitchConnect from './ClassicTwitchConnect';
 import ClassicPreviewBackgroundControl, {
@@ -65,7 +66,7 @@ import {
   googleFontsImportCss,
 } from '@/lib/overlayFonts';
 import { FONT_FAMILIES } from '@/components/overlay/ChatOverlay';
-import { MULTICHAT_OBS_ALTERNATE, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
+import { MULTICHAT_OBS_RECOMMENDED, MULTICHAT_OBS_SIZE } from '@/features/multichat/obs';
 import { multichatTool } from '@/features/multichat/config';
 import { samplePinMessage } from '@/features/multichat/samples';
 import { counterTool } from '@/features/counter/config';
@@ -131,13 +132,17 @@ const VC = counterTool.catalog;
 
 const MC_TEXT_SIZE = selectSetting(MC, 'textSize');
 const MC_FONT = selectSetting(MC, 'font');
+const MC_GOOGLE_FONT = textSetting(MC, 'googleFont');
 const MC_STROKE = selectSetting(MC, 'stroke');
 const MC_TEXT_SHADOW = selectSetting(MC, 'textShadow');
 const MC_ANIMATION = selectSetting(MC, 'animation');
 const MC_EMOTE_SCALE = textSetting(MC, 'emoteScale');
+const MC_GIFS = toggleSetting(MC, 'gifs');
+const MC_GIF_SIZE = textSetting(MC, 'gifSize');
 const MC_SOURCE_TAG = selectSetting(MC, 'sourceTag');
 const MC_SEVENTV_EMOTES = toggleSetting(MC, 'sevenTVEmotesEnabled');
 const MC_SEVENTV_COSMETICS = toggleSetting(MC, 'sevenTVCosmeticsEnabled');
+const MC_COMMUNITY_BADGES = toggleSetting(MC, 'showCommunityBadges');
 const MC_PAINT_SHADOWS = toggleSetting(MC, 'paintShadows');
 const MC_FADE_ENABLED = toggleSetting(MC, 'fadeEnabled');
 const MC_FADE = textSetting(MC, 'fade');
@@ -146,6 +151,10 @@ const MC_MSG_CAPS = toggleSetting(MC, 'msgCaps');
 const MC_MSG_SLIDE_IN = toggleSetting(MC, 'msgSlideIn');
 const MC_SMOOTH_SCROLL = toggleSetting(MC, 'smoothScroll');
 const MC_SHARED_CHAT = toggleSetting(MC, 'sharedChatEnabled');
+const MC_SHOW_SYSTEM_MSGS = toggleSetting(MC, 'showSystemMsgs');
+const MC_SHOW_HYPE_TRAINS = toggleSetting(MC, 'showHypeTrains');
+const MC_SHOW_FIRST_MESSAGES = toggleSetting(MC, 'showFirstMessages');
+const MC_SHOW_REDEEMS = toggleSetting(MC, 'showRedeems');
 const MC_HIDE_NAMES = toggleSetting(MC, 'hideNames');
 const MC_MOD_ACTION = toggleSetting(MC, 'modAction');
 const MC_MENTION_COLOR = toggleSetting(MC, 'mentionColor');
@@ -161,6 +170,7 @@ const VC_COMBINED = toggleSetting(VC, 'combined');
 const VC_ICONS = toggleSetting(VC, 'icons');
 const VC_BG = toggleSetting(VC, 'bg');
 const VC_ALIGN = selectSetting(VC, 'align');
+const VC_GOOGLE_FONT = textSetting(VC, 'googleFont');
 const VC_TEXT_SHADOW = selectSetting(VC, 'textShadow');
 const VC_STROKE = selectSetting(VC, 'stroke');
 
@@ -291,14 +301,6 @@ export default function ClassicGenerator({
     const fixtures = pin ? [...showcase, pin] : showcase;
     return feed.messages.length ? [...fixtures, ...feed.messages] : fixtures;
   }, [feed.messages, feed.pinVisible, identityTemplates]);
-
-  const resetChatPreview = useCallback(() => {
-    previewRoster.reset();
-    feed.reset();
-    feed.resume();
-    setChatBgMode('checker');
-    setChatBgColor(DEFAULT_PREVIEW_CUSTOM_COLOR);
-  }, [feed, previewRoster]);
 
   /* The platforms the Counter would actually poll for, from the tool's own
      normalizer rather than from a truthiness check on the raw fields — a name
@@ -904,34 +906,9 @@ export default function ClassicGenerator({
           {chatPreviewMode === 'data' && (
             <div className="preview-data-controls preview-data-controls-compact">
               <div className="preview-primary-actions preview-roster-actions">
-                <button
-                  type="button"
-                  className="classic-conn-btn preview-load-more"
-                  onClick={previewRoster.loadMore}
-                >
-                  LOAD MORE BADGES
-                </button>
                 <p className="preview-roster-status" role="status">
                   {previewRoster.statusText}
                 </p>
-                <button
-                  type="button"
-                  className="classic-conn-btn"
-                  onClick={resetChatPreview}
-                >
-                  RESET PREVIEW
-                </button>
-                <button
-                  type="button"
-                  className="classic-conn-btn"
-                  onClick={feed.togglePaused}
-                  aria-pressed={feed.paused}
-                >
-                  {feed.paused ? 'RESUME' : 'PAUSE'}
-                </button>
-                <button type="button" className="classic-conn-btn" onClick={feed.reset}>
-                  RESET FEED
-                </button>
               </div>
 
               <ClassicPreviewBackgroundControl
@@ -1034,7 +1011,7 @@ export default function ClassicGenerator({
               than tracked in state.
 
               With no channel there is no live counter to show — and a frame
-              holding only dashes says nothing about how the six settings look.
+              holding only dashes says nothing about how the seven settings look.
               Sample counts go through the production renderer instead. That
               frame is a local blank document, not the overlay URL, so nothing
               fetches /api/viewers and nothing polls. */}
@@ -1194,6 +1171,7 @@ export default function ClassicGenerator({
               optionStyle: (v) =>
                 FONT_FAMILIES[v] ? { fontFamily: FONT_FAMILIES[v] } : undefined,
             })}
+            {chat(MC_GOOGLE_FONT)}
             {chat(MC_STROKE, { segmented: true })}
             {chat(MC_TEXT_SHADOW, { segmented: true })}
             {chat(MC_FONT_COLOR)}
@@ -1217,12 +1195,25 @@ export default function ClassicGenerator({
             <p className="col-heading">Behaviour</p>
             {chat(MC_SEVENTV_EMOTES)}
             {chat(MC_SEVENTV_COSMETICS)}
+            {chat(MC_GIFS)}
+            {chat(MC_GIF_SIZE)}
+            {chat(MC_COMMUNITY_BADGES)}
+            <ClassicBadgeOrderVisibility
+              value={chatStyle.badgeLayout ?? ''}
+              onChange={(key, next) =>
+                changeChat(key as keyof MultichatWorkspaceStyle & string, next)
+              }
+            />
             {chat(MC_PAINT_SHADOWS)}
             {chat(MC_MSG_BOLD)}
             {chat(MC_MSG_CAPS)}
             {chat(MC_MSG_SLIDE_IN)}
             {chat(MC_SMOOTH_SCROLL)}
             {chat(MC_SHARED_CHAT)}
+            {chat(MC_SHOW_SYSTEM_MSGS)}
+            {chat(MC_SHOW_HYPE_TRAINS)}
+            {chat(MC_SHOW_FIRST_MESSAGES)}
+            {chat(MC_SHOW_REDEEMS)}
             {chat(MC_HIDE_NAMES)}
             {chat(MC_MENTION_COLOR)}
             {chat(MC_MOD_ACTION)}
@@ -1275,7 +1266,7 @@ export default function ClassicGenerator({
     );
   }
 
-  /** All six Viewer Counter settings. */
+  /** All seven Viewer Counter settings. */
   function counterSettingsPanel() {
     const vc = (
       setting: Parameters<typeof ClassicSetting<ViewerCounterStyle>>[0]['setting'],
@@ -1317,6 +1308,7 @@ export default function ClassicGenerator({
           <div className="form_col">
             <p className="col-heading">Layout</p>
             {vc(VC_ALIGN, { segmented: true })}
+            {vc(VC_GOOGLE_FONT)}
             {vc(VC_TEXT_SHADOW, { segmented: true })}
             {vc(VC_STROKE, { segmented: true })}
           </div>
@@ -1329,9 +1321,10 @@ export default function ClassicGenerator({
         </div>
 
         <p className="card-note">
-          The counter has its own fixed typography and never follows the chat
-          font, size, shadow, or outline — restyling chat cannot change a counter
-          URL you have already put in OBS.
+          The counter keeps its own fixed size and weight and never follows the
+          chat font. Set Google font above to override DejaVu Sans for the counter
+          only; restyling chat cannot change a counter URL you have already put in
+          OBS.
         </p>
       </section>
     );
@@ -1419,10 +1412,9 @@ export default function ClassicGenerator({
           <li>
             Size it{' '}
             <strong>
-              {MULTICHAT_OBS_SIZE.width} × {MULTICHAT_OBS_SIZE.height}
+              {MULTICHAT_OBS_RECOMMENDED.width} × {MULTICHAT_OBS_RECOMMENDED.height}
             </strong>
-            . {MULTICHAT_OBS_ALTERNATE.width} × {MULTICHAT_OBS_ALTERNATE.height}{' '}
-            is a wider, shorter alternative that shows fewer messages.
+            .
           </li>
           <li>
             Leave <strong>Shutdown source when not visible</strong> off — the

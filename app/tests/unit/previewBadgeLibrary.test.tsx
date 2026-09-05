@@ -206,10 +206,10 @@ describe('usePreviewBadgeLibrary', () => {
 /* Wired into the generator, and serialized nowhere                   */
 /* ------------------------------------------------------------------ */
 
-describe('the final generator uses the curated identity action', () => {
-  it('replaces the generic badge-library presentation with Load More Badges', () => {
+describe('the final generator keeps retired badge actions out of the UI', () => {
+  it('shows neither Load More Badges nor the generic badge-library buttons', () => {
     render(<ClassicGenerator />);
-    expect(screen.getByRole('button', { name: 'LOAD MORE BADGES' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'LOAD MORE BADGES' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^(Load|Reload) badges$/i })).toBeNull();
   });
 });

@@ -4,15 +4,17 @@
  * lib/viewerCounterConfig.ts; rendering lives in ViewerCounterDisplay, which
  * the generator preview shares. This file is only the data lifecycle.
  *
- * Counts: /api/viewers for Twitch/YouTube/TikTok (server-cached), plus Kick
- * fetched directly from the browser — Kick's API allows browsers but blocks
- * server IPs.
+ * Counts: the selected server endpoint for Twitch/YouTube/TikTok (server-cached),
+ * plus Kick fetched directly from the browser — Kick's API allows browsers but
+ * blocks server IPs. The normal /counter page keeps the legacy /api/viewers path;
+ * the neutral /audience embed uses /api/audience so third-party widget hosts do
+ * not depend on blocker-prone counter/viewer URL names.
  *
  * Every number shown is a concurrent-viewer metric. A platform that is live
  * but whose count cannot be determined shows an unavailable marker and is
  * excluded from the combined total rather than counted as zero.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import ViewerCounterDisplay from '../components/overlay/ViewerCounterDisplay';
@@ -51,11 +53,16 @@ const REQUEST_TIMEOUT_MS = 8_000;
 /** A good status plus when it was measured, for staleness bounding. */
 type TimedStatus = { status: PlatformCountStatus; at: number };
 
+export type CounterRuntimeProps = {
+  /** Same-origin endpoint used for Twitch/YouTube/TikTok. */
+  serverEndpoint?: '/api/viewers' | '/api/audience';
+};
+
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function Counter() {
+export function CounterRuntime({ serverEndpoint = '/api/viewers' }: CounterRuntimeProps) {
   const router = useRouter();
   const [statuses, setStatuses] = useState<PlatformStatuses>({});
   const [started, setStarted] = useState(false);
@@ -187,7 +194,7 @@ export default function Counter() {
 
       if ([...serverParams].length > 0) {
         jobs.push(
-          fetch(`/api/viewers?${serverParams}`, { signal })
+          fetch(`${serverEndpoint}?${serverParams}`, { signal })
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
               if (!data || typeof data !== 'object') return;
@@ -293,7 +300,7 @@ export default function Counter() {
       // are no-ops, and no state update can follow.
       if (controller) controller.abort();
     };
-  }, [router.isReady, pollKey]);
+  }, [router.isReady, pollKey, serverEndpoint]);
 
   if (!config) return null;
 
@@ -322,4 +329,8 @@ export default function Counter() {
       </div>
     </>
   );
+}
+
+export default function Counter() {
+  return <CounterRuntime serverEndpoint="/api/viewers" />;
 }

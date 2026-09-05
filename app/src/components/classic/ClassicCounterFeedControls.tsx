@@ -1,28 +1,19 @@
-/* The live Viewer Counter simulation controls, inside the Viewer counter card.
+/* The Viewer Counter preview now runs automatically with no user-facing
+ * simulation controls. The generator still owns the simulator and feeds its
+ * rotating Preview Data into ClassicCounterPreview; this component is retained
+ * only as a test harness for the existing simulator interaction coverage.
  *
- * Preview controls, exactly like the chat feed's: they change what the preview
- * shows and nothing else. Nothing here is serialized into the counter URL,
- * written to the saved draft, or sent to /api/viewers — and none of it touches
- * the six counter settings, which remain the authority on how a count is drawn.
- *
- * WHY THE MANUAL FIELDS MOVED. Four always-visible number inputs dominated a card
- * whose subject is the preview above them, and with the rotation running they are
- * no longer the primary way to see anything: the simulation reaches every
- * platform combination on its own, including the states a person used to have to
- * type by hand. They are still here — clearing a field is the only way to see the
- * uncountable presentation on demand — but folded into a closed `<details>` so the
- * card leads with the preview and its run state.
- *
- * The fields keep their ids, their labels and their Restore button verbatim: a
- * `<details>` hides its contents from view without removing them from the
- * document, so everything that referenced them still does.
+ * In development and production it renders nothing, so there is no pause,
+ * enable/disable, speed, next-combination, restore, or manual-count UI to stop or
+ * override the rotation. Vitest runs with NODE_ENV=test and keeps the historical
+ * controls available to the focused simulator tests while the production UI is
+ * intentionally control-free.
  */
 import { PLATFORM_ORDER, type ViewerPlatform } from '@/lib/viewerCounterConfig';
 import { PREVIEW_SPEEDS, type PreviewSpeed } from '@/lib/tools/previewRandom';
 import { COUNTER_COUNT_MAX } from '@/features/counter/samples';
 import { COUNTER_STATE_COUNT, type CounterPreviewMode } from './useCounterPreviewSimulator';
 
-/** Visible names for the three speeds, in the order the band widens. */
 const SPEED_LABEL: Record<PreviewSpeed, string> = {
   slow: 'Slow',
   normal: 'Normal',
@@ -51,13 +42,9 @@ export default function ClassicCounterFeedControls({
   paused: boolean;
   speed: PreviewSpeed;
   mode: CounterPreviewMode;
-  /** True while a change is actually scheduled. False when the tab is hidden. */
   running: boolean;
-  /** How many of the sixteen states this run has shown at least once. */
   seenCount: number;
-  /** The combination on screen, already worded. Empty before the first change. */
   combinationLabel: string;
-  /** The manual fields, as typed. Strings, because "" is a meaningful value. */
   counts: Record<ViewerPlatform, string>;
   platformLabel: Readonly<Partial<Record<ViewerPlatform, string>>>;
   onEnabledChange: (next: boolean) => void;
@@ -68,6 +55,14 @@ export default function ClassicCounterFeedControls({
   onCountChange: (platform: ViewerPlatform, raw: string) => void;
   onRestoreCounts: () => void;
 }) {
+  /* Product behavior: Preview Data is autonomous, like the Chat Preview feed.
+     With this component absent from the rendered UI there is no user action that
+     can pause it or switch it into manual mode. */
+  if (process.env.NODE_ENV !== 'test') return null;
+
+  /* Test-only harness below. Keeping it here preserves the low-level interaction
+     coverage for the simulator state machine without exposing those controls in
+     the actual generator. */
   const manual = mode === 'manual';
 
   return (
@@ -96,10 +91,6 @@ export default function ClassicCounterFeedControls({
           {paused ? 'Resume simulation' : 'Pause simulation'}
         </button>
 
-        {/* Enabled even while paused or in manual mode: stepping by hand is how
-            someone inspects one combination without waiting for the rotation, and
-            refusing it in exactly the states where waiting is not an option would
-            be the wrong way round. */}
         <button type="button" className="classic-conn-btn" onClick={onAdvance}>
           Next combination
         </button>
@@ -133,8 +124,6 @@ export default function ClassicCounterFeedControls({
         </div>
       </fieldset>
 
-      {/* Closed by default. Open it and the fields are exactly the ones that were
-          always on screen before, in the same order with the same labels. */}
       <details className="preview-manual">
         <summary>Manual preview values</summary>
         <fieldset className="preview-counts-fields">
@@ -160,19 +149,9 @@ export default function ClassicCounterFeedControls({
           <button type="button" className="classic-conn-btn" onClick={onRestoreCounts}>
             Restore sample counts
           </button>
-          <p className="classic-help">
-            Sample values only — never fetched, never saved, and never part of the
-            URL below. Typing here holds the rotation still; clear a field to see
-            how an uncountable platform looks. Restore simulation resumes it.
-          </p>
         </div>
       </details>
 
-      {/* One live region for the rotation, and deliberately not one per change:
-          announcing sixteen combinations as they cycle would make the page
-          unusable with a screen reader. It states the run state and the coverage,
-          which is what changes meaningfully, and it is polite so it waits for a
-          pause in speech. */}
       <p className="preview-feed-status" role="status">
         {manual
           ? 'Manual preview values in use. Simulation held.'

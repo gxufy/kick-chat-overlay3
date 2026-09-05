@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import ClassicGenerator from '@/components/classic/ClassicGenerator';
 import { useTwitchPreviewIdentity } from '@/components/classic/useTwitchPreviewIdentity';
 import { useChatPreviewSimulator } from '@/components/classic/useChatPreviewSimulator';
@@ -179,16 +179,16 @@ describe('curated identities in the Chat Preview card', () => {
     identity: { userId: String(PREVIEW_ROSTER.findIndex((entry) => entry.login === login) + 42), login, displayName: 'API casing' },
   });
 
-  it('shows exact roster casing immediately and only compact controls', () => {
+  it('shows exact roster casing immediately and only the final preview controls', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
     render(<ClassicGenerator />);
     const body = document.querySelector<HTMLIFrameElement>('iframe[title="MultiChat sample preview"]')?.contentDocument?.body;
     for (const entry of PREVIEW_ROSTER) expect(body?.textContent ?? '').toContain(entry.displayName);
     expect(screen.getByText(/not live channel chat/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'LOAD MORE BADGES' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'RESET PREVIEW' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'PAUSE' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'RESET FEED' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'LOAD MORE BADGES' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'RESET PREVIEW' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'PAUSE' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'RESET FEED' })).toBeNull();
     expect(screen.queryByLabelText('Twitch username/channel')).toBeNull();
     expect(screen.queryByText('Preview badges & cosmetics')).toBeNull();
     expect(screen.queryByText('Add your own lines to the preview')).toBeNull();
@@ -221,7 +221,6 @@ describe('curated identities in the Chat Preview card', () => {
     const chatUrl = screen.getByLabelText('Generated MultiChat overlay URL').textContent;
     const counterUrl = screen.getByLabelText('Generated viewer counter URL').textContent;
     await waitFor(() => expect(screen.getByText(new RegExp(`${PREVIEW_ROSTER.length} of ${PREVIEW_ROSTER.length}`))).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'LOAD MORE BADGES' }));
     expect(screen.getByLabelText('Generated MultiChat overlay URL').textContent).toBe(chatUrl);
     expect(screen.getByLabelText('Generated viewer counter URL').textContent).toBe(counterUrl);
     const storage = [workspaceDraftKey('multichat'), workspaceDraftKey('counter')]

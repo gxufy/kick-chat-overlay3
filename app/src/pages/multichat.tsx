@@ -3,6 +3,7 @@
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import dynamic from 'next/dynamic';
 import {
   hasConfiguredMultichatChannel,
   multichatKickChannel,
@@ -33,6 +34,7 @@ import { buildMessageFilter, buildParsedMessage } from '../lib/multichatMessageM
 import { loadTwitchEmotes } from '../lib/twitchEmotes';
 import { clearSevenTVEmoteSetCache } from '../lib/sevenTVEmoteSetCache';
 import { createCosmeticsFetcher } from '../lib/cosmetics';
+import { createMessageFadeScheduler } from '../lib/messageFadeScheduler';
 import { startTwitchPinPoller } from '../lib/twitchPinPoller';
 import type { TwitchPinApiMessage } from '../lib/twitchPinClient';
 import { startTwitchHypeTrainPoller } from '../lib/twitchHypeTrainPoller';
@@ -50,8 +52,15 @@ import ChatOverlay, {
   type PinnedState,
   type StartupLoaderPhase,
 } from '../components/overlay/ChatOverlay';
-import ClassicGenerator from '../components/classic/ClassicGenerator';
 import { SunsetBanner } from '../components/SunsetBanner';
+import { drainBurstPresentationQueue, startBurstPresentationTicker } from '../lib/chatBurstPresentation';
+
+/* The generator is a large editing UI that OBS never renders. Keep the overlay
+ * renderer in the main /multichat bundle so its startup appearance is unchanged,
+ * but load the generator chunk only when the channel-less generator branch is
+ * actually rendered. This removes generator controls/previews/simulators from
+ * the browser-source parse/evaluation path without creating a second renderer. */
+const ClassicGenerator = dynamic(() => import('../components/classic/ClassicGenerator'));
 
 /* Twitch pin polling: the generator appends an opaque connection id as a
  * URL fragment. Validated here, never rewritten, never logged. */
@@ -196,6 +205,9 @@ function MultichatOverlay() {
   const twitchPinIdRef = useRef('');
   /** messageId:updatedAt of the last pin handed to the pin handler. */
   const twitchPinKeyRef = useRef('');
+  /** Messages already handed to ChatOverlay. New arrivals wait for the next fixed ChatIS tick. */
+  const presentedMessagesRef = useRef<ParsedMessage[]>([]);
+  const pendingMessagesRef = useRef<ParsedMessage[]>([]);
 
   /**
    * Clear the pinned message only when this poller still owns it.
@@ -360,6 +372,22 @@ function MultichatOverlay() {
        apply the identical predicate to respond to the filter settings at all. */
     const shouldDisplay = buildMessageFilter(cfg);
 
+    /* Twitch supplies a real first-message flag. Other providers do not, so
+       their equivalent is the first live message observed from each chatter
+       during this browser-source session. Backlog rows are excluded by time. */
+    const sessionStartedAt = Date.now();
+    const sessionFirstSeen = new Set<string>();
+    function withSessionFirstMessage(message: UnifiedMessage): UnifiedMessage {
+      if (message.platform === 'twitch' || message.kind !== 'chat') return message;
+      if ((message.timestamp ?? 0) < sessionStartedAt - 2_000) return message;
+      const identity = message.senderId || message.username.trim().toLowerCase();
+      if (!identity) return message;
+      const key = `${message.platform}:${identity}`;
+      if (sessionFirstSeen.has(key)) return message;
+      sessionFirstSeen.add(key);
+      return { ...message, firstMessage: true };
+    }
+
     /* Runtime visibility controls deliberately do not stop connectors. That is
        what lets a moderator issue twitchon/youtubeon from a platform that is
        currently hidden without reloading the browser source. */
@@ -367,14 +395,30 @@ function MultichatOverlay() {
     let sharedChatRuntime = cfg.sharedChatEnabled;
 
     
-    const smoothRuntime = cfg.smoothScroll && cfg.animation !== 'slide';
+    /* Match ChatIS's phase-locked presentation clock: one 200 ms interval runs
+       continuously for the lifetime of the overlay, and each tick commits whatever
+       connector messages are waiting. Repaint-only mutations keep their existing
+       OBS-safe frame path and never reveal queued arrivals ahead of that clock. */
+    const smoothRuntime = cfg.smoothScroll;
     let dirty = false;
     let flushFrame: number | null = null;
+
+    function publishMessages(next: ParsedMessage[]) {
+      presentedMessagesRef.current = next;
+      setMessages(next);
+    }
+
+    function latestPresentedMessages() {
+      const byId = new Map(s.messages.map((message) => [message.id, message] as const));
+      return presentedMessagesRef.current
+        .filter((message) => byId.has(message.id))
+        .map((message) => byId.get(message.id)!);
+    }
 
     function flushMessages() {
       if (!dirty) return;
       dirty = false;
-      setMessages([...s.messages]);
+      publishMessages(latestPresentedMessages());
     }
 
     function markDirty() {
@@ -386,9 +430,39 @@ function MultichatOverlay() {
       });
     }
 
-    const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime
+    function flushBurstPresentation() {
+    const liveIds = new Set(s.messages.map((message) => message.id));
+    pendingMessagesRef.current = pendingMessagesRef.current.filter((message) => liveIds.has(message.id));
+    const batch = drainBurstPresentationQueue(pendingMessagesRef.current);
+
+    if (batch.length) {
+      const byId = new Map(s.messages.map((message) => [message.id, message] as const));
+      const current = latestPresentedMessages();
+      const currentIds = new Set(current.map((message) => message.id));
+      for (const message of batch) {
+        const latest = byId.get(message.id);
+        if (!latest || currentIds.has(message.id)) continue;
+        current.push(latest);
+        currentIds.add(message.id);
+      }
+      publishMessages(current.slice(-100));
+    }
+  }
+
+  function enqueueBurstPresentation(message: ParsedMessage) {
+    if (
+      presentedMessagesRef.current.some((presented) => presented.id === message.id)
+      || pendingMessagesRef.current.some((pending) => pending.id === message.id)
+    ) return;
+    pendingMessagesRef.current.push(message);
+  }
+
+  const stopBurstPresentationTicker = startBurstPresentationTicker(flushBurstPresentation);
+
+  const flushInterval: ReturnType<typeof setInterval> | null = smoothRuntime
       ? null
       : setInterval(flushMessages, 200);
+    let fadeScheduler: ReturnType<typeof createMessageFadeScheduler> | null = null;
 
     function setPlatformChatVisible(platform: Platform, visible: boolean) {
       if (visible) {
@@ -411,7 +485,8 @@ function MultichatOverlay() {
       markDirty();
     }
 
-    function addMessage(um: UnifiedMessage) {
+    function addMessage(incoming: UnifiedMessage) {
+      const um = withSessionFirstMessage(incoming);
       /* Shared partner traffic is completely outside the overlay while the
          feature is off, including its commands. Local Twitch chat remains live
          and can turn Shared Chat on at any time. */
@@ -427,9 +502,11 @@ function MultichatOverlay() {
       if (cfg.sevenTVCosmeticsEnabled && (um.platform === 'kick' || um.platform === 'twitch')) {
         cosmeticsFetcher.want(um.platform, um.senderId);
       }
-      s.messages.push(buildParsed(um));
+      const parsedMessage = buildParsed(um);
+      s.messages.push(parsedMessage);
       if (s.messages.length > 100) s.messages.shift();
-      markDirty();
+      enqueueBurstPresentation(parsedMessage);
+      fadeScheduler?.wake();
       dismissLoaderWhenEligible();
     }
 
@@ -901,25 +978,20 @@ function MultichatOverlay() {
 
     connectors.forEach(c => c.start());
 
-    let fadeInterval: ReturnType<typeof setInterval> | null = null;
     if (cfg.fade !== false) {
-      const fadeMs = (cfg.fade as number) * 1000;
-      const fadingSet = new Set<string>();
-      fadeInterval = setInterval(() => {
-        const cutoff = Date.now() - fadeMs;
-        const expired = s.messages.find(
-          m => (m.timestamp ?? 0) <= cutoff && !fadingSet.has(m.id)
-        );
-        if (!expired) return;
-        fadingSet.add(expired.id);
-        setFadingIds(new Set(fadingSet));
-        setTimeout(() => {
-          fadingSet.delete(expired.id);
-          s.messages = s.messages.filter(m => m.id !== expired.id);
+      fadeScheduler = createMessageFadeScheduler({
+        getMessages: () => s.messages,
+        fadeMs: (cfg.fade as number) * 1000,
+        onFadingChange: setFadingIds,
+        onRemove: (id) => {
+          s.messages = s.messages.filter((message) => message.id !== id);
           markDirty(); // removal uses the active flush policy
-          setFadingIds(new Set(fadingSet));
-        }, 400);
-      }, 200);
+        },
+      });
+      // A connector may synchronously seed messages during start(). Arm the
+      // first deadline once here even when addMessage ran before the scheduler
+      // existed; later arrivals call wake() themselves.
+      fadeScheduler.wake();
     }
 
     return () => {
@@ -928,7 +1000,8 @@ function MultichatOverlay() {
       if (loaderMaximumTimer) clearTimeout(loaderMaximumTimer);
       if (flushInterval) clearInterval(flushInterval);
       if (flushFrame !== null) cancelAnimationFrame(flushFrame);
-      if (fadeInterval) clearInterval(fadeInterval);
+      stopBurstPresentationTicker();
+      fadeScheduler?.stop();
       connectors.forEach(c => c.stop());
       cleanups.forEach(fn => fn());
     };
@@ -1003,8 +1076,14 @@ function MultichatOverlay() {
     };
   }, [twitchPinsEnabled, twitchPinLogin, clearOwnedTwitchPin]);
 
+  const hypeTrainsEnabled = !!config?.showSystemMsgs && !!config?.showHypeTrains;
+
   useEffect(() => {
-    if (!twitchPinLogin) return;
+    if (!hypeTrainsEnabled || !twitchPinLogin) {
+      setHypeTrain(null);
+      setHypeTrainEnding(false);
+      return;
+    }
     let generation = 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let active: Extract<TwitchHypeTrainState, { active: true }> | null = null;
@@ -1038,7 +1117,7 @@ function MultichatOverlay() {
       setHypeTrain(null);
       setHypeTrainEnding(false);
     };
-  }, [twitchPinLogin]);
+  }, [hypeTrainsEnabled, twitchPinLogin]);
 
   if (!ready) return null;
 

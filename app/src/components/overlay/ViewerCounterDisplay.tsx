@@ -70,14 +70,13 @@ const ICONS: Record<ViewerPlatform, JSX.Element> = {
       <path d="M1.333 0h8v5.333H12V2.667h2.667V0h8v8H20v2.667h-2.667v2.666H20V16h2.667v8h-8v-2.667H12v-2.666H9.333V24h-8Z" />
     </svg>
   ),
-  twitch: <img src="/platform-twitch.png" alt="" style={{ height: '100%', width: 'auto' }} />,
-  youtube: (
-    <svg viewBox="0 0 24 24" style={{ height: '100%', width: 'auto' }}>
-      <path fill="#FF0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z" />
-      <path fill="#FFFFFF" d="M9.545 15.568V8.432L15.818 12z" />
-    </svg>
-  ),
-  tiktok: <img src="/platform-tiktok.png" alt="" style={{ height: '100%', width: 'auto' }} />,
+  twitch: <img src="/platform-twitch.png" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
+  /* Keep YouTube in an external asset instead of an inline SVG. The overlay has
+     global SVG/path rules for chat badges and emotes; an <img> is isolated from
+     those rules, so the red lozenge cannot collapse into only the white play
+     triangle in the viewer counter. */
+  youtube: <img src="/platform-youtube.svg" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
+  tiktok: <img src="/platform-tiktok.png" alt="" draggable={false} style={{ height: '100%', width: 'auto' }} />,
 };
 
 /* ------------------------------------------------------------------ */

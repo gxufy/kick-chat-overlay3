@@ -129,9 +129,9 @@ describe('catalog-backed controls', () => {
     expect(document.getElementById('mc-pinPlatforms-kick')).toBeNull();
   });
 
-  it('renders all six Viewer Counter settings', () => {
+  it('renders all seven Viewer Counter settings', () => {
     mount();
-    expect(COUNTER_CATALOG).toHaveLength(6);
+    expect(COUNTER_CATALOG).toHaveLength(7);
     for (const setting of COUNTER_CATALOG) {
       expect(document.getElementById(`vc-${String(setting.key)}`)).not.toBeNull();
     }
@@ -188,18 +188,23 @@ describe('settings resets', () => {
     expect(counterUrl()).toBe(changedCounter);
   });
 
-  it('restores Counter defaults including background off and large shadow', () => {
+  it('restores Counter defaults including Google font, background off and large shadow', () => {
     mount();
     typeChannel('twitch', 'gxufy');
     fireEvent.click(document.getElementById('vc-bg')!);
     fireEvent.click(document.getElementById('vc-textShadow-none')!);
+    fireEvent.change(document.getElementById('vc-googleFont')!, {
+      target: { value: 'Press Start 2P' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset Viewer Settings to Default' }));
 
     expect((document.getElementById('vc-bg') as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById('vc-textShadow-large') as HTMLInputElement).checked)
       .toBe(true);
+    expect((document.getElementById('vc-googleFont') as HTMLInputElement).value).toBe('');
     expect(counterUrl()).toContain('twitch=gxufy');
+    expect(counterUrl()).not.toContain('font=');
   });
 });
 

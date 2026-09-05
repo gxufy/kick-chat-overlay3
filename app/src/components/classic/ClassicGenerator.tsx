@@ -8,7 +8,7 @@
  *
  * What changed underneath, and why it matters:
  *
- *   - Controls are rendered from the tool catalogs (27 MultiChat, 6 Counter)
+ *   - Controls are rendered from the tool catalogs (27 MultiChat, 7 Counter)
  *     rather than hand-written <select>s and hardcoded <option> lists. The
  *     Classic page previously restated every label and option, so a catalog entry
  *     could change without this page noticing. Now it cannot.
@@ -169,6 +169,7 @@ const VC_COMBINED = toggleSetting(VC, 'combined');
 const VC_ICONS = toggleSetting(VC, 'icons');
 const VC_BG = toggleSetting(VC, 'bg');
 const VC_ALIGN = selectSetting(VC, 'align');
+const VC_GOOGLE_FONT = textSetting(VC, 'googleFont');
 const VC_TEXT_SHADOW = selectSetting(VC, 'textShadow');
 const VC_STROKE = selectSetting(VC, 'stroke');
 
@@ -1042,7 +1043,7 @@ export default function ClassicGenerator({
               than tracked in state.
 
               With no channel there is no live counter to show — and a frame
-              holding only dashes says nothing about how the six settings look.
+              holding only dashes says nothing about how the seven settings look.
               Sample counts go through the production renderer instead. That
               frame is a local blank document, not the overlay URL, so nothing
               fetches /api/viewers and nothing polls. */}
@@ -1291,7 +1292,7 @@ export default function ClassicGenerator({
     );
   }
 
-  /** All six Viewer Counter settings. */
+  /** All seven Viewer Counter settings. */
   function counterSettingsPanel() {
     const vc = (
       setting: Parameters<typeof ClassicSetting<ViewerCounterStyle>>[0]['setting'],
@@ -1333,6 +1334,7 @@ export default function ClassicGenerator({
           <div className="form_col">
             <p className="col-heading">Layout</p>
             {vc(VC_ALIGN, { segmented: true })}
+            {vc(VC_GOOGLE_FONT)}
             {vc(VC_TEXT_SHADOW, { segmented: true })}
             {vc(VC_STROKE, { segmented: true })}
           </div>
@@ -1345,9 +1347,10 @@ export default function ClassicGenerator({
         </div>
 
         <p className="card-note">
-          The counter has its own fixed typography and never follows the chat
-          font, size, shadow, or outline — restyling chat cannot change a counter
-          URL you have already put in OBS.
+          The counter keeps its own fixed size and weight and never follows the
+          chat font. Set Google font above to override DejaVu Sans for the counter
+          only; restyling chat cannot change a counter URL you have already put in
+          OBS.
         </p>
       </section>
     );

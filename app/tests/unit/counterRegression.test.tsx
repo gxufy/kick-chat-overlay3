@@ -74,8 +74,8 @@ describe('descriptor boundary', () => {
     expect(counterTool.context).toBeUndefined();
   });
 
-  it('has exactly six visible settings with no pin field', () => {
-    expect(COUNTER_CATALOG).toHaveLength(6);
+  it('has exactly seven visible settings with no pin field', () => {
+    expect(COUNTER_CATALOG).toHaveLength(7);
     for (const setting of COUNTER_CATALOG) {
       expect(setting.hidden).toBeUndefined();
       expect(setting.disabled).toBeUndefined();
@@ -135,6 +135,15 @@ describe('URL identity with the counter serializer', () => {
     expect(counterUrl()).toBe(
       expectedUrl({ twitch: 'somechannel' }, { ...DEFAULT_STYLE, combined: false }),
     );
+  });
+
+  it('serializes a custom Google font only into the counter URL', () => {
+    mount();
+    typeChannel('twitch', 'somechannel');
+    fireEvent.change(document.getElementById('vc-googleFont')!, {
+      target: { value: 'Press Start 2P' },
+    });
+    expect(counterUrl()).toContain('font=google%3APress+Start+2P');
   });
 
   it('uses the current background-off and large-shadow defaults', () => {
